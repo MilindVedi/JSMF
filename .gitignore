@@ -1,0 +1,6 @@
+# OS / editor cruft at the repo root (each app folder has its own .gitignore for its own build artifacts)
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
