@@ -44,7 +44,7 @@ export function DoctorAvatarPlaceholder({
       {badge && (
         <span
           className={cn(
-            "absolute right-0 bottom-0 flex items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-background",
+            "absolute right-0 bottom-0 flex items-center justify-center rounded-full bg-teal text-teal-foreground ring-2 ring-background",
             BADGE_CLASSES[size]
           )}
         >

@@ -52,8 +52,9 @@ src/app/
     dashboard/page.tsx
     question-bank/page.tsx            # filters live in URL search params
     custom-test/new/page.tsx
-    bookmarks/page.tsx
-    wrong-questions/page.tsx
+    revision/page.tsx                 # revision hub: wrong-question modes + bookmarks
+    bookmarks/page.tsx                # full bookmark list, reached from Revision
+    wrong-questions/page.tsx          # flat wrong-question list, superseded by Revision
     history/page.tsx
     statistics/page.tsx
     subscription/page.tsx
@@ -80,7 +81,7 @@ The product uses four distinct navigational contexts, each with a shell delibera
 
 - **Marketing shell.** A sticky header carrying the logo, anchor links to sections of the landing page, and Login/Sign Up buttons. The footer uses a column layout, and further down the landing page there is a small "Coming Soon: Courses · PDFs · Notes" strip that signals the broader future product surface described in [Product Vision](./01-product-vision.md) without implying any of it exists yet.
 - **Auth shell.** A centered `AuthCard`, showing only the logo, a link back to the marketing homepage, and a toggle link between the login and signup forms — deliberately free of any app navigation.
-- **App shell.** A collapsible left sidebar paired with a topbar, gating every logged-in, non-practice page. The sidebar's sections, in order, are: Dashboard, Question Bank, Custom Test, Bookmarks, Wrong Questions, History, Statistics — then a divider — Subscription, Profile. At medium widths the sidebar collapses to an icon-only rail, and on mobile it becomes a slide-over Sheet. The topbar carries the page title or breadcrumb on the left, and a streak chip, plan badge, and avatar dropdown on the right.
+- **App shell.** A collapsible left sidebar paired with a topbar, gating every logged-in, non-practice page. The sidebar's sections, in order, are: Dashboard, Question Bank, Custom Test, Revision, History, Statistics — then a divider — Subscription, Profile. That order deliberately mirrors the product loop of practise → identify weaknesses → revise, which is why Revision sits above History and Statistics rather than being grouped with them as reporting. **Revision is a hub, not a list:** it consolidates what were previously two separate sidebar entries, presenting wrong questions under four slices — all wrong, recently wrong (last 7 days), never corrected (attempted but never once answered correctly), and by subject — alongside a bookmarks section, each with its own "practise these" entry point. The standalone `/bookmarks` and `/wrong-questions` pages still exist and are linked from the hub, so nothing became unreachable. At medium widths the sidebar collapses to an icon-only rail, and on mobile it becomes a slide-over Sheet. The topbar carries the page title or breadcrumb on the left, and a streak chip, plan badge, and avatar dropdown on the right.
 - **Practice shell.** This is deliberately the most minimal of the four. It consists of a single slim top bar: an exit / "Save & Exit" control and the logo mark on the left, "Question 7 of 20" together with a thin progress bar in the center, and — when the session is timed — a timer alongside bookmark and flag quick-icons on the right. There is no sidebar and no footer. The reading content itself sits in a single column capped at roughly 720–760px and centered on the page, which is the single highest-leverage readability decision on this screen. A sticky `PracticeActionBar` at the bottom of the screen holds Previous, Next, Submit, and Finish controls, plus a trigger for the `QuestionPalette` — a popover grid, color-coded for answered/flagged/unanswered/current, that is deliberately kept on-demand rather than permanently visible on screen, as a quieter alternative to how competitor products handle the same idea. Keyboard shortcuts are supported throughout this screen (1–4 to select an option, Enter or N for next, P for previous, B to bookmark, F to flag) and are discoverable via a small "?" popover rather than being hidden.
 
 ## Component Structure

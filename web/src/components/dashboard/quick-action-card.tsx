@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, type LucideIcon } from "lucide-react";
+import { CornerDownLeft, type LucideIcon } from "lucide-react";
 
 export function QuickActionCard({
   icon: Icon,
@@ -21,7 +21,7 @@ export function QuickActionCard({
         <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <Icon className="size-4.5" strokeWidth={1.75} />
         </div>
-        <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+        <CornerDownLeft className="size-4 text-muted-foreground/50 transition-all group-hover:text-muted-foreground" />
       </div>
       <div>
         <p className="font-heading text-sm font-semibold text-foreground">{label}</p>

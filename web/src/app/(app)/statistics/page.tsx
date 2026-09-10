@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { SubjectPerformanceChart } from "@/components/statistics/subject-performance-chart";
 import { AccuracyTrendChart } from "@/components/statistics/accuracy-trend-chart";
 import { DonutBreakdown } from "@/components/statistics/donut-breakdown";
@@ -72,7 +73,7 @@ export default function StatisticsPage() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <StatTile label="Overall accuracy" value={`${stats.accuracy}%`} />
             <StatTile
               label="Attempted"
@@ -89,7 +90,36 @@ export default function StatisticsPage() {
               value={`${stats.incorrect}`}
               className="bg-error/40 ring-error-foreground/10"
             />
+            <StatTile
+              label="Remaining"
+              value={`${stats.unattempted}`}
+              sub="never attempted"
+            />
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Question bank coverage</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="font-heading text-2xl font-semibold tracking-tight text-foreground">
+                  {stats.coverage}%
+                  <span className="ml-2 text-sm font-medium text-muted-foreground">
+                    of the bank seen at least once
+                  </span>
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {stats.attempted} attempted · {stats.unattempted} remaining
+                </p>
+              </div>
+              <Progress value={stats.coverage} aria-label="Question bank coverage" />
+              <p className="text-xs text-muted-foreground">
+                Accuracy tells you how well you answer; coverage tells you how much of the bank
+                you&apos;ve actually worked through.
+              </p>
+            </CardContent>
+          </Card>
 
           <div className="grid gap-4 lg:grid-cols-5">
             <Card className="lg:col-span-3">
@@ -123,7 +153,7 @@ export default function StatisticsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Test performance over time</CardTitle>
+              <CardTitle>Accuracy over time</CardTitle>
             </CardHeader>
             <CardContent>
               {stats.accuracyTrend.length >= 2 ? (
@@ -138,7 +168,7 @@ export default function StatisticsPage() {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Link
-              href="/wrong-questions"
+              href="/revision"
               className={cn(
                 "flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50"
               )}

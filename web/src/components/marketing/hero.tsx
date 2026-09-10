@@ -55,11 +55,11 @@ export function Hero() {
                 </p>
                 <p className="mt-0.5 text-sm text-muted-foreground">MBBS, MD — Medical Lead, JSMF</p>
                 <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[0.65rem] font-medium text-secondary-foreground">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[0.65rem] font-medium text-accent-foreground">
                     <Trophy className="size-3" />
                     AIR 9 · FMGE 2023
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[0.65rem] font-medium text-secondary-foreground">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[0.65rem] font-medium text-accent-foreground">
                     <Medal className="size-3" />
                     MBBS Bronze Medalist
                   </span>

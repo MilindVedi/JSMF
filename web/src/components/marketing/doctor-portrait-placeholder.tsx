@@ -23,7 +23,7 @@ export function DoctorPortraitPlaceholder({
       )}
     >
       <span className="font-heading text-6xl font-bold text-primary/60">{initials}</span>
-      <span className="absolute right-3 bottom-3 flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-background">
+      <span className="absolute right-3 bottom-3 flex size-10 items-center justify-center rounded-full bg-teal text-teal-foreground ring-2 ring-background">
         <Stethoscope className="size-5" />
       </span>
     </div>

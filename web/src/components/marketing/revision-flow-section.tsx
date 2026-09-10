@@ -5,19 +5,19 @@ const STEPS = [
     step: "1",
     title: "Practice",
     description: "Work through memory-based PYQs filtered by exam, year, subject, or topic.",
-    mock: <MiniQuestionMock />,
+    mock: <MiniQuestionMock className="h-full" />,
   },
   {
     step: "2",
     title: "Review",
     description: "See the correct answer and a clear explanation the moment you respond.",
-    mock: <MiniExplanationMock />,
+    mock: <MiniExplanationMock className="h-full" />,
   },
   {
     step: "3",
     title: "Revise",
     description: "Wrong answers and bookmarks queue themselves automatically for focused revision.",
-    mock: <MiniRevisionListMock />,
+    mock: <MiniRevisionListMock className="h-full" />,
   },
 ];
 
@@ -36,14 +36,14 @@ export function RevisionFlowSection() {
 
         <div className="mt-12 grid gap-8 sm:grid-cols-3">
           {STEPS.map((s) => (
-            <div key={s.step}>
+            <div key={s.step} className="flex flex-col">
               <div className="mb-4 flex items-center gap-2">
                 <span className="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
                   {s.step}
                 </span>
                 <h3 className="font-heading text-base font-semibold text-foreground">{s.title}</h3>
               </div>
-              {s.mock}
+              <div className="flex-1">{s.mock}</div>
               <p className="mt-3 text-sm text-muted-foreground">{s.description}</p>
             </div>
           ))}

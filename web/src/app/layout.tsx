@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans, Source_Serif_4, JetBrains_Mono } from "next/font/goo
 import { ThemeProvider } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemePalettePicker } from "@/components/dev/theme-palette-picker";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <TooltipProvider delay={200}>
             {children}
             <Toaster position="top-center" />
+            <ThemePalettePicker />
           </TooltipProvider>
         </ThemeProvider>
       </body>

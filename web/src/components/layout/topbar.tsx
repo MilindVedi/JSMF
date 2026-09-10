@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Flame, LogOut, Menu, Settings, User as UserIcon } from "lucide-react";
+import { ExternalLink, Flame, LogOut, Menu, Settings, User as UserIcon } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -75,16 +76,23 @@ export function Topbar() {
             </Avatar>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel className="flex flex-col gap-0.5 py-1.5">
-              <span className="text-sm font-medium text-foreground">{profile.name}</span>
-              <span className="truncate text-xs font-normal text-muted-foreground">{profile.email}</span>
-            </DropdownMenuLabel>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="flex flex-col gap-0.5 py-1.5">
+                <span className="text-sm font-medium text-foreground">{profile.name}</span>
+                <span className="truncate text-xs font-normal text-muted-foreground">
+                  {profile.email}
+                </span>
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem render={<Link href="/profile" />}>
               <UserIcon /> Profile
             </DropdownMenuItem>
             <DropdownMenuItem render={<Link href="/subscription" />}>
               <Settings /> Subscription
+            </DropdownMenuItem>
+            <DropdownMenuItem render={<a href="/" target="_blank" rel="noreferrer" />}>
+              <ExternalLink /> Visit JSMF website
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

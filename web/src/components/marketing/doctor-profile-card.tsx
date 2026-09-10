@@ -32,7 +32,7 @@ export function DoctorProfileCard({
             {badges.map((b) => (
               <span
                 key={b.label}
-                className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[0.65rem] font-medium text-secondary-foreground"
+                className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[0.65rem] font-medium text-accent-foreground"
               >
                 <b.icon className="size-3" />
                 {b.label}

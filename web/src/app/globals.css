@@ -35,6 +35,8 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
+  --color-teal: var(--teal);
+  --color-teal-foreground: var(--teal-foreground);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -84,8 +86,16 @@
   --muted: oklch(0.9400 0.0065 85);
   --muted-foreground: oklch(0.4600 0.0180 260);
 
-  --accent: oklch(0.9200 0.0300 90);
-  --accent-foreground: oklch(0.2850 0.0650 258);
+  /* Soft mint — the brand accent surface: kicker pills, "Most Popular"
+     badges, credential chips, hover highlights. Restrained, not a CTA color. */
+  --accent: oklch(0.9200 0.0450 190);
+  --accent-foreground: oklch(0.4000 0.1050 198);
+
+  /* Solid teal — JSMF's identity color. Used for the specific, repeatable
+     spots that should be instantly recognizable: progress, active nav,
+     correct-answer indicators, bookmarks, primary-button hover. */
+  --teal: oklch(0.6240 0.1010 198);
+  --teal-foreground: oklch(0.9850 0.0040 85);
 
   --destructive: oklch(0.5000 0.1350 35);
   --destructive-foreground: oklch(0.9850 0.0040 85);
@@ -97,7 +107,7 @@
   /* Statistics/chart categorical set derived from the core palette. */
   --chart-1: oklch(0.2850 0.0650 258);
   --chart-2: oklch(0.7000 0.1400 75);
-  --chart-3: oklch(0.5800 0.1150 165);
+  --chart-3: oklch(0.6240 0.1010 198);
   --chart-4: oklch(0.5500 0.1300 35);
   --chart-5: oklch(0.5500 0.0500 258);
 
@@ -110,9 +120,10 @@
   --sidebar-border: oklch(0.8850 0.0090 85);
   --sidebar-ring: oklch(0.5200 0.0600 258);
 
-  /* Muted correct / incorrect / flagged states for the practice screen. */
-  --success: oklch(0.9250 0.0500 165);
-  --success-foreground: oklch(0.3400 0.0850 165);
+  /* Muted correct / incorrect / flagged states for the practice screen.
+     Correct answers use the brand teal (soft mint bg, teal indicator). */
+  --success: oklch(0.9200 0.0450 190);
+  --success-foreground: oklch(0.3800 0.0950 198);
   --error: oklch(0.9250 0.0450 35);
   --error-foreground: oklch(0.4400 0.1300 35);
   --flag: oklch(0.9300 0.0350 90);
@@ -140,8 +151,11 @@
   --muted: oklch(0.2900 0.0180 258);
   --muted-foreground: oklch(0.6800 0.0130 85);
 
-  --accent: oklch(0.3300 0.0450 90);
-  --accent-foreground: oklch(0.9500 0.0080 85);
+  --accent: oklch(0.3100 0.0550 198);
+  --accent-foreground: oklch(0.8200 0.0800 190);
+
+  --teal: oklch(0.7000 0.1050 198);
+  --teal-foreground: oklch(0.2000 0.0180 260);
 
   --destructive: oklch(0.6300 0.1450 30);
   --destructive-foreground: oklch(0.9850 0.0040 85);
@@ -152,7 +166,7 @@
 
   --chart-1: oklch(0.8000 0.0450 258);
   --chart-2: oklch(0.7400 0.1350 75);
-  --chart-3: oklch(0.6600 0.1150 165);
+  --chart-3: oklch(0.7000 0.1050 198);
   --chart-4: oklch(0.6600 0.1350 35);
   --chart-5: oklch(0.6800 0.0500 258);
 
@@ -165,12 +179,203 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.6200 0.0550 258);
 
-  --success: oklch(0.3200 0.0650 165);
-  --success-foreground: oklch(0.8400 0.0700 165);
+  --success: oklch(0.3000 0.0700 198);
+  --success-foreground: oklch(0.8200 0.0850 190);
   --error: oklch(0.3300 0.0850 30);
   --error-foreground: oklch(0.8200 0.0750 30);
   --flag: oklch(0.3300 0.0550 90);
   --flag-foreground: oklch(0.8400 0.0700 90);
+}
+
+/* ---------------------------------------------------------------------
+   Accent-color presets, switchable at runtime via the theme picker
+   (components/dev/theme-palette-picker.tsx). Only the brand-accent
+   tokens vary between presets — navy, off-white, and every other token
+   stay fixed, so this is purely an "which accent color?" comparison
+   tool, not a full re-theme.
+   --------------------------------------------------------------------- */
+
+[data-palette="teal"] {
+  --accent: oklch(0.9200 0.0450 190);
+  --accent-foreground: oklch(0.4000 0.1050 198);
+  --teal: oklch(0.6240 0.1010 198);
+  --teal-foreground: oklch(0.9850 0.0040 85);
+  --chart-3: oklch(0.6240 0.1010 198);
+  --success: oklch(0.9200 0.0450 190);
+  --success-foreground: oklch(0.3800 0.0950 198);
+}
+.dark[data-palette="teal"] {
+  --accent: oklch(0.3100 0.0550 198);
+  --accent-foreground: oklch(0.8200 0.0800 190);
+  --teal: oklch(0.7000 0.1050 198);
+  --teal-foreground: oklch(0.2000 0.0180 260);
+  --chart-3: oklch(0.7000 0.1050 198);
+  --success: oklch(0.3000 0.0700 198);
+  --success-foreground: oklch(0.8200 0.0850 190);
+}
+
+[data-palette="emerald"] {
+  --accent: oklch(0.9200 0.0450 168);
+  --accent-foreground: oklch(0.4000 0.1050 168);
+  --teal: oklch(0.5650 0.1090 168);
+  --teal-foreground: oklch(0.9850 0.0040 85);
+  --chart-3: oklch(0.5650 0.1090 168);
+  --success: oklch(0.9200 0.0450 168);
+  --success-foreground: oklch(0.3800 0.0950 168);
+}
+.dark[data-palette="emerald"] {
+  --accent: oklch(0.3000 0.0550 168);
+  --accent-foreground: oklch(0.8200 0.0850 168);
+  --teal: oklch(0.6800 0.1100 168);
+  --teal-foreground: oklch(0.2000 0.0180 260);
+  --chart-3: oklch(0.6800 0.1100 168);
+  --success: oklch(0.2900 0.0650 168);
+  --success-foreground: oklch(0.8200 0.0850 168);
+}
+
+[data-palette="amber"] {
+  --accent: oklch(0.9300 0.0450 85);
+  --accent-foreground: oklch(0.3800 0.1000 75);
+  --teal: oklch(0.7200 0.1450 75);
+  --teal-foreground: oklch(0.2200 0.0500 75);
+  --chart-3: oklch(0.7200 0.1450 75);
+  --success: oklch(0.9300 0.0450 85);
+  --success-foreground: oklch(0.3800 0.1000 75);
+}
+.dark[data-palette="amber"] {
+  --accent: oklch(0.3300 0.0550 75);
+  --accent-foreground: oklch(0.8500 0.1000 85);
+  --teal: oklch(0.7800 0.1350 80);
+  --teal-foreground: oklch(0.2200 0.0500 75);
+  --chart-3: oklch(0.7800 0.1350 80);
+  --success: oklch(0.3300 0.0550 75);
+  --success-foreground: oklch(0.8500 0.1000 85);
+}
+
+[data-palette="monochrome"] {
+  --accent: oklch(0.9200 0.0300 90);
+  --accent-foreground: oklch(0.2850 0.0650 258);
+  --teal: oklch(0.2850 0.0650 258);
+  --teal-foreground: oklch(0.9850 0.0040 85);
+  --chart-3: oklch(0.5800 0.1150 165);
+  --success: oklch(0.9250 0.0500 165);
+  --success-foreground: oklch(0.3400 0.0850 165);
+}
+.dark[data-palette="monochrome"] {
+  --accent: oklch(0.3300 0.0450 90);
+  --accent-foreground: oklch(0.9500 0.0080 85);
+  --teal: oklch(0.8000 0.0450 258);
+  --teal-foreground: oklch(0.2000 0.0180 260);
+  --chart-3: oklch(0.6600 0.1150 165);
+  --success: oklch(0.3200 0.0650 165);
+  --success-foreground: oklch(0.8400 0.0700 165);
+}
+
+/* ---------------------------------------------------------------------
+   Primary/ink-color presets — the "main text + button background" color
+   family (headings, body text, primary buttons, active sidebar item,
+   focus ring). Separate from the accent presets above: this is "what
+   shade is the brand ink?", not "what is the highlight color?".
+   --------------------------------------------------------------------- */
+
+[data-primary="navy"] {
+  --primary: oklch(0.2850 0.0650 258);
+  --primary-foreground: oklch(0.9850 0.0040 85);
+  --foreground: oklch(0.2200 0.0180 260);
+  --secondary-foreground: oklch(0.2850 0.0650 258);
+  --sidebar-primary: oklch(0.2850 0.0650 258);
+  --sidebar-primary-foreground: oklch(0.9850 0.0040 85);
+  --sidebar-foreground: oklch(0.2200 0.0180 260);
+  --ring: oklch(0.5200 0.0600 258);
+  --sidebar-ring: oklch(0.5200 0.0600 258);
+  --chart-1: oklch(0.2850 0.0650 258);
+}
+.dark[data-primary="navy"] {
+  --primary: oklch(0.8000 0.0450 258);
+  --primary-foreground: oklch(0.2000 0.0180 260);
+  --foreground: oklch(0.9500 0.0080 85);
+  --secondary-foreground: oklch(0.9500 0.0080 85);
+  --sidebar-primary: oklch(0.8000 0.0450 258);
+  --sidebar-primary-foreground: oklch(0.2000 0.0180 260);
+  --sidebar-foreground: oklch(0.9500 0.0080 85);
+  --ring: oklch(0.6200 0.0550 258);
+  --sidebar-ring: oklch(0.6200 0.0550 258);
+  --chart-1: oklch(0.8000 0.0450 258);
+}
+
+[data-primary="charcoal"] {
+  --primary: oklch(0.2600 0.0080 260);
+  --primary-foreground: oklch(0.9850 0.0040 85);
+  --foreground: oklch(0.2000 0.0040 260);
+  --secondary-foreground: oklch(0.2600 0.0080 260);
+  --sidebar-primary: oklch(0.2600 0.0080 260);
+  --sidebar-primary-foreground: oklch(0.9850 0.0040 85);
+  --sidebar-foreground: oklch(0.2000 0.0040 260);
+  --ring: oklch(0.5000 0.0080 260);
+  --sidebar-ring: oklch(0.5000 0.0080 260);
+  --chart-1: oklch(0.2600 0.0080 260);
+}
+.dark[data-primary="charcoal"] {
+  --primary: oklch(0.8200 0.0060 260);
+  --primary-foreground: oklch(0.1800 0.0040 260);
+  --foreground: oklch(0.9500 0.0040 85);
+  --secondary-foreground: oklch(0.9500 0.0040 85);
+  --sidebar-primary: oklch(0.8200 0.0060 260);
+  --sidebar-primary-foreground: oklch(0.1800 0.0040 260);
+  --sidebar-foreground: oklch(0.9500 0.0040 85);
+  --ring: oklch(0.6200 0.0080 260);
+  --sidebar-ring: oklch(0.6200 0.0080 260);
+  --chart-1: oklch(0.8200 0.0060 260);
+}
+
+[data-primary="slate"] {
+  --primary: oklch(0.4200 0.0950 250);
+  --primary-foreground: oklch(0.9850 0.0040 85);
+  --foreground: oklch(0.3200 0.0550 252);
+  --secondary-foreground: oklch(0.4200 0.0950 250);
+  --sidebar-primary: oklch(0.4200 0.0950 250);
+  --sidebar-primary-foreground: oklch(0.9850 0.0040 85);
+  --sidebar-foreground: oklch(0.3200 0.0550 252);
+  --ring: oklch(0.5500 0.0850 250);
+  --sidebar-ring: oklch(0.5500 0.0850 250);
+  --chart-1: oklch(0.4200 0.0950 250);
+}
+.dark[data-primary="slate"] {
+  --primary: oklch(0.7500 0.0850 248);
+  --primary-foreground: oklch(0.2000 0.0180 260);
+  --foreground: oklch(0.9500 0.0080 85);
+  --secondary-foreground: oklch(0.9500 0.0080 85);
+  --sidebar-primary: oklch(0.7500 0.0850 248);
+  --sidebar-primary-foreground: oklch(0.2000 0.0180 260);
+  --sidebar-foreground: oklch(0.9500 0.0080 85);
+  --ring: oklch(0.6400 0.0800 248);
+  --sidebar-ring: oklch(0.6400 0.0800 248);
+  --chart-1: oklch(0.7500 0.0850 248);
+}
+
+[data-primary="indigo"] {
+  --primary: oklch(0.3400 0.1250 288);
+  --primary-foreground: oklch(0.9850 0.0040 85);
+  --foreground: oklch(0.2600 0.0700 285);
+  --secondary-foreground: oklch(0.3400 0.1250 288);
+  --sidebar-primary: oklch(0.3400 0.1250 288);
+  --sidebar-primary-foreground: oklch(0.9850 0.0040 85);
+  --sidebar-foreground: oklch(0.2600 0.0700 285);
+  --ring: oklch(0.5600 0.1100 286);
+  --sidebar-ring: oklch(0.5600 0.1100 286);
+  --chart-1: oklch(0.3400 0.1250 288);
+}
+.dark[data-primary="indigo"] {
+  --primary: oklch(0.7600 0.1050 286);
+  --primary-foreground: oklch(0.2000 0.0180 260);
+  --foreground: oklch(0.9500 0.0080 85);
+  --secondary-foreground: oklch(0.9500 0.0080 85);
+  --sidebar-primary: oklch(0.7600 0.1050 286);
+  --sidebar-primary-foreground: oklch(0.2000 0.0180 260);
+  --sidebar-foreground: oklch(0.9500 0.0080 85);
+  --ring: oklch(0.6400 0.0950 286);
+  --sidebar-ring: oklch(0.6400 0.0950 286);
+  --chart-1: oklch(0.7600 0.1050 286);
 }
 
 @layer base {
@@ -182,6 +387,14 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Tailwind v4's preflight no longer gives buttons a pointer cursor, so
+     without this every <button> in the app — question rows, options, tabs —
+     shows a default arrow and reads as unclickable. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  label:has([role="checkbox"], input[type="checkbox"], input[type="radio"]) {
+    cursor: pointer;
   }
 }
 

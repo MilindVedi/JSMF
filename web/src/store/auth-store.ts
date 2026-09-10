@@ -54,6 +54,14 @@ export const useAuthStore = create<AuthState>()(
       name: "jsmf:auth",
       storage: safeLocalStorage<AuthState>(),
       onRehydrateStorage: () => (state) => state?.setHasHydrated(true),
+      // Bumped when DEMO_USER's mock defaults change, so a browser that
+      // already persisted an older profile (e.g. an old currentPlanId) picks
+      // up the new default instead of being stuck on whatever it saved before.
+      version: 1,
+      migrate: (persisted) => {
+        const state = persisted as AuthState;
+        return { ...state, profile: { ...DEMO_USER, ...state.profile, currentPlanId: DEMO_USER.currentPlanId } };
+      },
     }
   )
 );

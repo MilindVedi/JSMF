@@ -191,8 +191,14 @@ export interface OverallStatistics {
   incorrect: number;
   unattempted: number;
   accuracy: number; // 0-100
+  /** Share of the whole question bank attempted at least once, 0-100. Distinct
+   *  from accuracy: a student can score well on repeated tests while leaving
+   *  most of the bank untouched. */
+  coverage: number;
   bySubject: SubjectPerformance[];
-  accuracyTrend: { date: string; accuracy: number }[];
+  /** `accuracy` is that session's own score; `cumulativeAccuracy` is the
+   *  running accuracy across every attempt up to that point in time. */
+  accuracyTrend: { date: string; accuracy: number; cumulativeAccuracy: number }[];
   wrongQuestionCount: number;
   bookmarkCount: number;
 }

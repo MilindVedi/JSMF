@@ -6,7 +6,9 @@ export const DEMO_USER: UserProfile = {
   email: "ananya.rao@example.com",
   targetExamId: "neet-pg",
   joinedAt: "2025-11-02T00:00:00.000Z",
-  currentPlanId: "single-exam-pro",
+  // All Access, because the seeded demo activity spans all three exams — a
+  // Single Exam plan would contradict what the rest of the mock shows.
+  currentPlanId: "all-access-pro",
   streakDays: 12,
   lastActiveAt: new Date().toISOString(),
 };

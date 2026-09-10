@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
-import { FilterPanel, type QuestionFiltersState } from "@/components/question-bank/filter-panel";
+import {
+  EMPTY_QUESTION_FILTERS,
+  FilterPanel,
+  type QuestionFiltersState,
+} from "@/components/question-bank/filter-panel";
+import { ActiveFilterChips } from "@/components/question-bank/active-filter-chips";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -11,13 +16,6 @@ import { Label } from "@/components/ui/label";
 import { getQuestions } from "@/lib/data/questions";
 import { useStartSession } from "@/lib/use-start-session";
 import { cn } from "@/lib/utils";
-
-const DEFAULT_FILTERS: QuestionFiltersState = {
-  examId: "all",
-  years: [],
-  subjectIds: [],
-  topicIds: [],
-};
 
 const QUESTION_COUNTS = [10, 20, 30, 50];
 const DURATIONS_MIN = [10, 20, 30, 45, 60];
@@ -33,7 +31,7 @@ function sample<T>(arr: T[], count: number): T[] {
 }
 
 export default function CustomTestBuilderPage() {
-  const [filters, setFilters] = useState<QuestionFiltersState>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<QuestionFiltersState>(EMPTY_QUESTION_FILTERS);
   const [count, setCount] = useState(20);
   const [timed, setTimed] = useState(false);
   const [durationMin, setDurationMin] = useState(30);
@@ -90,15 +88,22 @@ export default function CustomTestBuilderPage() {
           <CardTitle className="text-base">Filters</CardTitle>
           <CardDescription>Leave a filter empty to include everything.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <FilterPanel value={filters} onChange={setFilters} />
+          <ActiveFilterChips value={filters} onChange={setFilters} />
+          <p className="text-sm text-muted-foreground">
+            <span className="font-semibold text-foreground">{availableCount}</span> question
+            {availableCount === 1 ? "" : "s"} available with these filters.
+          </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Number of questions</CardTitle>
-          <CardDescription>{availableCount} questions available with the current filters.</CardDescription>
+          <CardDescription>
+            Drawn at random from the {availableCount} available.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           {QUESTION_COUNTS.map((n) => (

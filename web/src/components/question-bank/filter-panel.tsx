@@ -16,6 +16,13 @@ export interface QuestionFiltersState {
 
 export const RECENT_YEARS = [2025, 2024, 2023, 2022, 2021];
 
+export const EMPTY_QUESTION_FILTERS: QuestionFiltersState = {
+  examId: "all",
+  years: [],
+  subjectIds: [],
+  topicIds: [],
+};
+
 export function FilterPanel({
   value,
   onChange,
