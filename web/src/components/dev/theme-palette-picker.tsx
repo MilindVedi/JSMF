@@ -132,13 +132,13 @@ export function ThemePalettePicker() {
 
   if (!mounted || hidden) return null;
 
-  if (isAuthenticated && collapsed) {
+  if (collapsed) {
     return (
       <button
         type="button"
         onClick={() => setCollapsed(false)}
         aria-label="Show theme preview control"
-        className="fixed right-0 bottom-24 z-[100] flex h-10 w-5 items-center justify-center rounded-l-full border border-r-0 border-border bg-popover text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground"
+        className="fixed right-0 bottom-6 z-[100] flex h-10 w-5 items-center justify-center rounded-l-full border border-r-0 border-border bg-popover text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground"
       >
         <ChevronLeft className="size-4" />
       </button>
@@ -146,7 +146,7 @@ export function ThemePalettePicker() {
   }
 
   return (
-    <div className="fixed right-4 bottom-24 z-[100] flex flex-col items-end gap-2">
+    <div className="fixed right-4 bottom-6 z-[100] flex flex-col items-end gap-2">
       {open && (
         <div className="w-64 rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-lg">
           <div className="mb-2.5 flex items-center justify-between">
@@ -191,19 +191,17 @@ export function ThemePalettePicker() {
         </div>
       )}
       <div className="flex items-center gap-1">
-        {isAuthenticated && (
-          <button
-            type="button"
-            onClick={() => {
-              setCollapsed(true);
-              setOpen(false);
-            }}
-            aria-label="Hide theme preview control"
-            className="flex size-8 items-center justify-center rounded-full border border-border bg-popover text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <ChevronRight className="size-4" />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            setCollapsed(true);
+            setOpen(false);
+          }}
+          aria-label="Hide theme preview control"
+          className="flex size-8 items-center justify-center rounded-full border border-border bg-popover text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ChevronRight className="size-4" />
+        </button>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
