@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Flame, Info } from "lucide-react";
+import { Flame } from "lucide-react";
 import { useStreakAnimationStore } from "@/store/streak-animation-store";
 import { STREAK_LEVELS, getStreakLevel } from "@/lib/streak-config";
 import { cn } from "@/lib/utils";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AngadNote } from "@/components/dev/angad-note";
 
 /**
  * The global streak indicator. Registers itself as the landing target for
@@ -95,48 +95,35 @@ export function TopbarStreakChip({ streakDays }: { streakDays: number }) {
         <span className="hidden sm:inline">-day streak</span>
       </div>
 
-      <Popover>
-        <PopoverTrigger
-          render={
-            <button
-              type="button"
-              aria-label="View streak stage colors"
-              className="hidden size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:flex"
-            />
-          }
-        >
-          <Info className="size-3.5" />
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-64 gap-2 p-3">
-          <p className="text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
-            Streak stages (mock preview)
-          </p>
-          <div className="flex flex-col gap-1">
-            {STREAK_LEVELS.map((stage, i) => {
-              const next = STREAK_LEVELS[i + 1];
-              const range = next ? `${stage.minDays}–${next.minDays - 1} days` : `${stage.minDays}+ days`;
-              const isCurrent = stage.id === level.id;
-              return (
-                <div
-                  key={stage.id}
-                  className={cn("flex items-center gap-2 rounded px-1.5 py-1", isCurrent && "bg-muted")}
-                >
-                  <span
-                    className="size-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: stage.accent }}
-                  />
-                  <span className="flex-1 truncate text-foreground">{stage.label}</span>
-                  <span className="shrink-0 text-muted-foreground">{range}</span>
-                </div>
-              );
-            })}
-          </div>
-          <p className="mt-1 rounded-lg bg-muted/60 p-2 text-[0.7rem] text-foreground">
-            Note for Angad: this is only here to show you the color coding used for different streak stages and
-            the logic behind them, not something to review or decide on.
-          </p>
-        </PopoverContent>
-      </Popover>
+      <AngadNote compact>
+        <p className="text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
+          Streak stages (mock preview)
+        </p>
+        <div className="flex flex-col gap-1">
+          {STREAK_LEVELS.map((stage, i) => {
+            const next = STREAK_LEVELS[i + 1];
+            const range = next ? `${stage.minDays}–${next.minDays - 1} days` : `${stage.minDays}+ days`;
+            const isCurrent = stage.id === level.id;
+            return (
+              <div
+                key={stage.id}
+                className={cn("flex items-center gap-2 rounded px-1.5 py-1", isCurrent && "bg-muted")}
+              >
+                <span
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: stage.accent }}
+                />
+                <span className="flex-1 truncate text-foreground">{stage.label}</span>
+                <span className="shrink-0 text-muted-foreground">{range}</span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          This is only here to show you the color coding used for different streak stages and the logic
+          behind them — not something to review or decide on.
+        </p>
+      </AngadNote>
     </div>
   );
 }

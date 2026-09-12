@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ExternalLink, LogOut, Menu, Settings, User as UserIcon } from "lucide-react";
+import { CreditCard, ExternalLink, LogOut, Menu, Settings, User as UserIcon } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   DropdownMenu,
@@ -34,19 +35,25 @@ export function Topbar() {
   const profile = useAuthStore((s) => s.profile);
   const logout = useAuthStore((s) => s.logout);
   const plan = getPlanById(profile.currentPlanId);
+  const [navOpen, setNavOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/80 sm:px-6">
-      <Sheet>
+      <Sheet open={navOpen} onOpenChange={setNavOpen}>
         <SheetTrigger className="-ml-1 flex size-8 items-center justify-center rounded-lg text-foreground hover:bg-muted md:hidden">
           <Menu className="size-5" />
         </SheetTrigger>
-        <SheetContent side="left" className="w-[260px] p-0">
+        <SheetContent side="left" className="w-fit min-w-[200px] max-w-[85vw] p-0">
           <SheetHeader className="h-14 flex-row items-center justify-start gap-2 border-b border-border p-0 px-4">
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
             <Logo />
           </SheetHeader>
-          <SidebarNav />
+          {/* Extra right padding beyond SidebarNav's own so the panel (sized
+              to its widest row, e.g. "Question Bank") reads as a considered
+              width with breathing room, not a shrink-wrapped hug. */}
+          <div className="pr-6">
+            <SidebarNav onNavigate={() => setNavOpen(false)} />
+          </div>
         </SheetContent>
       </Sheet>
 
@@ -62,9 +69,10 @@ export function Topbar() {
         {plan && (
           <Link
             href="/subscription"
-            className="hidden rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted sm:inline-flex"
+            className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted"
           >
-            {plan.name}
+            <CreditCard className="size-3.5 sm:hidden" />
+            <span className="hidden sm:inline">{plan.name}</span>
           </Link>
         )}
 

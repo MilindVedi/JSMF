@@ -72,35 +72,6 @@ export function StreakCard() {
   useEffect(() => {
     if (streak.celebratedToday || hasCompletedRef.current) return;
 
-    if (streak.currentStreak === 0) {
-      // A brand-new streak only ever starts from genuine practice, never
-      // the demo ramp below — otherwise merely visiting the dashboard would
-      // fabricate day one before any real questions were answered today.
-      // `streak.todayProgress` is real attempt data, so this is the actual
-      // "first completion" path the demo ramp is a stand-in for elsewhere.
-      //
-      // hasCompletedRef is set only *inside* the timeout callback (not
-      // before scheduling it), with a non-zero delay — mirroring the ramp
-      // branch below. React's dev-mode StrictMode double-invokes effects
-      // (mount, cleanup, mount again) synchronously; a `setTimeout(fn, 0)`
-      // scheduled on the first pass gets cancelled by that cleanup before
-      // it can fire, and if the ref were already set beforehand, the
-      // surviving second pass would see it as "done" and never reschedule
-      // — completeToday() would silently never run. Delaying by
-      // RAMP_STEP_MS and only mutating the ref once the timer actually
-      // fires avoids that.
-      if (streak.todayProgress >= streak.dailyTarget) {
-        const timeout = setTimeout(() => {
-          if (!hasCompletedRef.current) {
-            hasCompletedRef.current = true;
-            completeToday();
-          }
-        }, RAMP_STEP_MS);
-        return () => clearTimeout(timeout);
-      }
-      return;
-    }
-
     let cancelled = false;
     let value = streak.todayProgress;
 
@@ -131,30 +102,11 @@ export function StreakCard() {
     // happens (rather than only on mount) is an acceptable, barely-visible
     // side effect of the same fix.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streak.currentStreak === 0, streak.celebratedToday, streak.todayProgress]);
+  }, [streak.celebratedToday, streak.todayProgress]);
 
   const level = getStreakLevel(streak.currentStreak);
   const percent = Math.min(Math.round((displayed / streak.dailyTarget) * 100), 100);
   const isComplete = percent >= 100;
-
-  if (streak.currentStreak === 0) {
-    return (
-      <div className="flex h-full flex-col justify-center rounded-xl border border-dashed border-border bg-card p-5 text-center">
-        {/* badgeRef needs a real element here too (not just in the "has a
-            streak" branch below) so the very first real completion — going
-            from 0 to 1 — still has something to fly from. */}
-        <div ref={badgeRef} className="mx-auto flex size-6 items-center justify-center">
-          <Flame className="size-6 text-muted-foreground/50" strokeWidth={1.75} />
-        </div>
-        <p className="mt-2 font-heading text-sm font-semibold text-foreground">
-          Start your streak today
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Answer {streak.dailyTarget} questions to begin one.
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div

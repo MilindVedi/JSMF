@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { AngadNote } from "@/components/dev/angad-note";
 import {
   Dialog,
   DialogContent,
@@ -403,14 +404,27 @@ export default function CustomTestBuilderPage() {
                 setMinPerQuestion(next);
               }}
             />
-            <p className="text-xs text-muted-foreground">
-              {minDurationMin} min (realistic pace) – {maxDurationMin} min (relaxed pace) for{" "}
-              {finalCount} question{finalCount === 1 ? "" : "s"}.
-            </p>
-            <p className="rounded-lg bg-muted/60 p-2 text-[0.7rem] text-foreground">
-              Note for Angad: this assumes 1 to 1.5 minutes per question — let us know if that pacing feels
-              right for real exams, or if we should adjust it.
-            </p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                {minDurationMin} min (realistic pace) – {maxDurationMin} min (relaxed pace) for{" "}
+                {finalCount} question{finalCount === 1 ? "" : "s"}.
+              </p>
+              <AngadNote>
+                <p className="font-semibold text-foreground">Why 1–1.5 minutes per question?</p>
+                <p>
+                  1 minute/question is meant to read as a brisk, confident pace, and 1.5 minutes as a
+                  slower, double-check-the-stem pace — the two ends most aspirants actually fall between,
+                  rather than trying to mirror any one specific exam&apos;s exact time limit (that varies by
+                  exam and can change over time).
+                </p>
+                <p>
+                  Both the preview text above and the real timer scale off wherever the slider sits in that
+                  range, multiplied by however many questions are in the test — so it&apos;s never a fixed
+                  number, it moves with the test size.
+                </p>
+                <p>Flag it if 1–1.5 min/question feels off for how you&apos;d actually pace a real attempt — we can retune either end.</p>
+              </AngadNote>
+            </div>
           </CardContent>
         )}
       </Card>

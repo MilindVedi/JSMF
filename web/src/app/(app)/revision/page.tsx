@@ -13,7 +13,7 @@ import { SortDropdown } from "@/components/common/sort-dropdown";
 import { DateRangePicker } from "@/components/common/date-range-picker";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePracticeStore } from "@/store/practice-store";
 import { useBookmarksStore } from "@/store/bookmarks-store";
@@ -258,12 +258,18 @@ function CollapsibleSection({
 }) {
   return (
     <Card id={id} className="scroll-mt-20">
-      <CardHeader>
+      {/* Laid out with flex rather than CardHeader's CardAction grid: that
+          grid is fixed at [1fr_auto] and squeezes the title/description into
+          a few characters per line once the controls are this wide, and its
+          :has() specificity can't be overridden by a responsive class. Here
+          the controls simply drop to their own row below the title on narrow
+          screens. */}
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <button
           type="button"
           onClick={() => onOpenChange(!open)}
           aria-expanded={open}
-          className="flex min-w-0 items-start gap-2 text-left"
+          className="flex min-w-0 flex-1 items-start gap-2 text-left"
         >
           <ChevronDown
             className={cn(
@@ -276,7 +282,7 @@ function CollapsibleSection({
             <CardDescription className="mt-0.5">{description}</CardDescription>
           </div>
         </button>
-        {headerExtra && <CardAction>{headerExtra(open)}</CardAction>}
+        {headerExtra && <div className="shrink-0 sm:ml-auto">{headerExtra(open)}</div>}
       </CardHeader>
       {open && <CardContent className="space-y-4">{children}</CardContent>}
     </Card>
@@ -638,7 +644,7 @@ export default function RevisionPage() {
         open={openSections.wrong}
         onOpenChange={(open) => setOpenSections((prev) => ({ ...prev, wrong: open }))}
         headerExtra={(open) => (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {open && <SortDropdown value={wrongSort} options={WRONG_SORT_OPTIONS} onChange={setWrongSort} />}
             {mode !== "subject" && activeList.length > 0 && (
               <Button
@@ -772,7 +778,7 @@ export default function RevisionPage() {
         open={openSections.bookmarked}
         onOpenChange={(open) => setOpenSections((prev) => ({ ...prev, bookmarked: open }))}
         headerExtra={(open) => (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {open && (
               <SortDropdown value={bookmarkedSort} options={BOOKMARKED_SORT_OPTIONS} onChange={setBookmarkedSort} />
             )}
@@ -916,7 +922,7 @@ export default function RevisionPage() {
         open={openSections.collections}
         onOpenChange={(open) => setOpenSections((prev) => ({ ...prev, collections: open }))}
         headerExtra={(open) => (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {open && (
               <SortDropdown value={collectionsSort} options={COLLECTIONS_SORT_OPTIONS} onChange={setCollectionsSort} />
             )}
@@ -1085,7 +1091,7 @@ export default function RevisionPage() {
         open={openSections.reinforce}
         onOpenChange={(open) => setOpenSections((prev) => ({ ...prev, reinforce: open }))}
         headerExtra={(open) => (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {open && (
               <SortDropdown value={reinforceSort} options={REINFORCE_SORT_OPTIONS} onChange={setReinforceSort} />
             )}

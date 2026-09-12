@@ -111,6 +111,7 @@ export default function DashboardPage() {
         firstName={firstName}
         targetExamId={profile.targetExamId}
         hasBookmark={bookmarks.length > 0}
+        hasStreak={profile.streakDays > 0}
         onStartFirstPractice={startFirstPractice}
       />
     );

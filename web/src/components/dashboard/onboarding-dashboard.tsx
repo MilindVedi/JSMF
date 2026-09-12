@@ -23,11 +23,13 @@ export function OnboardingDashboard({
   firstName,
   targetExamId,
   hasBookmark,
+  hasStreak = false,
   onStartFirstPractice,
 }: {
   firstName: string;
   targetExamId: ExamId;
   hasBookmark: boolean;
+  hasStreak?: boolean;
   onStartFirstPractice: () => void;
 }) {
   const exam = EXAMS.find((e) => e.id === targetExamId);
@@ -35,7 +37,7 @@ export function OnboardingDashboard({
   const checklist = [
     { label: "Choose your exam", done: true },
     { label: "Complete your first practice session", done: false },
-    { label: "Build your first streak", done: false },
+    { label: "Build your first streak", done: hasStreak },
     { label: "Bookmark a question for revision", done: hasBookmark },
   ];
 
