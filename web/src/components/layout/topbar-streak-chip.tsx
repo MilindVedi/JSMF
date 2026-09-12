@@ -65,7 +65,7 @@ export function TopbarStreakChip({ streakDays }: { streakDays: number }) {
   const level = getStreakLevel(shown);
 
   return (
-    <div className="hidden items-center gap-1 sm:flex">
+    <div className="flex items-center gap-1">
       <div
         ref={elRef}
         className={cn(
@@ -91,7 +91,8 @@ export function TopbarStreakChip({ streakDays }: { streakDays: number }) {
           fillOpacity={0.35}
           style={{ ["--streak-flame-color" as string]: level.accent }}
         />
-        {shown}-day streak
+        {shown}
+        <span className="hidden sm:inline">-day streak</span>
       </div>
 
       <Popover>
@@ -100,7 +101,7 @@ export function TopbarStreakChip({ streakDays }: { streakDays: number }) {
             <button
               type="button"
               aria-label="View streak stage colors"
-              className="flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="hidden size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:flex"
             />
           }
         >
@@ -130,6 +131,10 @@ export function TopbarStreakChip({ streakDays }: { streakDays: number }) {
               );
             })}
           </div>
+          <p className="mt-1 rounded-lg bg-muted/60 p-2 text-[0.7rem] text-foreground">
+            Note for Angad: this is only here to show you the color coding used for different streak stages and
+            the logic behind them, not something to review or decide on.
+          </p>
         </PopoverContent>
       </Popover>
     </div>

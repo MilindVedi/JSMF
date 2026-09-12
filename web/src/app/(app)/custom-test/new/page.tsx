@@ -407,6 +407,10 @@ export default function CustomTestBuilderPage() {
               {minDurationMin} min (realistic pace) – {maxDurationMin} min (relaxed pace) for{" "}
               {finalCount} question{finalCount === 1 ? "" : "s"}.
             </p>
+            <p className="rounded-lg bg-muted/60 p-2 text-[0.7rem] text-foreground">
+              Note for Angad: this assumes 1 to 1.5 minutes per question — let us know if that pacing feels
+              right for real exams, or if we should adjust it.
+            </p>
           </CardContent>
         )}
       </Card>

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Palette, X } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Check, ChevronLeft, ChevronRight, Palette, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientSnapshot } from "@/lib/use-client-snapshot";
+import { useAuthStore } from "@/store/auth-store";
 
 const PALETTE_KEY = "jsmf-palette";
 const PRIMARY_KEY = "jsmf-primary";
@@ -78,6 +80,17 @@ function readStored<T extends string>(key: string, allowed: readonly { id: T }[]
 
 export function ThemePalettePicker() {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  // The question-attempting flow has its own sticky bottom action bar
+  // (Submit/Next) that this floating button would otherwise sit on top of
+  // on narrow screens, so it's hidden entirely there rather than repositioned.
+  const hidden = pathname?.startsWith("/practice");
+  // Logged-in app screens are the real product surface, so this reviewer
+  // tool starts tucked away behind a small arrow there instead of sitting
+  // in front of app content by default — the public marketing site has no
+  // such competing content, so it keeps showing the button outright.
+  const [collapsed, setCollapsed] = useState(true);
 
   // localStorage and "are we on the client yet" are both client-only reads.
   const mounted = useClientSnapshot(() => true, false);
@@ -116,12 +129,25 @@ export function ThemePalettePicker() {
     window.localStorage.setItem(PRIMARY_KEY, id);
   }
 
-  if (!mounted) return null;
+  if (!mounted || hidden) return null;
+
+  if (isAuthenticated && collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setCollapsed(false)}
+        aria-label="Show theme preview control"
+        className="fixed top-1/2 right-0 z-[100] flex h-10 w-5 -translate-y-1/2 items-center justify-center rounded-l-full border border-r-0 border-border bg-popover text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <ChevronLeft className="size-4" />
+      </button>
+    );
+  }
 
   return (
-    <div className="fixed right-4 bottom-4 z-[100] flex flex-col items-end gap-2">
+    <div className="fixed top-1/2 right-4 z-[100] flex -translate-y-1/2 flex-col items-end gap-2">
       {open && (
-        <div className="w-60 rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-lg">
+        <div className="w-64 rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-lg">
           <div className="mb-2.5 flex items-center justify-between">
             <p className="text-xs font-semibold text-foreground">Theme preview</p>
             <button
@@ -133,6 +159,12 @@ export function ThemePalettePicker() {
               <X className="size-3.5" />
             </button>
           </div>
+
+          <p className="mb-3 rounded-lg bg-muted/60 p-2 text-[0.7rem] text-foreground">
+            Note for Angad: pick whichever accent + primary color combination below you think works best for
+            the product, or tell us to decide together — happy to sit down and try out other combinations live
+            too.
+          </p>
 
           <div className="flex flex-col gap-3.5">
             <SwatchGroup title="Accent color" options={PALETTES} active={palette} onChoose={choosePalette} />
@@ -151,14 +183,29 @@ export function ThemePalettePicker() {
           </p>
         </div>
       )}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-10 items-center gap-2 rounded-full border border-border bg-popover px-4 text-sm font-medium text-popover-foreground shadow-lg transition-colors hover:bg-muted"
-      >
-        <Palette className="size-4" />
-        Theme
-      </button>
+      <div className="flex items-center gap-1">
+        {isAuthenticated && (
+          <button
+            type="button"
+            onClick={() => {
+              setCollapsed(true);
+              setOpen(false);
+            }}
+            aria-label="Hide theme preview control"
+            className="flex size-8 items-center justify-center rounded-full border border-border bg-popover text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex h-10 items-center gap-2 rounded-full border border-border bg-popover px-4 text-sm font-medium text-popover-foreground shadow-lg transition-colors hover:bg-muted"
+        >
+          <Palette className="size-4" />
+          Theme
+        </button>
+      </div>
     </div>
   );
 }
