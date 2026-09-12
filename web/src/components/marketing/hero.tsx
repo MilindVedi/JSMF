@@ -9,7 +9,7 @@ export function Hero() {
     <section className="relative overflow-hidden border-b border-border">
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent" />
 
-      <div className="relative mx-auto w-full max-w-[1280px] px-4 py-20 sm:px-6 sm:py-28">
+      <div className="relative mx-auto w-full max-w-[1280px] px-4 pt-10 pb-20 sm:px-6 sm:pt-14 sm:pb-28">
         <div className="grid gap-14 lg:grid-cols-2 lg:items-center lg:gap-10">
           <div className="flex flex-col items-start gap-8">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
