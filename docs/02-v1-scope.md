@@ -36,6 +36,8 @@ The following are explicitly not part of V1, even though some of them are part o
 ## Current Stage: Product Discovery / UI Definition
 
 > The team is currently in the **product discovery / UI definition stage**. Work right now consists of building a frontend-only mock UI prototype using realistic static and mocked sample data. There is no real backend, no real database, no real authentication, and no real payment integration at this point. The goal of this stage is to finalize the product experience and the UI/UX before investing engineering effort in the real backend and infrastructure that would be expensive to redo if the product direction changed after the fact.
+> 
+> To facilitate this finalization, the prototype is continuously deployed to Vercel. This approach allows stakeholders to review a live, clickable product in a real browser environment rather than relying on static mockups, ensuring that requirements are finalized against actual interactions.
 
 The detailed plan for this mock UI stage — routes, navigation, components, mock data shapes, and design tokens — is captured in full in [UI/UX Plan](./05-ui-ux-plan.md).
 
