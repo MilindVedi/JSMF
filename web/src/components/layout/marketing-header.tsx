@@ -74,7 +74,7 @@ export function MarketingHeader() {
             <>
               <Link
                 href="/login"
-                className="hidden text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+                className="inline-flex text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 Log in
               </Link>
