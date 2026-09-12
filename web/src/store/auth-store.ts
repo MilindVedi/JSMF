@@ -54,7 +54,7 @@ export const useAuthStore = create<AuthState>()(
         useCollectionsStore.getState().seedCollections(seedCollections);
         usePracticeStore.getState().seedSessions(buildSeedSessions(seedCollections));
         useBookmarksStore.getState().seedBookmarks(buildSeedBookmarkIds());
-        set({ isAuthenticated: true });
+        set({ isAuthenticated: true, profile: DEMO_USER });
       },
       signup: (name, email, targetExamId) => {
         // A brand-new account: hard-reset every other store so the
