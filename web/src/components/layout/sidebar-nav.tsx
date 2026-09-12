@@ -8,7 +8,6 @@ import {
   CreditCard,
   History,
   LayoutDashboard,
-  Map,
   Repeat,
   User,
   type LucideIcon,
@@ -37,7 +36,6 @@ const PRIMARY_NAV: NavItem[] = [
 ];
 
 const SECONDARY_NAV: NavItem[] = [
-  { href: "/roadmap", label: "Roadmap & Phases", icon: Map },
   { href: "/subscription", label: "Subscription", icon: CreditCard },
   { href: "/profile", label: "Profile", icon: User },
 ];
