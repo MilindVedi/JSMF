@@ -23,7 +23,8 @@ export const metadata: Metadata = {
 
 export default function RoadmapPage() {
   return (
-    <div className="space-y-8 pb-12">
+    <div className="mx-auto min-h-dvh max-w-[1280px] px-4 py-8 sm:px-6 lg:py-12">
+      <div className="space-y-8 pb-12">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageHeader
           title="Product Roadmap & Phases"
@@ -274,6 +275,7 @@ export default function RoadmapPage() {
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 }
