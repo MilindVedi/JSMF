@@ -264,7 +264,7 @@ function CollapsibleSection({
           :has() specificity can't be overridden by a responsive class. Here
           the controls simply drop to their own row below the title on narrow
           screens. */}
-      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
         <button
           type="button"
           onClick={() => onOpenChange(!open)}
@@ -644,23 +644,20 @@ export default function RevisionPage() {
         open={openSections.wrong}
         onOpenChange={(open) => setOpenSections((prev) => ({ ...prev, wrong: open }))}
         headerExtra={(open) => (
-          <div className="flex flex-wrap items-center gap-2">
-            {open && <SortDropdown value={wrongSort} options={WRONG_SORT_OPTIONS} onChange={setWrongSort} />}
-            {mode !== "subject" && activeList.length > 0 && (
-              <Button
-                size="sm"
-                className="min-w-[100px]"
-                onClick={() =>
-                  practise(
-                    mode === "never" ? "Never Corrected Revision" : "Wrong Questions Revision",
-                    activeList
-                  )
-                }
-              >
-                Practise {activeList.length}
-              </Button>
-            )}
-          </div>
+          mode !== "subject" && activeList.length > 0 && (
+            <Button
+              size="sm"
+              className="min-w-[100px]"
+              onClick={() =>
+                practise(
+                  mode === "never" ? "Never Corrected Revision" : "Wrong Questions Revision",
+                  activeList
+                )
+              }
+            >
+              Practise {activeList.length}
+            </Button>
+          )
         )}
       >
           <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
@@ -699,7 +696,10 @@ export default function RevisionPage() {
             <p className="text-sm text-muted-foreground">{MODE_BLURB[mode]}</p>
           )}
 
-          <SectionSearch value={wrongSearch} onChange={setWrongSearch} />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SectionSearch value={wrongSearch} onChange={setWrongSearch} />
+            <SortDropdown value={wrongSort} options={WRONG_SORT_OPTIONS} onChange={setWrongSort} />
+          </div>
 
           {mode === "subject" ? (
             facets.bySubject.filter((g) => filterByStem(g.questions, wrongSearch).length > 0).length === 0 ? (
@@ -778,26 +778,21 @@ export default function RevisionPage() {
         open={openSections.bookmarked}
         onOpenChange={(open) => setOpenSections((prev) => ({ ...prev, bookmarked: open }))}
         headerExtra={(open) => (
-          <div className="flex flex-wrap items-center gap-2">
-            {open && (
-              <SortDropdown value={bookmarkedSort} options={BOOKMARKED_SORT_OPTIONS} onChange={setBookmarkedSort} />
-            )}
-            {bookmarkedQuestions.length > 0 && (
-              <Button
-                size="sm"
-                className="min-w-[100px]"
-                onClick={() =>
-                  startSession({
-                    mode: "bookmarks",
-                    label: "My Bookmarks",
-                    questionIds: bookmarkedQuestions.map((q) => q.id),
-                  })
-                }
-              >
-                Practise {bookmarkedQuestions.length}
-              </Button>
-            )}
-          </div>
+          bookmarkedQuestions.length > 0 && (
+            <Button
+              size="sm"
+              className="min-w-[100px]"
+              onClick={() =>
+                startSession({
+                  mode: "bookmarks",
+                  label: "My Bookmarks",
+                  questionIds: bookmarkedQuestions.map((q) => q.id),
+                })
+              }
+            >
+              Practise {bookmarkedQuestions.length}
+            </Button>
+          )
         )}
       >
           <Tabs value={bookmarkedMode} onValueChange={(v) => setBookmarkedMode(v as SimpleMode)}>
@@ -833,7 +828,10 @@ export default function RevisionPage() {
             <p className="text-sm text-muted-foreground">Where your bookmarks are concentrated.</p>
           )}
 
-          <SectionSearch value={bookmarkedSearch} onChange={setBookmarkedSearch} />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SectionSearch value={bookmarkedSearch} onChange={setBookmarkedSearch} />
+            <SortDropdown value={bookmarkedSort} options={BOOKMARKED_SORT_OPTIONS} onChange={setBookmarkedSort} />
+          </div>
 
           {bookmarkedMode === "subject" ? (
             bookmarkedBySubject.filter((g) => filterByStem(g.questions, bookmarkedSearch).length > 0).length === 0 ? (
@@ -922,27 +920,22 @@ export default function RevisionPage() {
         open={openSections.collections}
         onOpenChange={(open) => setOpenSections((prev) => ({ ...prev, collections: open }))}
         headerExtra={(open) => (
-          <div className="flex flex-wrap items-center gap-2">
-            {open && (
-              <SortDropdown value={collectionsSort} options={COLLECTIONS_SORT_OPTIONS} onChange={setCollectionsSort} />
-            )}
-            {collectionQuestions.length > 0 && (
-              <Button
-                size="sm"
-                className="min-w-[100px]"
-                onClick={() =>
-                  startSession({
-                    mode: "browse",
-                    label: collectionSelectionLabel,
-                    questionIds: collectionQuestions.map((q) => q.id),
-                    filters: { collectionIds: effectiveCollectionIds },
-                  })
-                }
-              >
-                Practise {collectionQuestions.length}
-              </Button>
-            )}
-          </div>
+          collectionQuestions.length > 0 && (
+            <Button
+              size="sm"
+              className="min-w-[100px]"
+              onClick={() =>
+                startSession({
+                  mode: "browse",
+                  label: collectionSelectionLabel,
+                  questionIds: collectionQuestions.map((q) => q.id),
+                  filters: { collectionIds: effectiveCollectionIds },
+                })
+              }
+            >
+              Practise {collectionQuestions.length}
+            </Button>
+          )
         )}
       >
           {collections.length === 0 ? (
@@ -1001,7 +994,10 @@ export default function RevisionPage() {
                 </p>
               )}
 
-              <SectionSearch value={collectionsSearch} onChange={setCollectionsSearch} />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <SectionSearch value={collectionsSearch} onChange={setCollectionsSearch} />
+                <SortDropdown value={collectionsSort} options={COLLECTIONS_SORT_OPTIONS} onChange={setCollectionsSort} />
+              </div>
 
               {collectionsMode === "subject" ? (
                 collectionsBySubject.filter((g) => filterByStem(g.questions, collectionsSearch).length > 0)
@@ -1091,26 +1087,21 @@ export default function RevisionPage() {
         open={openSections.reinforce}
         onOpenChange={(open) => setOpenSections((prev) => ({ ...prev, reinforce: open }))}
         headerExtra={(open) => (
-          <div className="flex flex-wrap items-center gap-2">
-            {open && (
-              <SortDropdown value={reinforceSort} options={REINFORCE_SORT_OPTIONS} onChange={setReinforceSort} />
-            )}
-            {reinforceList.length > 0 && (
-              <Button
-                size="sm"
-                className="min-w-[100px]"
-                onClick={() =>
-                  startSession({
-                    mode: "browse",
-                    label: "Reinforce Practice",
-                    questionIds: reinforceList.map((q) => q.id),
-                  })
-                }
-              >
-                Practise {reinforceList.length}
-              </Button>
-            )}
-          </div>
+          reinforceList.length > 0 && (
+            <Button
+              size="sm"
+              className="min-w-[100px]"
+              onClick={() =>
+                startSession({
+                  mode: "browse",
+                  label: "Reinforce Practice",
+                  questionIds: reinforceList.map((q) => q.id),
+                })
+              }
+            >
+              Practise {reinforceList.length}
+            </Button>
+          )
         )}
       >
           <Tabs value={reinforceMode} onValueChange={(v) => setReinforceMode(v as SimpleMode)}>
@@ -1146,7 +1137,12 @@ export default function RevisionPage() {
             <p className="text-sm text-muted-foreground">Where your correct answers are concentrated.</p>
           )}
 
-          {reinforcePool.length > 0 && <SectionSearch value={reinforceSearch} onChange={setReinforceSearch} />}
+          {reinforcePool.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <SectionSearch value={reinforceSearch} onChange={setReinforceSearch} />
+              <SortDropdown value={reinforceSort} options={REINFORCE_SORT_OPTIONS} onChange={setReinforceSort} />
+            </div>
+          )}
 
           {reinforceMode === "subject" ? (
             reinforceBySubject.filter((g) => filterByStem(g.questions, reinforceSearch).length > 0).length === 0 ? (
