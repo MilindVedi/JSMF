@@ -95,7 +95,7 @@ export function TopbarStreakChip({ streakDays }: { streakDays: number }) {
         <span className="hidden sm:inline">-day streak</span>
       </div>
 
-      <AngadNote compact>
+      <AngadNote>
         <p className="text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
           Streak stages (mock preview)
         </p>

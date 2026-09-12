@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Check, ChevronLeft, ChevronRight, Palette, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Palette, StickyNote, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientSnapshot } from "@/lib/use-client-snapshot";
 import { useAuthStore } from "@/store/auth-store";
@@ -151,23 +151,26 @@ export function ThemePalettePicker() {
         <div className="w-64 rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-lg">
           <div className="mb-2.5 flex items-center justify-between">
             <p className="text-xs font-semibold text-foreground">Theme preview</p>
-            <div className="flex items-center gap-1">
-              <AngadNote compact align="end">
-                <p>
-                  Pick whichever accent + primary color combination below you think works best for the
-                  product, or tell us to decide together — happy to sit down and try out other combinations
-                  live too.
-                </p>
-              </AngadNote>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="text-muted-foreground hover:text-foreground"
-                aria-label="Close"
-              >
-                <X className="size-3.5" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-muted-foreground hover:text-foreground"
+              aria-label="Close"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+
+          <div className="mb-3 rounded-lg border border-dashed border-border bg-muted/60 p-2.5 text-xs text-foreground">
+            <p className="mb-1 flex items-center gap-1.5 font-semibold">
+              <StickyNote className="size-3.5" />
+              Note for Angad
+            </p>
+            <p className="text-muted-foreground">
+              Pick whichever accent + primary color combination below you think works best for the
+              product, or tell us to decide together — happy to sit down and try out other combinations
+              live too.
+            </p>
           </div>
 
           <div className="flex flex-col gap-3.5">
