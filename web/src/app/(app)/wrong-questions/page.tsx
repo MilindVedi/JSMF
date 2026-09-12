@@ -5,8 +5,7 @@ import Link from "next/link";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
-import { SubjectBadge } from "@/components/common/subject-badge";
-import { ExamBadge } from "@/components/common/exam-badge";
+import { QuestionListRow } from "@/components/question-bank/question-list-row";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { usePracticeStore } from "@/store/practice-store";
@@ -68,10 +67,12 @@ export default function WrongQuestionsPage() {
       ) : (
         <Card className="p-0">
           <div className="divide-y divide-border">
-            {wrongQuestions.map((question) => (
-              <button
+            {wrongQuestions.map((question, i) => (
+              <QuestionListRow
                 key={question.id}
-                type="button"
+                question={question}
+                number={i + 1}
+                status="incorrect"
                 onClick={() =>
                   startSession({
                     mode: "browse",
@@ -79,17 +80,7 @@ export default function WrongQuestionsPage() {
                     questionIds: [question.id],
                   })
                 }
-                className="flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
-              >
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <ExamBadge examId={question.examId} />
-                    <SubjectBadge subjectId={question.subjectId} />
-                    <span className="text-xs text-muted-foreground">{question.year}</span>
-                  </div>
-                  <p className="line-clamp-2 text-sm text-foreground">{question.stem}</p>
-                </div>
-              </button>
+              />
             ))}
           </div>
         </Card>

@@ -3,8 +3,8 @@
 import { Loader2 } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { StreakFlyOverlay } from "@/components/layout/streak-fly-overlay";
 import { useRequireAuth } from "@/lib/use-require-auth";
-import { SeedDemoData } from "@/components/common/seed-demo-data";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { ready } = useRequireAuth();
@@ -19,7 +19,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh bg-background">
-      <SeedDemoData />
+      <StreakFlyOverlay />
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />

@@ -11,6 +11,9 @@ interface BookmarksState {
   isBookmarked: (questionId: string) => boolean;
   toggleBookmark: (questionId: string) => void;
   seedBookmarks: (questionIds: string[]) => void;
+  /** Hard-clears all bookmarks — see `resetSessions` in practice-store for
+   *  why a fresh signup needs this rather than relying on the seed guard. */
+  resetBookmarks: () => void;
 }
 
 export const useBookmarksStore = create<BookmarksState>()(
@@ -44,6 +47,8 @@ export const useBookmarksStore = create<BookmarksState>()(
             })),
           };
         }),
+
+      resetBookmarks: () => set({ bookmarks: [] }),
     }),
     {
       name: "jsmf:bookmarks",

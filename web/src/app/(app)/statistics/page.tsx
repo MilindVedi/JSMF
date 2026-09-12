@@ -1,18 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { BarChart3, Bookmark, ChevronRight, Loader2, XCircle } from "lucide-react";
+import { BarChart3, Bookmark, CheckCircle2, ChevronRight, Library, Loader2, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { SubjectPerformanceChart } from "@/components/statistics/subject-performance-chart";
 import { AccuracyTrendChart } from "@/components/statistics/accuracy-trend-chart";
 import { DonutBreakdown } from "@/components/statistics/donut-breakdown";
 import { usePracticeStore } from "@/store/practice-store";
 import { useBookmarksStore } from "@/store/bookmarks-store";
-import { getStatistics } from "@/lib/selectors";
+import { useCollectionsStore } from "@/store/collections-store";
+import { getCollectionStats, getStatistics, getSubjectCoverage } from "@/lib/selectors";
+import { getSubjectById } from "@/data/mock/subjects";
 import { QUESTIONS } from "@/data/mock/questions";
 import { cn } from "@/lib/utils";
 
@@ -43,8 +53,11 @@ export default function StatisticsPage() {
   const sessionsHydrated = usePracticeStore((s) => s.hasHydrated);
   const bookmarks = useBookmarksStore((s) => s.bookmarks);
   const bookmarksHydrated = useBookmarksStore((s) => s.hasHydrated);
+  const collections = useCollectionsStore((s) => s.collections);
+  const collectionsHydrated = useCollectionsStore((s) => s.hasHydrated);
+  const [coverageOpen, setCoverageOpen] = useState(false);
 
-  if (!sessionsHydrated || !bookmarksHydrated) {
+  if (!sessionsHydrated || !bookmarksHydrated || !collectionsHydrated) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -54,6 +67,8 @@ export default function StatisticsPage() {
 
   const stats = getStatistics(Object.values(sessions), QUESTIONS, bookmarks);
   const subjectsWithAttempts = stats.bySubject.filter((s) => s.attempted > 0);
+  const collectionStats = getCollectionStats(collections);
+  const subjectCoverage = getSubjectCoverage(Object.values(sessions), QUESTIONS);
 
   return (
     <div className="space-y-6">
@@ -97,7 +112,18 @@ export default function StatisticsPage() {
             />
           </div>
 
-          <Card>
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => setCoverageOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setCoverageOpen(true);
+              }
+            }}
+            className="cursor-pointer transition-colors hover:bg-muted/50"
+          >
             <CardHeader>
               <CardTitle>Question bank coverage</CardTitle>
             </CardHeader>
@@ -120,6 +146,34 @@ export default function StatisticsPage() {
               </p>
             </CardContent>
           </Card>
+
+          <Dialog open={coverageOpen} onOpenChange={setCoverageOpen}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Question bank coverage</DialogTitle>
+                <DialogDescription>
+                  {stats.coverage}% of the bank seen at least once — {stats.attempted} attempted,{" "}
+                  {stats.unattempted} remaining. Broken down by subject below, least-covered first.
+                </DialogDescription>
+              </DialogHeader>
+              <Progress value={stats.coverage} aria-label="Question bank coverage" />
+              <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
+                {subjectCoverage.map((s) => (
+                  <div key={s.subjectId} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="font-medium text-foreground">
+                        {getSubjectById(s.subjectId)?.name ?? s.subjectId}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {s.attempted}/{s.total} · {s.coverage}%
+                      </span>
+                    </div>
+                    <Progress value={s.coverage} aria-label={`${s.subjectId} coverage`} />
+                  </div>
+                ))}
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <div className="grid gap-4 lg:grid-cols-5">
             <Card className="lg:col-span-3">
@@ -202,6 +256,49 @@ export default function StatisticsPage() {
                   <p className="text-sm font-medium text-foreground">Bookmarks</p>
                   <p className="text-xs text-muted-foreground">
                     {stats.bookmarkCount} question{stats.bookmarkCount === 1 ? "" : "s"} saved
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </Link>
+
+            <Link
+              href="/revision#collections-section"
+              className={cn(
+                "flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-full bg-flag/50 text-flag-foreground">
+                  <Library className="size-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Collections</p>
+                  <p className="text-xs text-muted-foreground">
+                    {collectionStats.totalQuestions} question
+                    {collectionStats.totalQuestions === 1 ? "" : "s"} across{" "}
+                    {collectionStats.collectionCount} collection
+                    {collectionStats.collectionCount === 1 ? "" : "s"}
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </Link>
+
+            <Link
+              href="/reinforce"
+              className={cn(
+                "flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-full bg-success/50 text-success-foreground">
+                  <CheckCircle2 className="size-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Reinforce</p>
+                  <p className="text-xs text-muted-foreground">
+                    {stats.correct} question{stats.correct === 1 ? "" : "s"} to reinforce
                   </p>
                 </div>
               </div>

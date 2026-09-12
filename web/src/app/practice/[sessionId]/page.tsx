@@ -160,7 +160,7 @@ function PracticeQuestionRunner({
         onToggleBookmark={() => toggleBookmark(question.id)}
         isFlagged={Boolean(session.flags[question.id])}
         onToggleFlag={() => toggleFlag(session.id, question.id)}
-        exitHref="/dashboard"
+        exitHref={session.sourceHref ?? "/dashboard"}
       />
 
       <div className="mx-auto w-full max-w-[760px] flex-1 px-4 py-6 sm:py-8">

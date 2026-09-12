@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Flame, LogOut, Menu, Settings, User as UserIcon } from "lucide-react";
+import { ExternalLink, LogOut, Menu, Settings, User as UserIcon } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   DropdownMenu,
@@ -13,9 +13,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Logo } from "@/components/common/logo";
 import { SidebarNav } from "./sidebar-nav";
+import { TopbarStreakChip } from "./topbar-streak-chip";
 import { useAuthStore } from "@/store/auth-store";
 import { getPlanById } from "@/data/mock/plans";
 
@@ -54,10 +55,10 @@ export function Topbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
-        <div className="hidden items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground sm:flex">
-          <Flame className="size-3.5 text-accent-foreground" strokeWidth={2} />
-          {profile.streakDays}-day streak
-        </div>
+        {/* No streak established yet — an empty "0-day streak" pill reads as
+            a failed achievement rather than an invitation; the dashboard's
+            streak card already carries that invitation instead. */}
+        {profile.streakDays > 0 && <TopbarStreakChip streakDays={profile.streakDays} />}
         {plan && (
           <Link
             href="/subscription"
@@ -70,6 +71,7 @@ export function Topbar() {
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             <Avatar className="size-8">
+              {profile.avatarUrl && <AvatarImage src={profile.avatarUrl} alt={profile.name} />}
               <AvatarFallback className="text-xs font-semibold">
                 {initials(profile.name)}
               </AvatarFallback>

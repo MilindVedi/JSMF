@@ -11,6 +11,7 @@ interface CreateSessionParams {
   filters?: SessionFilters;
   timed?: boolean;
   durationSec?: number;
+  sourceHref?: string;
 }
 
 interface PracticeState {
@@ -29,6 +30,10 @@ interface PracticeState {
   finishSession: (sessionId: string) => void;
   getSession: (sessionId: string) => TestSession | undefined;
   seedSessions: (sessions: TestSession[]) => void;
+  /** Hard-clears all sessions — used when a brand-new signup needs a truly
+   *  clean slate even if this browser previously held seeded demo data (or
+   *  real progress) from an earlier login. */
+  resetSessions: () => void;
 }
 
 export const usePracticeStore = create<PracticeState>()(
@@ -38,7 +43,7 @@ export const usePracticeStore = create<PracticeState>()(
       hasHydrated: false,
       setHasHydrated: (value) => set({ hasHydrated: value }),
 
-      createSession: ({ mode, label, questionIds, filters, timed, durationSec }) => {
+      createSession: ({ mode, label, questionIds, filters, timed, durationSec, sourceHref }) => {
         const id = nanoid(10);
         const config: SessionConfig = { timed: Boolean(timed), durationSec };
         const session: TestSession = {
@@ -51,6 +56,7 @@ export const usePracticeStore = create<PracticeState>()(
           flags: {},
           attempts: {},
           startedAt: new Date().toISOString(),
+          sourceHref,
         };
         set((state) => ({ sessions: { ...state.sessions, [id]: session } }));
         return id;
@@ -114,6 +120,8 @@ export const usePracticeStore = create<PracticeState>()(
           for (const s of sessions) map[s.id] = s;
           return { sessions: map };
         }),
+
+      resetSessions: () => set({ sessions: {} }),
     }),
     {
       name: "jsmf:practice-sessions",

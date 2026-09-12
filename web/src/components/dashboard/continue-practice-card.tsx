@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { buttonVariants } from "@/components/ui/button";
 import { EXAMS } from "@/data/mock/exams";
 import { SUBJECTS, getSubjectById } from "@/data/mock/subjects";
-import { getSessionScope, getSessionSummary } from "@/lib/selectors";
+import { getNextUnansweredIndex, getSessionScope, getSessionSummary } from "@/lib/selectors";
 import type { Question, TestSession } from "@/types";
 
-function scopeLabel(session: TestSession, questions: Question[]) {
+function scopeDescription(session: TestSession, questions: Question[]) {
   const { examIds, subjectIds, questionCount } = getSessionScope(session, questions);
 
   const examNames = examIds.map((id) => EXAMS.find((e) => e.id === id)?.shortName ?? id);
@@ -26,11 +26,25 @@ function scopeLabel(session: TestSession, questions: Question[]) {
   const subject =
     subjectIds.length >= SUBJECTS.length
       ? "All subjects"
-      : subjectNames.length <= 2
-        ? subjectNames.join(" & ")
-        : `${subjectIds.length} subjects`;
+      : subjectNames.length === 1
+        ? subjectNames[0]
+        : subjectNames.length === 2
+          ? subjectNames.join(" & ")
+          : "Mixed subjects";
 
   return `${exam} · ${subject} · ${questionCount} question${questionCount === 1 ? "" : "s"}`;
+}
+
+/**
+ * The label shown on the "Continue where you left off" / "Last session"
+ * line: the session's own type (`session.label`, e.g. "Question Bank" or
+ * "Custom Test" — set once at creation by whichever screen started it, see
+ * `useStartSession` call sites) followed by what it actually covers. This
+ * always names the exact session type rather than ever guessing or mixing
+ * one mode's presentation with another's.
+ */
+function scopeLabel(session: TestSession, questions: Question[]) {
+  return `${session.label} · ${scopeDescription(session, questions)}`;
 }
 
 export function ContinuePracticeCard({
@@ -48,34 +62,35 @@ export function ContinuePracticeCard({
     const percent = total > 0 ? Math.round((answered / total) * 100) : 0;
 
     return (
-      <div className="rounded-xl border border-border bg-card p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex h-full flex-col rounded-xl border border-border bg-card p-5">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Continue where you left off
             </p>
-            <p className="mt-1 font-heading text-lg font-semibold text-foreground">
-              {scopeLabel(inProgress, questions)}
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {answered} / {total} completed
+            <p className="mt-1 font-heading text-2xl font-semibold text-foreground">
+              {answered}{" "}
+              <span className="text-base font-medium text-muted-foreground">/ {total} completed</span>
             </p>
           </div>
           <Link
-            href={`/practice/${inProgress.id}?i=${answered < total ? answered : 0}`}
+            href={`/practice/${inProgress.id}?i=${getNextUnansweredIndex(inProgress)}`}
             className={buttonVariants({ size: "lg", className: "w-fit shrink-0" })}
           >
-            Continue
-            <ArrowRight className="size-4" />
+            Resume
+            <ChevronRight className="size-4" />
           </Link>
         </div>
+
         <Progress value={percent} className="mt-4" aria-label="Session progress" />
+
+        <p className="mt-3 text-sm text-muted-foreground">{scopeLabel(inProgress, questions)}</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex h-full flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
         <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Start practising

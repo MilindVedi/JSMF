@@ -18,39 +18,72 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { SortDropdown } from "@/components/common/sort-dropdown";
 import { getQuestions } from "@/lib/data/questions";
 import { useStartSession } from "@/lib/use-start-session";
-import { getQuestionStatusMap } from "@/lib/selectors";
+import { getQuestionStatusMap, getQuestionsInCollections } from "@/lib/selectors";
+import {
+  QUESTION_BANK_SORT_OPTIONS,
+  QUESTION_SORT_LABELS,
+  QUESTION_SORT_GROUPS,
+  buildQuestionSortContext,
+  sortQuestions,
+  type QuestionSortOption,
+} from "@/lib/question-sort";
 import { usePracticeStore } from "@/store/practice-store";
 import { useBookmarksStore } from "@/store/bookmarks-store";
+import { useCollectionsStore } from "@/store/collections-store";
+import { SUBJECTS } from "@/data/mock/subjects";
 import type { Question } from "@/types";
+
+const QUESTION_BANK_SORT_DROPDOWN_OPTIONS = QUESTION_BANK_SORT_OPTIONS.map((value) => ({
+  value,
+  label: QUESTION_SORT_LABELS[value],
+  group: QUESTION_SORT_GROUPS[value],
+}));
 
 export default function QuestionBankPage() {
   const [filters, setFilters] = useState<QuestionFiltersState>(EMPTY_QUESTION_FILTERS);
   const [status, setStatus] = useState<QuestionStatusFilter>("all");
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<Question[]>([]);
+  const [sort, setSort] = useState<QuestionSortOption>("newest-exam-year");
   const startSession = useStartSession();
 
   const sessions = usePracticeStore((s) => s.sessions);
   const bookmarks = useBookmarksStore((s) => s.bookmarks);
+  const collections = useCollectionsStore((s) => s.collections);
 
   const statusMap = useMemo(() => getQuestionStatusMap(Object.values(sessions)), [sessions]);
   const bookmarkedIds = useMemo(() => new Set(bookmarks.map((b) => b.questionId)), [bookmarks]);
+  const sortContext = useMemo(
+    () => buildQuestionSortContext(Object.values(sessions), bookmarks, collections, SUBJECTS),
+    [sessions, bookmarks, collections]
+  );
 
-  const visible = useMemo(() => {
-    if (status === "all") return results;
-    return results.filter((q) => {
+  const collectionFiltered = useMemo(
+    () => getQuestionsInCollections(collections, filters.collectionIds, results),
+    [collections, filters.collectionIds, results]
+  );
+
+  const statusFiltered = useMemo(() => {
+    if (status === "all") return collectionFiltered;
+    return collectionFiltered.filter((q) => {
       if (status === "bookmarked") return bookmarkedIds.has(q.id);
       const current = statusMap.get(q.id) ?? "unattempted";
       return current === status;
     });
-  }, [results, status, statusMap, bookmarkedIds]);
+  }, [collectionFiltered, status, statusMap, bookmarkedIds]);
+
+  const visible = useMemo(
+    () => sortQuestions(statusFiltered, sort, sortContext),
+    [statusFiltered, sort, sortContext]
+  );
 
   useEffect(() => {
     let active = true;
     getQuestions({
-      examIds: filters.examId === "all" ? undefined : [filters.examId],
+      examIds: filters.examIds.length ? filters.examIds : undefined,
       years: filters.years.length ? filters.years : undefined,
       subjectIds: filters.subjectIds.length ? filters.subjectIds : undefined,
       topicIds: filters.topicIds.length ? filters.topicIds : undefined,
@@ -69,10 +102,11 @@ export default function QuestionBankPage() {
       label: "Question Bank",
       questionIds: visible.map((q) => q.id),
       filters: {
-        examIds: filters.examId === "all" ? undefined : [filters.examId],
+        examIds: filters.examIds.length ? filters.examIds : undefined,
         years: filters.years.length ? filters.years : undefined,
         subjectIds: filters.subjectIds.length ? filters.subjectIds : undefined,
         topicIds: filters.topicIds.length ? filters.topicIds : undefined,
+        collectionIds: filters.collectionIds.length ? filters.collectionIds : undefined,
       },
     });
   }
@@ -98,14 +132,17 @@ export default function QuestionBankPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <FilterPanel value={filters} onChange={setFilters} />
-        <div className="relative w-full sm:w-64">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search questions"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative w-full sm:w-64">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search questions"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          <SortDropdown value={sort} options={QUESTION_BANK_SORT_DROPDOWN_OPTIONS} onChange={setSort} />
         </div>
       </div>
 
@@ -133,10 +170,11 @@ export default function QuestionBankPage() {
       ) : (
         <Card className="p-0">
           <div className="divide-y divide-border">
-            {visible.slice(0, 100).map((q) => (
+            {visible.slice(0, 100).map((q, i) => (
               <QuestionListRow
                 key={q.id}
                 question={q}
+                number={i + 1}
                 status={statusMap.get(q.id) ?? "unattempted"}
                 onClick={() => practiceFrom(q)}
               />

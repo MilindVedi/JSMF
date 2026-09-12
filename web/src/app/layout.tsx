@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Source_Serif_4, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemePalettePicker } from "@/components/dev/theme-palette-picker";
+import { ScrollRestoration } from "@/components/common/scroll-restoration";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -23,10 +25,21 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["500", "600"],
 });
 
+// Vercel sets `VERCEL_URL` to the deployment's own hostname (no protocol);
+// falling back to localhost for local dev. Needed so absolute URLs Next
+// generates for the OG/share-preview image resolve to the real deployed
+// domain instead of "localhost" once this is live on Vercel.
+const siteUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "JSMF — Medical Exam Preparation",
   description:
     "Memory-based PYQ preparation for NEET-PG, FMGE, and INI-CET, covering all 19 MBBS subjects.",
+  // Pre-launch mock UI shared only via direct link for feedback — keep it out
+  // of search results until there's a real product to be found. Paired with
+  // robots.ts, since some crawlers honor this meta tag more reliably.
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -42,6 +55,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             {children}
             <Toaster position="top-center" />
             <ThemePalettePicker />
+            <Suspense fallback={null}>
+              <ScrollRestoration />
+            </Suspense>
           </TooltipProvider>
         </ThemeProvider>
       </body>

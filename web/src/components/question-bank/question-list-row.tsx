@@ -1,12 +1,13 @@
 "use client";
 
-import { Bookmark, Check, ChevronRight, Circle, X } from "lucide-react";
+import { Check, ChevronRight, Circle, X } from "lucide-react";
 import type { Question } from "@/types";
 import { SubjectBadge } from "@/components/common/subject-badge";
 import { ExamBadge } from "@/components/common/exam-badge";
+import { BookmarkButton } from "@/components/practice/bookmark-button";
+import { AddToCollectionButton } from "./add-to-collection-button";
 import { useBookmarksStore } from "@/store/bookmarks-store";
 import type { QuestionStatus } from "@/lib/selectors";
-import { cn } from "@/lib/utils";
 
 function StatusDot({ status }: { status: QuestionStatus }) {
   if (status === "correct") {
@@ -39,38 +40,52 @@ function StatusDot({ status }: { status: QuestionStatus }) {
 export function QuestionListRow({
   question,
   status = "unattempted",
+  number,
   onClick,
 }: {
   question: Question;
   status?: QuestionStatus;
+  /** The question's position in the current (filtered) list — shown as a
+   *  subtle "Q{n}" so a specific question is easy to reference. */
+  number?: number;
   onClick: () => void;
 }) {
   const isBookmarked = useBookmarksStore((s) => s.isBookmarked(question.id));
+  const toggleBookmark = useBookmarksStore((s) => s.toggleBookmark);
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
-    >
-      <div className="mt-0.5 shrink-0">
-        <StatusDot status={status} />
-      </div>
-      <div className="min-w-0 flex-1 space-y-1.5">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <ExamBadge examId={question.examId} />
-          <SubjectBadge subjectId={question.subjectId} />
-          <span className="text-xs text-muted-foreground">{question.year}</span>
+    <div className="flex w-full items-start gap-1 px-2 py-2 transition-colors hover:bg-muted/50 sm:px-4 sm:py-3.5">
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex min-w-0 flex-1 items-start gap-3 py-1.5 pl-2 text-left"
+      >
+        <div className="mt-0.5 shrink-0">
+          <StatusDot status={status} />
         </div>
-        <p className="line-clamp-2 text-sm text-foreground">{question.stem}</p>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {number != null && (
+              <span className="text-xs font-semibold text-foreground">Q{number}</span>
+            )}
+            <ExamBadge examId={question.examId} />
+            <SubjectBadge subjectId={question.subjectId} />
+            <span className="text-xs text-muted-foreground">{question.year}</span>
+          </div>
+          <p className="line-clamp-2 text-sm text-foreground">{question.stem}</p>
+        </div>
+      </button>
+
+      <div className="flex shrink-0 items-center gap-0.5 pt-1">
+        <BookmarkButton
+          isBookmarked={isBookmarked}
+          onToggle={() => toggleBookmark(question.id)}
+        />
+        <AddToCollectionButton questionId={question.id} />
+        <span className="flex size-8 items-center justify-center text-muted-foreground">
+          <ChevronRight className="size-4" />
+        </span>
       </div>
-      <Bookmark
-        className={cn(
-          "mt-1 size-4 shrink-0 text-muted-foreground",
-          isBookmarked && "fill-accent-foreground text-accent-foreground"
-        )}
-      />
-      <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground" />
-    </button>
+    </div>
   );
 }

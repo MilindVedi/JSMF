@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { EXAMS } from "@/data/mock/exams";
 import { getSubjectById } from "@/data/mock/subjects";
 import { getTopicById } from "@/data/mock/topics";
+import { useCollectionsStore } from "@/store/collections-store";
 import { EMPTY_QUESTION_FILTERS, type QuestionFiltersState } from "./filter-panel";
 
 /**
@@ -17,14 +18,15 @@ export function ActiveFilterChips({
   value: QuestionFiltersState;
   onChange: (value: QuestionFiltersState) => void;
 }) {
+  const collections = useCollectionsStore((s) => s.collections);
   const chips: { key: string; label: string; remove: () => void }[] = [];
 
-  if (value.examId !== "all") {
-    const exam = EXAMS.find((e) => e.id === value.examId);
+  for (const examId of value.examIds) {
+    const exam = EXAMS.find((e) => e.id === examId);
     chips.push({
-      key: `exam-${value.examId}`,
-      label: exam?.shortName ?? value.examId,
-      remove: () => onChange({ ...value, examId: "all" }),
+      key: `exam-${examId}`,
+      label: exam?.shortName ?? examId,
+      remove: () => onChange({ ...value, examIds: value.examIds.filter((e) => e !== examId) }),
     });
   }
 
@@ -60,6 +62,18 @@ export function ActiveFilterChips({
       key: `topic-${topicId}`,
       label: getTopicById(topicId)?.name ?? topicId,
       remove: () => onChange({ ...value, topicIds: value.topicIds.filter((t) => t !== topicId) }),
+    });
+  }
+
+  for (const collectionId of value.collectionIds) {
+    chips.push({
+      key: `collection-${collectionId}`,
+      label: collections.find((c) => c.id === collectionId)?.name ?? collectionId,
+      remove: () =>
+        onChange({
+          ...value,
+          collectionIds: value.collectionIds.filter((c) => c !== collectionId),
+        }),
     });
   }
 

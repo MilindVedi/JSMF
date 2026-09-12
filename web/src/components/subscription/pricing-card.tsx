@@ -11,9 +11,13 @@ interface PricingCardProps {
   plan: SubscriptionPlan;
   isCurrent: boolean;
   onSelect: () => void;
+  /** When set, disables the CTA (even for a non-current plan) and shows this
+   *  reason below it — used to keep plan-switching honest in the mock, where
+   *  switching to a lower tier isn't actually enforced anywhere yet. */
+  disabledReason?: string;
 }
 
-export function PricingCard({ plan, isCurrent, onSelect }: PricingCardProps) {
+export function PricingCard({ plan, isCurrent, onSelect, disabledReason }: PricingCardProps) {
   return (
     <Card
       className={cn(
@@ -49,15 +53,18 @@ export function PricingCard({ plan, isCurrent, onSelect }: PricingCardProps) {
           ))}
         </ul>
       </CardContent>
-      <CardFooter>
+      <CardFooter className="flex-col items-stretch gap-1.5">
         <Button
           className="w-full"
           variant={isCurrent ? "secondary" : plan.highlight ? "default" : "outline"}
-          disabled={isCurrent}
+          disabled={isCurrent || Boolean(disabledReason)}
           onClick={onSelect}
         >
           {isCurrent ? "Current Plan" : "Switch to this plan"}
         </Button>
+        {!isCurrent && disabledReason && (
+          <p className="text-center text-xs text-muted-foreground">{disabledReason}</p>
+        )}
       </CardFooter>
     </Card>
   );

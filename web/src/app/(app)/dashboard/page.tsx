@@ -15,8 +15,9 @@ import { PageHeader } from "@/components/common/page-header";
 import { SubjectBadge } from "@/components/common/subject-badge";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { QuickActionCard } from "@/components/dashboard/quick-action-card";
-import { TodayProgressCard } from "@/components/dashboard/today-progress-card";
+import { StreakCard } from "@/components/dashboard/streak-card";
 import { ContinuePracticeCard } from "@/components/dashboard/continue-practice-card";
+import { OnboardingDashboard } from "@/components/dashboard/onboarding-dashboard";
 import { TestSummaryCard } from "@/components/history/test-summary-card";
 import { usePracticeStore } from "@/store/practice-store";
 import { useBookmarksStore } from "@/store/bookmarks-store";
@@ -24,11 +25,22 @@ import { useAuthStore } from "@/store/auth-store";
 import { QUESTIONS } from "@/data/mock/questions";
 import { getSessionSummary, getStatistics } from "@/lib/selectors";
 import { useClientSnapshot } from "@/lib/use-client-snapshot";
+import { useStartSession } from "@/lib/use-start-session";
 
 function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
+}
+
+function sampleQuestions<T>(arr: T[], count: number): T[] {
+  const copy = [...arr];
+  const out: T[] = [];
+  for (let i = 0; i < count && copy.length > 0; i++) {
+    const idx = Math.floor(Math.random() * copy.length);
+    out.push(copy.splice(idx, 1)[0]);
+  }
+  return out;
 }
 
 export default function DashboardPage() {
@@ -38,6 +50,7 @@ export default function DashboardPage() {
   const sessions = usePracticeStore((s) => s.sessions);
   const bookmarks = useBookmarksStore((s) => s.bookmarks);
   const profile = useAuthStore((s) => s.profile);
+  const startSession = useStartSession();
 
   const hasHydrated = hasHydratedPractice && hasHydratedBookmarks && hasHydratedAuth;
 
@@ -58,7 +71,13 @@ export default function DashboardPage() {
     );
   }
 
-  const inProgress = sessionList.find((s) => !s.completedAt);
+  // Most recently *started* unfinished session — not just the first one
+  // found — so if more than one session was ever left incomplete, "Continue
+  // where you left off" always resumes the one the user was actually in
+  // last, never an arbitrary older abandoned one.
+  const inProgress = sessionList
+    .filter((s) => !s.completedAt)
+    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
   const completedByRecency = sessionList
     .filter((s) => s.completedAt)
     .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
@@ -69,6 +88,33 @@ export default function DashboardPage() {
     .slice(0, 3);
 
   const firstName = profile.name.split(" ")[0];
+
+  // No session ever created — a genuinely new account, not just "nothing in
+  // progress right now." The onboarding dashboard replaces the whole page
+  // rather than leaving a grid of zeroed-out stat cards and empty sections.
+  if (sessionList.length === 0) {
+    const startFirstPractice = () => {
+      const examQuestions = QUESTIONS.filter((q) => q.examId === profile.targetExamId);
+      const easyExamQuestions = examQuestions.filter((q) => q.difficulty === "easy");
+      const pool =
+        easyExamQuestions.length >= 10
+          ? easyExamQuestions
+          : examQuestions.length >= 10
+            ? examQuestions
+            : QUESTIONS;
+      const picked = sampleQuestions(pool, Math.min(10, pool.length));
+      startSession({ mode: "browse", label: "Question Bank", questionIds: picked.map((q) => q.id) });
+    };
+
+    return (
+      <OnboardingDashboard
+        firstName={firstName}
+        targetExamId={profile.targetExamId}
+        hasBookmark={bookmarks.length > 0}
+        onStartFirstPractice={startFirstPractice}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -87,15 +133,15 @@ export default function DashboardPage() {
         <StatCard icon={Bookmark} label="Bookmarked" value={statistics.bookmarkCount} tone="flag" />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
+        <div className="h-full lg:col-span-2">
           <ContinuePracticeCard
             inProgress={inProgress}
             lastCompleted={completedByRecency[0]}
             questions={QUESTIONS}
           />
         </div>
-        <TodayProgressCard sessions={sessionList} streakDays={profile.streakDays} />
+        <StreakCard />
       </div>
 
       <div>

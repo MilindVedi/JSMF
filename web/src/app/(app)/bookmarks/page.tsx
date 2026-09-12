@@ -5,19 +5,20 @@ import Link from "next/link";
 import { Bookmark, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
-import { SubjectBadge } from "@/components/common/subject-badge";
-import { ExamBadge } from "@/components/common/exam-badge";
+import { QuestionListRow } from "@/components/question-bank/question-list-row";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { usePracticeStore } from "@/store/practice-store";
 import { useBookmarksStore } from "@/store/bookmarks-store";
 import { getQuestionById } from "@/data/mock/questions";
+import { getQuestionStatusMap } from "@/lib/selectors";
 import { useStartSession } from "@/lib/use-start-session";
 import type { BookmarkEntry, Question } from "@/types";
 
 export default function BookmarksPage() {
   const hasHydrated = useBookmarksStore((s) => s.hasHydrated);
   const bookmarks = useBookmarksStore((s) => s.bookmarks);
-  const toggleBookmark = useBookmarksStore((s) => s.toggleBookmark);
+  const sessions = usePracticeStore((s) => s.sessions);
   const startSession = useStartSession();
 
   const items = useMemo(
@@ -29,6 +30,8 @@ export default function BookmarksPage() {
         ),
     [bookmarks]
   );
+
+  const statusMap = useMemo(() => getQuestionStatusMap(Object.values(sessions)), [sessions]);
 
   if (!hasHydrated) {
     return (
@@ -74,11 +77,12 @@ export default function BookmarksPage() {
       ) : (
         <Card className="p-0">
           <div className="divide-y divide-border">
-            {items.map(({ bookmark, question }) => (
-              <div
+            {items.map(({ bookmark, question }, i) => (
+              <QuestionListRow
                 key={bookmark.id}
-                role="button"
-                tabIndex={0}
+                question={question}
+                number={i + 1}
+                status={statusMap.get(question.id) ?? "unattempted"}
                 onClick={() =>
                   startSession({
                     mode: "browse",
@@ -86,38 +90,7 @@ export default function BookmarksPage() {
                     questionIds: [question.id],
                   })
                 }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    startSession({
-                      mode: "browse",
-                      label: "Bookmarked Question",
-                      questionIds: [question.id],
-                    });
-                  }
-                }}
-                className="flex w-full cursor-pointer items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
-              >
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <ExamBadge examId={question.examId} />
-                    <SubjectBadge subjectId={question.subjectId} />
-                    <span className="text-xs text-muted-foreground">{question.year}</span>
-                  </div>
-                  <p className="line-clamp-2 text-sm text-foreground">{question.stem}</p>
-                </div>
-                <button
-                  type="button"
-                  aria-label="Remove bookmark"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleBookmark(question.id);
-                  }}
-                  className="shrink-0 rounded-md p-1.5 text-accent-foreground transition-colors hover:bg-muted"
-                >
-                  <Bookmark className="size-4 fill-accent-foreground" />
-                </button>
-              </div>
+              />
             ))}
           </div>
         </Card>

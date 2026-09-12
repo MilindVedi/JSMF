@@ -40,7 +40,7 @@ export const PLANS: SubscriptionPlan[] = [
   {
     id: "all-access-pro",
     name: "All Access Pro",
-    tagline: "Everything, across NEET-PG, FMGE, and INI-CET.",
+    tagline: "Everything across NEET-PG, FMGE, and INI-CET.",
     priceMonthly: 999,
     priceYearly: 7999,
     highlight: true,

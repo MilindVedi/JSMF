@@ -1,0 +1,44 @@
+@startuml mock-ui-feedback-loop
+!theme plain
+title Mock UI Feedback Loop (zoom-in on Roadmap Stage 1 — see docs/06-roadmap.md)
+
+start
+
+repeat
+  :Build/update mock UI screens
+  against docs/02-v1-scope.md;
+  note right: Static mock data + mock auth,\nno backend dependency (docs/05-ui-ux-plan.md)
+
+  :Run tsc / lint / production build
+  (catch anything before it reaches reviewers);
+
+  :Deploy to Vercel;
+
+  :Share link with reviewers
+  (friends first, wider circle later);
+  note right
+    Tell reviewers what's mock vs. real,
+    and point them at already-known gaps
+    (docs/07-future-scope.md,
+    05-ui-ux-plan.md "Assumptions & Open Questions")
+    so feedback focuses on new findings.
+  end note
+
+  :Collect concrete feedback
+  (specific screens/flows, not just impressions);
+
+  if (UX/UI fix within current scope?) then (yes)
+    :Fix directly in mock UI;
+  else (product-direction question)
+    :Raise explicitly, decide,
+    update docs/02-v1-scope.md
+    or docs/07-future-scope.md;
+  endif
+repeat while (More significant feedback to act on?) is (yes) not (no)
+
+:Sign off on mock UI
+(Roadmap Stage 1 complete);
+
+stop
+
+@enduml

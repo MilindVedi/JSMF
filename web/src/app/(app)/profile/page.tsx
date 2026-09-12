@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { Loader2, LogOut } from "lucide-react";
+import { Camera, Flame, Loader2, LogOut, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/page-header";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -15,9 +15,15 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
+import { useStreakStore } from "@/store/streak-store";
 import { EXAMS } from "@/data/mock/exams";
 import { getPlanById } from "@/data/mock/plans";
 import type { ExamId, UserProfile } from "@/types";
+
+// 2MB — a mock-only ceiling to keep the data-URL (stored directly in the
+// persisted profile, since there's no real upload endpoint) from bloating
+// localStorage.
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 function initials(name: string) {
   return name
@@ -33,6 +39,9 @@ export default function ProfilePage() {
   const profile = useAuthStore((s) => s.profile);
   const hydrated = useAuthStore((s) => s.hasHydrated);
   const logout = useAuthStore((s) => s.logout);
+  const updateProfile = useAuthStore((s) => s.updateProfile);
+  const bestStreak = useStreakStore((s) => Math.max(s.bestStreak, profile.streakDays));
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!hydrated) {
     return (
@@ -50,15 +59,68 @@ export default function ProfilePage() {
     router.replace("/login");
   }
 
+  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file");
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.error("That image is too large — please choose one under 2MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      updateProfile({ avatarUrl: reader.result as string });
+      toast.success("Profile photo updated");
+    };
+    reader.readAsDataURL(file);
+  }
+
   return (
     <div className="max-w-2xl space-y-6">
       <PageHeader title="Profile" description="Manage your account details and exam preference." />
 
       <Card>
         <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <Avatar size="lg">
-            <AvatarFallback>{initials(profile.name)}</AvatarFallback>
-          </Avatar>
+          <div className="group/avatar-upload relative shrink-0">
+            <Avatar size="lg">
+              {profile.avatarUrl && <AvatarImage src={profile.avatarUrl} alt={profile.name} />}
+              <AvatarFallback>{initials(profile.name)}</AvatarFallback>
+            </Avatar>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Upload profile photo"
+              title="Upload profile photo"
+              className="absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-background transition-colors hover:bg-primary/90"
+            >
+              <Camera className="size-3" strokeWidth={2.5} />
+            </button>
+            {profile.avatarUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  updateProfile({ avatarUrl: undefined });
+                  toast.success("Profile photo removed");
+                }}
+                aria-label="Remove profile photo"
+                title="Remove profile photo"
+                className="absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full bg-muted text-muted-foreground ring-2 ring-background transition-colors hover:bg-error hover:text-error-foreground"
+              >
+                <X className="size-3" strokeWidth={2.5} />
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoChange}
+            />
+          </div>
           <div className="flex-1 space-y-1">
             <p className="font-heading text-lg font-semibold text-foreground">{profile.name}</p>
             <p className="text-sm text-muted-foreground">{profile.email}</p>
@@ -71,6 +133,21 @@ export default function ProfilePage() {
             <p className="text-xs text-muted-foreground">
               Member since {format(new Date(profile.joinedAt), "MMMM yyyy")}
             </p>
+          </div>
+        </CardContent>
+        <Separator />
+        <CardContent className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <Flame className="size-4 text-accent-foreground" strokeWidth={2} />
+            <span className="text-sm text-muted-foreground">
+              Current streak <span className="font-semibold text-foreground">{profile.streakDays}d</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Trophy className="size-4 text-muted-foreground" strokeWidth={2} />
+            <span className="text-sm text-muted-foreground">
+              Best streak <span className="font-semibold text-foreground">{bestStreak}d</span>
+            </span>
           </div>
         </CardContent>
       </Card>

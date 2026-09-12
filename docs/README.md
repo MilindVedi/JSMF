@@ -14,5 +14,9 @@ This `docs/` folder is the single source of truth for what is being built, why, 
 | [04 — Content Pipeline](./04-content-pipeline.md) | The philosophy behind how memory-based recalls become original, doctor-authored questions in the JSMF question bank, and the content-integrity commitments that pipeline is built around. |
 | [05 — UI/UX Plan](./05-ui-ux-plan.md) | The detailed, already-agreed design and frontend architecture plan for the mock UI prototype — routes, navigation shells, components, mock data model, state management, and design tokens. |
 | [06 — Roadmap](./06-roadmap.md) | The ordered sequence of project stages from the current mock UI through real backend, content, authentication, subscriptions, and production deployment. |
+| [07 — Future Scope](./07-future-scope.md) | A running backlog of product ideas deliberately deferred past V1 — e.g. making question difficulty (Easy/Medium/Hard) a real, actionable feature rather than just a data field. |
+| [Diagrams](./diagrams/) | PlantUML flowcharts of the roadmap and the mock-UI feedback loop, kept in sync with the prose in [06 — Roadmap](./06-roadmap.md) — useful for a quick visual read rather than the full write-up. |
 
 If you are new to the project, start with the [Product Vision](./01-product-vision.md) to understand what JSMF is and why it is being built the way it is, then read the [V1 Scope](./02-v1-scope.md) to understand exactly what the first release contains.
+
+This documentation set is actively maintained, not a one-time snapshot: as the project moves through the stages in [06 — Roadmap](./06-roadmap.md) — including the mock UI's build → deploy → share-for-feedback → iterate loop described there — these documents (and the diagrams) are updated to reflect what actually happened and what was actually decided, not just what was originally planned.

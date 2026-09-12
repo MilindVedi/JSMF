@@ -1,0 +1,58 @@
+@startuml roadmap-phases
+!theme plain
+title JSMF Roadmap — Stage Sequence (see docs/06-roadmap.md)
+
+skinparam state {
+  BackgroundColor<<current>> #FFF3CD
+  BorderColor<<current>> #B58900
+}
+
+[*] --> MockUI
+
+state "1. Mock UI / Product Discovery" as MockUI <<current>> {
+  [*] --> Build
+  Build : Build screens against V1 Scope\nusing static mock data + mock auth
+  Build --> Deploy
+  Deploy : Deploy prototype to Vercel
+  Deploy --> Share
+  Share : Share link with reviewers\n(friends first, wider later)
+  Share --> Iterate
+  Iterate : Triage feedback, fix UX gaps,\nflag product-direction questions
+  Iterate --> Deploy : more rounds needed
+  Iterate --> [*] : converged, sign-off
+}
+
+MockUI --> FinalizeScope : mock UI signed off
+state "2. Finalize V1 Requirements" as FinalizeScope
+FinalizeScope --> ArchFinal
+state "3. Architecture Finalization" as ArchFinal
+ArchFinal --> Backend
+state "4. Database / Backend Implementation" as Backend
+Backend --> APIs
+state "5. APIs" as APIs
+APIs --> RealContent
+state "6. Real Content" as RealContent
+RealContent --> Auth
+state "7. Authentication" as Auth
+Auth --> Subscriptions
+state "8. Subscriptions" as Subscriptions
+Subscriptions --> ProdDeploy
+state "9. Production Deployment" as ProdDeploy
+ProdDeploy --> [*]
+
+note right of MockUI
+  Everything in this stage is frontend-only,
+  static mock data, mock auth/payments.
+  See docs/05-ui-ux-plan.md and
+  docs/02-v1-scope.md "Current Stage".
+end note
+
+note bottom of ProdDeploy
+  Downstream, non-blocking workstreams once
+  the web platform is stable:
+  - Flutter mobile apps (Android + iOS)
+  - Future products (courses, PDFs, notes)
+  See docs/06-roadmap.md "Downstream Workstreams".
+end note
+
+@enduml

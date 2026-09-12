@@ -111,6 +111,19 @@
   --chart-4: oklch(0.5500 0.1300 35);
   --chart-5: oklch(0.5500 0.0500 258);
 
+  /* Streak-level accents (streak-config.ts) — one distinct color per tier,
+     warming from teal through blue to gold/bronze as the streak grows.
+     Independent of the accent-preset tokens above so the streak feature
+     always reads as its own progression regardless of the chosen palette. */
+  --streak-warming: oklch(0.7000 0.0700 198);
+  --streak-hot: oklch(0.6000 0.1100 208);
+  --streak-blazing: oklch(0.5600 0.1300 222);
+  --streak-legendary: oklch(0.6600 0.1500 75);
+  --streak-45: oklch(0.6200 0.1600 60);
+  --streak-60: oklch(0.5800 0.1500 45);
+  --streak-90: oklch(0.5400 0.1400 32);
+  --streak-120: oklch(0.5000 0.1300 20);
+
   --sidebar: oklch(0.9700 0.0060 85);
   --sidebar-foreground: oklch(0.2200 0.0180 260);
   --sidebar-primary: oklch(0.2850 0.0650 258);
@@ -169,6 +182,15 @@
   --chart-3: oklch(0.7000 0.1050 198);
   --chart-4: oklch(0.6600 0.1350 35);
   --chart-5: oklch(0.6800 0.0500 258);
+
+  --streak-warming: oklch(0.7600 0.0700 198);
+  --streak-hot: oklch(0.6800 0.1100 208);
+  --streak-blazing: oklch(0.6400 0.1300 222);
+  --streak-legendary: oklch(0.7400 0.1500 75);
+  --streak-45: oklch(0.7000 0.1600 60);
+  --streak-60: oklch(0.6600 0.1500 45);
+  --streak-90: oklch(0.6200 0.1400 32);
+  --streak-120: oklch(0.5800 0.1300 20);
 
   --sidebar: oklch(0.1800 0.0180 260);
   --sidebar-foreground: oklch(0.9500 0.0080 85);
@@ -386,7 +408,7 @@
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+    @apply font-sans scroll-smooth;
   }
   /* Tailwind v4's preflight no longer gives buttons a pointer cursor, so
      without this every <button> in the app — question rows, options, tabs —
@@ -405,5 +427,70 @@
     font-family: var(--font-serif);
     font-size: 1.0625rem;
     line-height: 1.7;
+  }
+
+  /* Streak feature — a slow breathing glow for higher streak tiers (idle,
+     not tied to any user action), a quick landing pulse when the completed
+     badge merges into the topbar indicator, and a milestone ring expansion
+     for the small set of "important" streak days. All restrained: short
+     duration, low amplitude, no color cycling or bounce. */
+  @keyframes streak-idle-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.72; }
+  }
+  .animate-streak-idle-pulse {
+    animation: streak-idle-pulse 2.6s ease-in-out infinite;
+  }
+
+  @keyframes streak-landed-pulse {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.18); }
+    100% { transform: scale(1); }
+  }
+  .animate-streak-landed-pulse {
+    animation: streak-landed-pulse 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes streak-milestone-ring {
+    0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--streak-ring-color, var(--teal)) 55%, transparent); }
+    100% { box-shadow: 0 0 0 14px color-mix(in oklch, var(--streak-ring-color, var(--teal)) 0%, transparent); }
+  }
+  .animate-streak-milestone-ring {
+    animation: streak-milestone-ring 900ms ease-out;
+  }
+
+  /* A continuous, subtle flicker on the flame glyph itself — reads as a
+     small live fire rather than a static icon. Colored via
+     --streak-flame-color (set inline to the current tier's accent), layered
+     on top of the tier's static glow rather than encoding intensity twice. */
+  @keyframes streak-fire-flicker {
+    0%, 100% {
+      filter: drop-shadow(0 0 2px color-mix(in oklch, var(--streak-flame-color, currentColor) 80%, transparent))
+              drop-shadow(0 0 5px color-mix(in oklch, var(--streak-flame-color, currentColor) 55%, transparent))
+              drop-shadow(0 0 9px color-mix(in oklch, var(--streak-flame-color, currentColor) 30%, transparent));
+      transform: scale(1) rotate(0deg);
+    }
+    30% {
+      filter: drop-shadow(0 0 3px color-mix(in oklch, var(--streak-flame-color, currentColor) 100%, transparent))
+              drop-shadow(0 0 8px color-mix(in oklch, var(--streak-flame-color, currentColor) 70%, transparent))
+              drop-shadow(0 0 13px color-mix(in oklch, var(--streak-flame-color, currentColor) 45%, transparent));
+      transform: scale(1.1) rotate(-2deg);
+    }
+    55% {
+      filter: drop-shadow(0 0 1.5px color-mix(in oklch, var(--streak-flame-color, currentColor) 65%, transparent))
+              drop-shadow(0 0 4px color-mix(in oklch, var(--streak-flame-color, currentColor) 40%, transparent))
+              drop-shadow(0 0 7px color-mix(in oklch, var(--streak-flame-color, currentColor) 20%, transparent));
+      transform: scale(0.95) rotate(1deg);
+    }
+    80% {
+      filter: drop-shadow(0 0 3.5px color-mix(in oklch, var(--streak-flame-color, currentColor) 100%, transparent))
+              drop-shadow(0 0 9px color-mix(in oklch, var(--streak-flame-color, currentColor) 75%, transparent))
+              drop-shadow(0 0 14px color-mix(in oklch, var(--streak-flame-color, currentColor) 50%, transparent));
+      transform: scale(1.08) rotate(-1deg);
+    }
+  }
+  .animate-streak-fire {
+    animation: streak-fire-flicker 1.6s ease-in-out infinite;
+    transform-origin: 50% 85%;
   }
 }

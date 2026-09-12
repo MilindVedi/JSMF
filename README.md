@@ -18,6 +18,8 @@ JSMF/
 
 The project is currently in the **mock UI / product discovery stage**: [`web/`](./web) is a frontend-only Next.js prototype using static, mocked sample data. There is no real backend, database, authentication, or payment integration yet — see [`docs/02-v1-scope.md`](./docs/02-v1-scope.md) for the precise distinction between this prototype stage and the real V1 release, and [`docs/06-roadmap.md`](./docs/06-roadmap.md) for the stages that follow.
 
+This stage runs as a build → deploy (Vercel) → share for feedback → iterate loop — see Roadmap Stage 1 and [`docs/diagrams/mock-ui-feedback-loop.puml`](./docs/diagrams/mock-ui-feedback-loop.puml) — until the mock UI is signed off, at which point work moves on to finalizing V1 and then the real backend.
+
 ## Getting started (web app)
 
 ```bash

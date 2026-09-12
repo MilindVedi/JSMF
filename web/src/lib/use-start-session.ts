@@ -20,7 +20,11 @@ export function useStartSession() {
 
   return function startSession(params: StartSessionParams) {
     if (params.questionIds.length === 0) return;
-    const id = createSession(params);
+    // Captured at call time (an event handler), not at render, so it's
+    // always the page the user was actually on when they started the session.
+    const sourceHref =
+      typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined;
+    const id = createSession({ ...params, sourceHref });
     router.push(`/practice/${id}?i=${params.startIndex ?? 0}`);
   };
 }

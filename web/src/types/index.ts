@@ -84,6 +84,21 @@ export interface BookmarkEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Collections — user-curated named groups of questions (e.g. "High-Yield
+// Pharmacology"), distinct from bookmarks: a bookmark is "save this one
+// question for later," a collection is a themed set meant to be practised
+// and filtered by as a group.
+// ---------------------------------------------------------------------------
+
+export interface Collection {
+  id: string;
+  name: string;
+  description?: string;
+  questionIds: string[];
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Practice sessions / attempts
 // ---------------------------------------------------------------------------
 
@@ -94,6 +109,7 @@ export interface SessionFilters {
   years?: number[];
   subjectIds?: string[];
   topicIds?: string[];
+  collectionIds?: string[];
 }
 
 export interface SessionConfig {
@@ -122,6 +138,8 @@ export interface TestSession {
   attempts: Record<string, Attempt>;
   startedAt: string;
   completedAt?: string;
+  /** Page the session was launched from, so "Save & exit" returns there instead of always the dashboard. */
+  sourceHref?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +219,26 @@ export interface OverallStatistics {
   accuracyTrend: { date: string; accuracy: number; cumulativeAccuracy: number }[];
   wrongQuestionCount: number;
   bookmarkCount: number;
+}
+
+/**
+ * What the streak UI consumes — deliberately shaped so a real backend can
+ * fill every field directly (current/best streak, today's progress against
+ * the daily target, when it was last completed, and whether that completion
+ * has already been celebrated) without the UI changing at all. Nothing that
+ * renders the streak should reach past this shape into raw session data.
+ */
+export interface StreakState {
+  currentStreak: number;
+  bestStreak: number;
+  todayProgress: number;
+  dailyTarget: number;
+  /** YYYY-MM-DD the streak was last extended, or null if never. */
+  lastCompletedDate: string | null;
+  /** Whether today's completion has already played its celebration. */
+  celebratedToday: boolean;
+  isMilestone: boolean;
+  nextMilestone: number | null;
 }
 
 export interface SessionSummary {

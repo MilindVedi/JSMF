@@ -5,7 +5,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 export type QuestionStatusFilter = "all" | "unattempted" | "incorrect" | "bookmarked";
 
 const OPTIONS: { value: QuestionStatusFilter; label: string }[] = [
-  { value: "all", label: "All" },
+  { value: "all", label: "All Questions" },
   { value: "unattempted", label: "Unattempted" },
   { value: "incorrect", label: "Incorrect" },
   { value: "bookmarked", label: "Bookmarked" },

@@ -44,6 +44,13 @@ export default function SubscriptionPage() {
             plan={plan}
             isCurrent={plan.id === profile.currentPlanId}
             onSelect={() => handleSelect(plan.id, plan.name)}
+            // Downgrading isn't actually enforced anywhere in this mock (no
+            // page restricts content by entitlement yet), so switching to a
+            // lower tier would silently do nothing except relabel the
+            // banner — disabled here rather than let the mock lie about it.
+            disabledReason={
+              plan.id !== "all-access-pro" ? "Not selectable in this preview" : undefined
+            }
           />
         ))}
       </div>
