@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Flame } from "lucide-react";
+import { Flame, StickyNote } from "lucide-react";
 import { useStreakAnimationStore } from "@/store/streak-animation-store";
 import { STREAK_LEVELS, getStreakLevel } from "@/lib/streak-config";
 import { cn } from "@/lib/utils";
@@ -95,7 +95,12 @@ export function TopbarStreakChip({ streakDays }: { streakDays: number }) {
         <span className="hidden sm:inline">-day streak</span>
       </div>
 
-      <AngadNote>
+      <AngadNote compact>
+        <div className="mb-2 border-b border-border pb-2">
+          <p className="flex items-center gap-1.5 font-semibold text-foreground">
+            <StickyNote className="size-3.5" /> Note for Angad
+          </p>
+        </div>
         <p className="text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
           Streak stages (mock preview)
         </p>
