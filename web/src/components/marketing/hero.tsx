@@ -47,7 +47,7 @@ export function Hero() {
           <div className="relative mx-auto w-full max-w-sm lg:mx-0 lg:ml-auto">
             <MiniQuestionMock className="absolute -left-4 top-6 hidden w-56 -rotate-6 opacity-90 sm:block lg:-left-10" />
 
-            <div className="relative ml-auto w-64 overflow-hidden rounded-2xl border border-border bg-card shadow-md sm:w-72">
+            <div className="relative mx-auto lg:ml-auto lg:mr-0 w-64 overflow-hidden rounded-2xl border border-border bg-card shadow-md sm:w-72">
               <DoctorPortraitPlaceholder />
               <div className="p-5 text-center">
                 <p className="font-heading text-base font-semibold text-foreground">
