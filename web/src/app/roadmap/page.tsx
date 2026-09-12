@@ -167,14 +167,21 @@ export default function RoadmapPage() {
                 <span>→</span>
                 <span className="rounded-md bg-muted px-2 py-1 font-medium text-foreground">Confidence / evidence rating</span>
                 <span>→</span>
-                <span className="rounded-md bg-muted px-2 py-1 font-medium text-foreground">Doctor review</span>
+                <span className="rounded-md bg-muted px-2 py-1 font-medium text-foreground">Simran review</span>
                 <span>→</span>
                 <span className="rounded-md bg-muted px-2 py-1 font-medium text-foreground">Independent question creation</span>
                 <span>→</span>
                 <span className="rounded-md bg-muted px-2 py-1 font-medium text-foreground">AI quality checks</span>
                 <span>→</span>
-                <span className="rounded-md bg-muted px-2 py-1 font-medium text-foreground">Doctor final approval</span>
+                <span className="rounded-md bg-muted px-2 py-1 font-medium text-foreground">Simran final approval</span>
               </div>
+            </div>
+
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm text-foreground/90">
+              <h4 className="font-heading text-xs font-semibold uppercase tracking-wider text-primary">Alternative Strategy</h4>
+              <p className="mt-1.5 text-muted-foreground text-xs">
+                Simran will manually review all questions from multiple sources, rewrite them to ensure maximum security, and rank their quality. While this approach is labor-intensive, it provides the highest level of assurance. Ultimately, we aim to combine the best of both worlds by amalgamating this manual review with AI assistance, though the exact hybrid model is yet to be finalized.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -189,7 +196,7 @@ export default function RoadmapPage() {
               </div>
 
               <div className="rounded-xl border border-border/80 bg-muted/20 p-4">
-                <h4 className="font-heading text-xs font-semibold uppercase tracking-wider text-foreground">Doctor Authority & Rubric</h4>
+                <h4 className="font-heading text-xs font-semibold uppercase tracking-wider text-foreground">Simran's Authority & Rubric</h4>
                 <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-muted-foreground">
                   <li>Medical review, final authoring/approval, and scientific accuracy</li>
                   <li>Clear Easy / Medium / Hard rubric calibration</li>
