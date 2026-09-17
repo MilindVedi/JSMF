@@ -1,0 +1,704 @@
+// JSMF PDF & digital content platform — database schema.
+//
+// This file implements docs/pdf-platform/03-data-model.md. Read that document
+// for the reasoning behind the non-obvious decisions here; the comments below
+// only restate a rule where getting it wrong would be silent and expensive.
+//
+// Two classes of constraint cannot be expressed in Prisma's schema language and
+// live in prisma/migrations/*/constraints.sql instead — partial unique indexes
+// and CHECK constraints. They are load-bearing, not decorative: see that file.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [citext]
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+model User {
+  id              String     @id @default(uuid(7)) @db.Uuid
+  // citext: "Milind@x.com" and "milind@x.com" must never become two accounts.
+  email           String     @unique @db.Citext
+  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz(6)
+  phone           String?    @unique @db.VarChar(20)
+  name            String     @db.VarChar(120)
+  avatarUrl       String?    @map("avatar_url")
+  // Nullable: an OAuth-only account has no password.
+  passwordHash    String?    @map("password_hash")
+  status          UserStatus @default(ACTIVE)
+  lastLoginAt     DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  roles              UserRole[]
+  refreshTokens      RefreshToken[]
+  authoredProducts   Product[]             @relation("ProductAuthor")
+  createdProducts    Product[]             @relation("ProductCreatedBy")
+  updatedProducts    Product[]             @relation("ProductUpdatedBy")
+  uploadedAssets     ProductAsset[]
+  orders             Order[]
+  entitlements       Entitlement[]
+  grantedRoles       UserRole[]            @relation("RoleGrantedBy")
+  initiatedRefunds   Refund[]
+  accessEvents       ContentAccessEvent[]
+  auditLogs          AuditLog[]
+  publisherProfile   PublisherProfile?
+  couponRedemptions  CouponRedemption[]
+
+  @@map("users")
+}
+
+/// Roles are a table rather than a column on User because one person is
+/// realistically both ADMIN and EDUCATOR, which a single enum column cannot
+/// express without a migration the first time it happens.
+model Role {
+  id          String     @id @default(uuid(7)) @db.Uuid
+  key         String     @unique @db.VarChar(40) // ADMIN | EDUCATOR | STUDENT
+  name        String     @db.VarChar(80)
+  description String?
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  users UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId      String   @map("user_id") @db.Uuid
+  roleId      String   @map("role_id") @db.Uuid
+  grantedAt   DateTime @default(now()) @map("granted_at") @db.Timestamptz(6)
+  grantedById String?  @map("granted_by") @db.Uuid
+
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("RoleGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  // The raw token is never stored — only a SHA-256 hash of it.
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  userAgent String?   @map("user_agent")
+  ip        String?   @db.Inet
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue
+// ---------------------------------------------------------------------------
+
+/// V1 only ever writes PDF. The other values exist so that adding video,
+/// course, and bundle products later is a new row rather than a new table —
+/// which is what keeps orders, payments, entitlements and the library code
+/// completely unchanged when they arrive.
+enum ProductType {
+  PDF
+  VIDEO
+  COURSE
+  BUNDLE
+}
+
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED // reversible
+  ARCHIVED // the soft delete
+}
+
+/// Explicit rather than inferred from `price == 0`, so that "this is free" is a
+/// stated intent and a zero-priced PAID product is a constraint violation
+/// instead of a silent giveaway.
+enum AccessType {
+  FREE
+  PAID
+}
+
+model Product {
+  id                   String        @id @default(uuid(7)) @db.Uuid
+  type                 ProductType
+  /// The public URL (/p/{slug}). Effectively immutable once published: this
+  /// link lives permanently in YouTube descriptions, so changing it must be a
+  /// deliberate act with a redirect, never a side effect of editing a title.
+  slug                 String        @unique @db.VarChar(160)
+  title                String        @db.VarChar(200)
+  subtitle             String?       @db.VarChar(300)
+  description          String?
+  /// A plain URL because covers live in the PUBLIC bucket. Deliberately not a
+  /// relation to ProductAsset — that table is for private, entitlement-gated
+  /// files, and mixing the two would force a signed-URL round trip just to
+  /// render a listing page.
+  coverImageUrl        String?       @map("cover_image_url")
+  status               ProductStatus @default(DRAFT)
+  accessType           AccessType    @map("access_type")
+  priceAmountMinor     BigInt        @default(0) @map("price_amount_minor")
+  compareAtAmountMinor BigInt?       @map("compare_at_amount_minor")
+  currency             String        @default("INR") @db.Char(3)
+  authorUserId         String?       @map("author_user_id") @db.Uuid
+  language             String        @default("en") @db.VarChar(10)
+  /// Escape hatch for type-specific fields (a video's duration). Never used for
+  /// anything filtered or queried — those become taxonomy terms or real columns.
+  metadata             Json          @default("{}")
+  publishedAt          DateTime?     @map("published_at") @db.Timestamptz(6)
+  createdById          String?       @map("created_by") @db.Uuid
+  updatedById          String?       @map("updated_by") @db.Uuid
+  createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  author    User? @relation("ProductAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  createdBy User? @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("ProductUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  assets         ProductAsset[]
+  links          ProductLink[]
+  taxonomyTerms  ProductTaxonomyTerm[]
+  orderItems     OrderItem[]
+  entitlements   Entitlement[]        @relation("EntitlementProduct")
+  grantedVia     Entitlement[]        @relation("EntitlementSourceProduct")
+  accessEvents   ContentAccessEvent[]
+  bundleItems    ProductBundleItem[]  @relation("BundleParent")
+  inBundles      ProductBundleItem[]  @relation("BundleChild")
+
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([type])
+  @@index([authorUserId])
+  @@map("products")
+}
+
+enum AssetKind {
+  PRIMARY_FILE
+  SAMPLE_PREVIEW
+  ATTACHMENT
+}
+
+/// An enum rather than an assumption, so moving to S3 is a value not a migration.
+enum StorageProvider {
+  GCS
+  LOCAL // local-disk adapter used for development before GCS credentials exist
+  S3
+}
+
+/// Versioned on purpose. The doctor will find a typo and re-upload; a new row
+/// (version 2, isCurrent true) means buyers automatically get the corrected
+/// file, the previous file is retained for audit, and no download link breaks.
+/// Overwriting the object in place would destroy the only copy of what people
+/// actually paid for.
+model ProductAsset {
+  id               String          @id @default(uuid(7)) @db.Uuid
+  productId        String          @map("product_id") @db.Uuid
+  kind             AssetKind
+  storageProvider  StorageProvider @default(GCS) @map("storage_provider")
+  bucket           String          @db.VarChar(255)
+  objectKey        String          @map("object_key")
+  originalFilename String?         @map("original_filename") @db.VarChar(255)
+  mimeType         String?         @map("mime_type") @db.VarChar(120)
+  sizeBytes        BigInt?         @map("size_bytes")
+  /// Detects a corrupted upload, and an accidental re-upload of an identical file.
+  checksumSha256   String?         @map("checksum_sha256") @db.VarChar(64)
+  pageCount        Int?            @map("page_count")
+  version          Int             @default(1)
+  isCurrent        Boolean         @default(true) @map("is_current")
+  uploadedById     String?         @map("uploaded_by") @db.Uuid
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product      Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  uploadedBy   User?                @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  accessEvents ContentAccessEvent[]
+
+  @@index([productId, kind, isCurrent])
+  @@map("product_assets")
+}
+
+enum LinkKind {
+  YOUTUBE
+  INSTAGRAM
+  TELEGRAM
+  WEBSITE
+  OTHER
+}
+
+/// A table rather than a `youtube_url` column on Product, so that "also link
+/// the Instagram reel" is data entry rather than a migration.
+model ProductLink {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  kind      LinkKind
+  url       String
+  label     String?  @db.VarChar(160)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+  @@map("product_links")
+}
+
+// ---------------------------------------------------------------------------
+// Taxonomy — the extensibility commitment.
+//
+// Subject and topic are NOT columns on Product. Adding a new category kind
+// ("Difficulty", "Year", "Language") later is an INSERT into taxonomies plus
+// its terms: no migration, no deploy, no code change, because the admin form
+// and the storefront filters are both rendered from these tables rather than
+// from hardcoded fields.
+// ---------------------------------------------------------------------------
+
+model Taxonomy {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  key            String   @unique @db.VarChar(60) // subject | topic | exam | tag ...
+  name           String   @db.VarChar(120)
+  description    String?
+  /// Whether terms may nest (topics under subjects).
+  isHierarchical Boolean  @default(false) @map("is_hierarchical")
+  /// Whether a product may carry more than one term of this kind.
+  isMultiSelect  Boolean  @default(true) @map("is_multi_select")
+  /// Drives field order in the admin form and filter order in the storefront.
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  terms TaxonomyTerm[]
+
+  @@map("taxonomies")
+}
+
+model TaxonomyTerm {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  taxonomyId   String   @map("taxonomy_id") @db.Uuid
+  /// Self-referencing, and deliberately allowed to cross taxonomies: a `topic`
+  /// term's parent is a `subject` term. That is what makes Subject → Topic
+  /// nesting work without a bespoke table.
+  parentTermId String?  @map("parent_term_id") @db.Uuid
+  slug         String   @db.VarChar(120)
+  name         String   @db.VarChar(160)
+  description  String?
+  sortOrder    Int      @default(0) @map("sort_order")
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  taxonomy Taxonomy       @relation(fields: [taxonomyId], references: [id], onDelete: Cascade)
+  parent   TaxonomyTerm?  @relation("TermHierarchy", fields: [parentTermId], references: [id], onDelete: SetNull)
+  children TaxonomyTerm[] @relation("TermHierarchy")
+  products ProductTaxonomyTerm[]
+
+  @@unique([taxonomyId, slug])
+  @@index([parentTermId])
+  @@index([taxonomyId, sortOrder])
+  @@map("taxonomy_terms")
+}
+
+model ProductTaxonomyTerm {
+  productId String   @map("product_id") @db.Uuid
+  termId    String   @map("term_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  term    TaxonomyTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+
+  @@id([productId, termId])
+  @@index([termId])
+  @@map("product_taxonomy_terms")
+}
+
+// ---------------------------------------------------------------------------
+// Orders & payments
+// ---------------------------------------------------------------------------
+
+enum OrderStatus {
+  CREATED
+  AWAITING_PAYMENT
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+model Order {
+  id                  String      @id @default(uuid(7)) @db.Uuid
+  /// Human-readable (JSMF-2026-000412). Support conversations need something a
+  /// person can read out loud; a UUID is not that.
+  orderNumber         String      @unique @map("order_number") @db.VarChar(30)
+  userId              String      @map("user_id") @db.Uuid
+  status              OrderStatus @default(CREATED)
+  subtotalAmountMinor BigInt      @map("subtotal_amount_minor")
+  /// Separated from day one so coupons do not require restructuring totals.
+  discountAmountMinor BigInt      @default(0) @map("discount_amount_minor")
+  /// GST will matter; retrofitting it across orders, invoices and refunds later
+  /// is far more expensive than carrying a zero now.
+  taxAmountMinor      BigInt      @default(0) @map("tax_amount_minor")
+  totalAmountMinor    BigInt      @map("total_amount_minor")
+  currency            String      @default("INR") @db.Char(3)
+  /// Snapshots: a user changing their email must not rewrite the contact
+  /// details on a past invoice.
+  customerEmail       String      @map("customer_email") @db.VarChar(255)
+  customerPhone       String?     @map("customer_phone") @db.VarChar(20)
+  couponId            String?     @map("coupon_id") @db.Uuid
+  notes               Json        @default("{}")
+  createdAt           DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  paidAt              DateTime?   @map("paid_at") @db.Timestamptz(6)
+  cancelledAt         DateTime?   @map("cancelled_at") @db.Timestamptz(6)
+
+  user         User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  coupon       Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items        OrderItem[]
+  payments     Payment[]
+  refunds      Refund[]
+  entitlements Entitlement[]
+  redemption   CouponRedemption?
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("orders")
+}
+
+/// The snapshot columns are the point of this table: if the doctor renames the
+/// PDF or raises its price next month, every past invoice must still show what
+/// the customer actually bought and paid. Joining live to Product for an
+/// invoice would silently rewrite financial history.
+model OrderItem {
+  id                    String      @id @default(uuid(7)) @db.Uuid
+  orderId               String      @map("order_id") @db.Uuid
+  productId             String      @map("product_id") @db.Uuid
+  productTitleSnapshot  String      @map("product_title_snapshot") @db.VarChar(200)
+  productTypeSnapshot   ProductType @map("product_type_snapshot")
+  unitPriceAmountMinor  BigInt      @map("unit_price_amount_minor")
+  quantity              Int         @default(1)
+  totalAmountMinor      BigInt      @map("total_amount_minor")
+  createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// Restrict, never Cascade: a product that has been sold can never be hard
+  /// deleted. This is precisely why ARCHIVED exists as a status.
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, productId])
+  @@map("order_items")
+}
+
+enum PaymentProvider {
+  RAZORPAY
+  /// Development adapter: simulates the full authorize/capture/webhook cycle
+  /// so the payment flow can be built and tested before Razorpay keys exist.
+  STUB
+}
+
+enum PaymentStatus {
+  CREATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+/// Separate from Order because one order can have several payment attempts (a
+/// failed card, then UPI), because provider payloads are large and should not
+/// bloat the order row, and because a second provider later becomes a value in
+/// a column rather than a schema change.
+model Payment {
+  id                String          @id @default(uuid(7)) @db.Uuid
+  orderId           String          @map("order_id") @db.Uuid
+  provider          PaymentProvider
+  providerOrderId   String?         @map("provider_order_id") @db.VarChar(120)
+  /// Unique where present — the same provider payment can never be recorded
+  /// twice. In Postgres, NULLs do not conflict, so this is already the partial
+  /// uniqueness we want.
+  providerPaymentId String?         @unique @map("provider_payment_id") @db.VarChar(120)
+  providerSignature String?         @map("provider_signature")
+  status            PaymentStatus   @default(CREATED)
+  amountMinor       BigInt          @map("amount_minor")
+  currency          String          @default("INR") @db.Char(3)
+  method            String?         @db.VarChar(40) // upi | card | netbanking
+  errorCode         String?         @map("error_code") @db.VarChar(80)
+  errorDescription  String?         @map("error_description")
+  /// Kept verbatim: when a payment is disputed, the provider's own payload is
+  /// the evidence.
+  rawResponse       Json?           @map("raw_response")
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  capturedAt        DateTime?       @map("captured_at") @db.Timestamptz(6)
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  refunds Refund[]
+
+  @@index([orderId])
+  @@index([providerOrderId])
+  @@map("payments")
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+/// The idempotency guard, and not optional.
+///
+/// Razorpay retries webhooks on any non-2xx response and can deliver the same
+/// event more than once even on success. Without the unique provider event id
+/// recorded BEFORE processing, a retry grants a second entitlement or issues a
+/// second refund. Every webhook handler writes this row first and aborts on
+/// conflict.
+model PaymentWebhookEvent {
+  id              String             @id @default(uuid(7)) @db.Uuid
+  provider        PaymentProvider
+  providerEventId String             @unique @map("provider_event_id") @db.VarChar(160)
+  eventType       String             @map("event_type") @db.VarChar(80)
+  payload         Json
+  signatureValid  Boolean            @map("signature_valid")
+  status          WebhookEventStatus @default(RECEIVED)
+  processingError String?            @map("processing_error")
+  receivedAt      DateTime           @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt     DateTime?          @map("processed_at") @db.Timestamptz(6)
+
+  @@index([provider, eventType])
+  @@map("payment_webhook_events")
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+model Refund {
+  id               String       @id @default(uuid(7)) @db.Uuid
+  paymentId        String       @map("payment_id") @db.Uuid
+  orderId          String       @map("order_id") @db.Uuid
+  providerRefundId String?      @unique @map("provider_refund_id") @db.VarChar(120)
+  amountMinor      BigInt       @map("amount_minor")
+  status           RefundStatus @default(PENDING)
+  reason           String?
+  initiatedById    String?      @map("initiated_by") @db.Uuid
+  rawResponse      Json?        @map("raw_response")
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  processedAt      DateTime?    @map("processed_at") @db.Timestamptz(6)
+
+  payment     Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  order       Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  initiatedBy User?   @relation(fields: [initiatedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("refunds")
+}
+
+// ---------------------------------------------------------------------------
+// Access
+// ---------------------------------------------------------------------------
+
+enum EntitlementSource {
+  PURCHASE
+  FREE_CLAIM
+  ADMIN_GRANT
+  SUBSCRIPTION
+  BUNDLE
+}
+
+enum EntitlementStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+/// The heart of access control: every download check reads this table and only
+/// this table.
+///
+/// A separate table rather than deriving access from paid orders, because free
+/// claims, admin gifts, bundle contents, refund revocation and future
+/// subscriptions all grant or remove access without a one-to-one paid order
+/// behind them. One table that every path writes to means the download endpoint
+/// has exactly one question to ask.
+model Entitlement {
+  id              String            @id @default(uuid(7)) @db.Uuid
+  userId          String            @map("user_id") @db.Uuid
+  productId       String            @map("product_id") @db.Uuid
+  source          EntitlementSource
+  sourceOrderId   String?           @map("source_order_id") @db.Uuid
+  /// The bundle this was granted through, when source = BUNDLE.
+  sourceProductId String?           @map("source_product_id") @db.Uuid
+  status          EntitlementStatus @default(ACTIVE)
+  grantedAt       DateTime          @default(now()) @map("granted_at") @db.Timestamptz(6)
+  /// NULL = perpetual, which is all V1 grants. Present now so subscriptions and
+  /// rentals need no migration.
+  expiresAt       DateTime?         @map("expires_at") @db.Timestamptz(6)
+  revokedAt       DateTime?         @map("revoked_at") @db.Timestamptz(6)
+  revokedReason   String?           @map("revoked_reason")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product       Product  @relation("EntitlementProduct", fields: [productId], references: [id], onDelete: Restrict)
+  sourceOrder   Order?   @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
+  sourceProduct Product? @relation("EntitlementSourceProduct", fields: [sourceProductId], references: [id], onDelete: SetNull)
+
+  accessEvents ContentAccessEvent[]
+
+  // NOTE: the real guarantee is a PARTIAL unique index on (user_id, product_id)
+  // WHERE status = 'ACTIVE', declared in constraints.sql — Prisma cannot express
+  // it. It is what makes a double-submitted payment or duplicate webhook unable
+  // to produce two live grants, without relying on application code checking first.
+  @@index([userId, status])
+  @@index([productId])
+  @@map("entitlements")
+}
+
+/// Written on every signed-URL mint. This is what makes download management and
+/// engagement analytics possible later — and it has to be collected from day
+/// one, because the expensive part of an analytics feature is the history you
+/// did not record, not the chart.
+model ContentAccessEvent {
+  id                 String   @id @default(uuid(7)) @db.Uuid
+  /// Null for an anonymous free download.
+  userId             String?  @map("user_id") @db.Uuid
+  productId          String   @map("product_id") @db.Uuid
+  assetId            String   @map("asset_id") @db.Uuid
+  entitlementId      String?  @map("entitlement_id") @db.Uuid
+  signedUrlExpiresAt DateTime @map("signed_url_expires_at") @db.Timestamptz(6)
+  ip                 String?  @db.Inet
+  userAgent          String?  @map("user_agent")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  asset       ProductAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  entitlement Entitlement? @relation(fields: [entitlementId], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("content_access_events")
+}
+
+// ---------------------------------------------------------------------------
+// Designed, deliberately NOT built in V1.
+//
+// These tables exist in the schema so their arrival is additive rather than a
+// reshaping of everything above. No V1 code path writes to them.
+// ---------------------------------------------------------------------------
+
+enum CouponDiscountType {
+  PERCENT
+  FIXED
+}
+
+enum CouponStatus {
+  ACTIVE
+  DISABLED
+  EXPIRED
+}
+
+model Coupon {
+  id                  String             @id @default(uuid(7)) @db.Uuid
+  code                String             @unique @db.Citext
+  discountType        CouponDiscountType @map("discount_type")
+  discountValue       Int                @map("discount_value") // percent, or minor units when FIXED
+  maxRedemptions      Int?               @map("max_redemptions")
+  perUserLimit        Int?               @map("per_user_limit")
+  minOrderAmountMinor BigInt?            @map("min_order_amount_minor")
+  /// Product ids or taxonomy term ids this coupon is restricted to.
+  appliesTo           Json               @default("{}") @map("applies_to")
+  startsAt            DateTime?          @map("starts_at") @db.Timestamptz(6)
+  endsAt              DateTime?          @map("ends_at") @db.Timestamptz(6)
+  status              CouponStatus       @default(ACTIVE)
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  orders      Order[]
+  redemptions CouponRedemption[]
+
+  @@map("coupons")
+}
+
+model CouponRedemption {
+  id                  String   @id @default(uuid(7)) @db.Uuid
+  couponId            String   @map("coupon_id") @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  orderId             String   @unique @map("order_id") @db.Uuid
+  discountAmountMinor BigInt   @map("discount_amount_minor")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, orderId])
+  @@map("coupon_redemptions")
+}
+
+/// Buying the bundle grants one entitlement per child, with source = BUNDLE.
+model ProductBundleItem {
+  bundleProductId String @map("bundle_product_id") @db.Uuid
+  childProductId  String @map("child_product_id") @db.Uuid
+  sortOrder       Int    @default(0) @map("sort_order")
+
+  bundle Product @relation("BundleParent", fields: [bundleProductId], references: [id], onDelete: Cascade)
+  child  Product @relation("BundleChild", fields: [childProductId], references: [id], onDelete: Restrict)
+
+  @@id([bundleProductId, childProductId])
+  @@map("product_bundle_items")
+}
+
+/// For the multi-educator marketplace.
+model PublisherProfile {
+  userId              String   @id @map("user_id") @db.Uuid
+  displayName         String   @map("display_name") @db.VarChar(160)
+  slug                String   @unique @db.VarChar(160)
+  bio                 String?
+  avatarUrl           String?  @map("avatar_url")
+  payoutDetails       Json     @default("{}") @map("payout_details")
+  revenueSharePercent Int      @default(0) @map("revenue_share_percent")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("publisher_profiles")
+}
+
+/// Worth having as soon as more than one person has admin access to a system
+/// that handles money.
+model AuditLog {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  actorUserId  String?  @map("actor_user_id") @db.Uuid
+  action       String   @db.VarChar(80)
+  entityType   String   @map("entity_type") @db.VarChar(80)
+  entityId     String?  @map("entity_id") @db.VarChar(80)
+  before       Json?
+  after        Json?
+  ip           String?  @db.Inet
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}

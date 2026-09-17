@@ -50,6 +50,20 @@ Real hosting and infrastructure are stood up, following the scaling principles d
 Two categories of work sit outside this core sequence and are treated as separate, downstream workstreams layered on top of it once the web platform is solid:
 
 - **Android and iOS application development** using Flutter, as described in [Architecture](./03-architecture.md), which depends on the APIs defined in stage 5 but is not itself a blocking part of getting the web platform to production.
-- **Additional future medical education products** — courses, PDFs, notes, and anything else beyond the initial PYQ question bank described in [Product Vision](./01-product-vision.md) — which are deliberately not part of this roadmap's core sequence and are picked up only once the core web platform described above is stable and proven.
+- **Additional future medical education products** — courses, notes, and anything else beyond the initial PYQ question bank described in [Product Vision](./01-product-vision.md) — which are deliberately not part of this roadmap's core sequence.
+
+### Change of sequence: the PDF platform ships first
+
+This roadmap originally treated PDFs as a distant, post-PYQ product. That has changed deliberately: the **[JSMF PDF platform](./pdf-platform/README.md)** is now being built and released *before* the PYQ application, while the PYQ mock UI sits in its feedback loop at stage 1.
+
+The reasoning is that the PDF platform is a far smaller product that reaches real users — and real revenue — much sooner: a doctor uploads a PDF, links it from a YouTube description, and someone buys it. It does not depend on the question bank, the content pipeline, or any of stages 2–6 above.
+
+It does, however, front-load the parts of the core sequence that the PYQ application will later reuse rather than duplicate:
+
+- **Stage 4 (backend)** — the NestJS service and PostgreSQL database are created for the PDF platform, structured as the modular monolith [Architecture](./03-architecture.md) describes. The PYQ application later adds modules to it rather than starting one.
+- **Stage 7 (authentication)** — real accounts, sessions, and refresh tokens are built here, retiring the mock auth store for both products at once.
+- **Stage 8 (subscriptions/payments)** — Razorpay integration and the entitlements model are built here. The PYQ app's plan entitlements become another consumer of the same model rather than a second payment integration.
+
+So the PDF platform is not a detour from this roadmap — it is the first real slice of stages 4, 7, and 8, delivered against a smaller product where the stakes of getting them wrong are lower. Its own scope, architecture, and data model are documented separately in [`docs/pdf-platform/`](./pdf-platform/README.md).
 
 Product ideas that are deferred past V1 but worth keeping on record — rather than staged work needed to reach V1 — are tracked separately in [Future Scope](./07-future-scope.md).

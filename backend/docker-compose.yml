@@ -1,0 +1,40 @@
+# Local development dependencies only — not a production deployment.
+# Start with `npm run db:up`, stop with `npm run db:down`.
+#
+# Port 5433 rather than the default 5432 so this cannot collide with a
+# PostgreSQL already installed on the machine.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: jsmf-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jsmf
+      POSTGRES_PASSWORD: jsmf
+      POSTGRES_DB: jsmf
+    ports:
+      - "5433:5432"
+    volumes:
+      - jsmf_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jsmf -d jsmf"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Not used by V1 application code. Present because the architecture commits
+  # to Redis for caching and background jobs, and having it in the local stack
+  # from the start means adding the first queue is not also an infra change.
+  redis:
+    image: redis:7-alpine
+    container_name: jsmf-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - jsmf_redis_data:/data
+
+volumes:
+  jsmf_postgres_data:
+  jsmf_redis_data:
