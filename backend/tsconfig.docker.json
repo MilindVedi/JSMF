@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "watchOptions": {
+    // Docker Desktop's bind-mount file events (gRPC-FUSE / Hyper-V, and
+    // Windows in general) don't reliably reach a container's native
+    // filesystem watcher, so `tsc --watch`'s default (native OS events) can
+    // silently stop picking up host-side edits. Polling is slower but always
+    // works. Only used inside Docker — host development uses tsconfig.json's
+    // defaults, where native events are fine and polling would just waste CPU.
+    "watchFile": "fixedPollingInterval",
+    "watchDirectory": "fixedPollingInterval",
+    "fallbackPolling": "fixedInterval"
+  }
+}

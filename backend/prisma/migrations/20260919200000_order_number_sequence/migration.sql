@@ -1,0 +1,13 @@
+-- ---------------------------------------------------------------------------
+-- Human-readable order numbers (JSMF-2026-000412).
+--
+-- A sequence rather than SELECT max(order_number) + 1, because the latter is a
+-- race: two checkouts starting in the same instant read the same max and one of
+-- them then violates the UNIQUE constraint on order_number. A sequence hands
+-- out a distinct value per call with no locking and no retry loop.
+--
+-- Gaps are acceptable and expected (a rolled-back transaction consumes its
+-- number). The requirement is that the number is unique and readable aloud in a
+-- support conversation, not that it counts orders without holes.
+-- ---------------------------------------------------------------------------
+CREATE SEQUENCE IF NOT EXISTS "order_number_seq" START WITH 1 INCREMENT BY 1;

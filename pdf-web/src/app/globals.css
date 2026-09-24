@@ -1,0 +1,658 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --font-sans: var(--font-manrope);
+  --font-display: var(--font-sora);
+  --font-serif: var(--font-source-serif);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-heading: var(--font-sora);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-teal: var(--teal);
+  --color-teal-foreground: var(--teal-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Editorial brand surface — the deep violet band the quote section sits on,
+     plus the translucent scrim for badges laid over cover images.
+
+     `brand-deep` is a SURFACE and stays dark in both themes; `brand-ink` is
+     the headline TEXT role and inverts for dark mode. The Lovable file used
+     one token for both, which works only because its dark theme was never
+     finished — as one token, every heading renders dark-on-dark. */
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-on-deep: var(--brand-on-deep);
+  --color-brand-line: var(--brand-line);
+  --color-overlay: var(--overlay);
+  --color-overlay-foreground: var(--overlay-foreground);
+
+  --shadow-editorial: 0 18px 50px -28px color-mix(in oklab, var(--primary) 35%, transparent);
+
+
+  /* Semantic states for question solving — deliberately muted, not saturated
+     pure red/green, since these colors are seen hundreds of times per session. */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-error: var(--error);
+  --color-error-foreground: var(--error-foreground);
+  --color-flag: var(--flag);
+  --color-flag-foreground: var(--flag-foreground);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+}
+
+:root {
+  /* "Paper" background — warm off-white, not stark white. */
+  --background: oklch(0.985 0.006 295);
+  --foreground: oklch(0.22 0.035 294);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.035 294);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.035 294);
+
+  /* Deep ink-navy — trustworthy, academic, used sparingly. */
+  --primary: oklch(0.43 0.22 294);
+  --primary-foreground: oklch(0.99 0.005 295);
+
+  --secondary: oklch(0.95 0.025 295);
+  --secondary-foreground: oklch(0.32 0.12 294);
+
+  --muted: oklch(0.96 0.012 295);
+  --muted-foreground: oklch(0.5 0.035 292);
+
+  /* Soft mint — the brand accent surface: kicker pills, "Most Popular"
+     badges, credential chips, hover highlights. Restrained, not a CTA color. */
+  --accent: oklch(0.95 0.035 295);
+  --accent-foreground: oklch(0.32 0.12 294);
+
+  /* Solid teal — JSMF's identity color. Used for the specific, repeatable
+     spots that should be instantly recognizable: progress, active nav,
+     correct-answer indicators, bookmarks, primary-button hover. */
+  --teal: oklch(0.6240 0.1010 198);
+  --teal-foreground: oklch(0.9850 0.0040 85);
+
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.984 0.003 247.858);
+
+  --border: oklch(0.9 0.018 294);
+  --input: oklch(0.9 0.018 294);
+  --ring: oklch(0.56 0.2 294);
+
+  /* Statistics/chart categorical set derived from the core palette. */
+  --chart-1: oklch(0.2850 0.0650 258);
+  --chart-2: oklch(0.7000 0.1400 75);
+  --chart-3: oklch(0.6240 0.1010 198);
+  --chart-4: oklch(0.5500 0.1300 35);
+  --chart-5: oklch(0.5500 0.0500 258);
+
+  /* Streak-level accents (streak-config.ts) — one distinct color per tier,
+     warming from teal through blue to gold/bronze as the streak grows.
+     Independent of the accent-preset tokens above so the streak feature
+     always reads as its own progression regardless of the chosen palette. */
+  --streak-warming: oklch(0.7000 0.0700 198);
+  --streak-hot: oklch(0.6000 0.1100 208);
+  --streak-blazing: oklch(0.5600 0.1300 222);
+  --streak-legendary: oklch(0.6600 0.1500 75);
+  --streak-45: oklch(0.6200 0.1600 60);
+  --streak-60: oklch(0.5800 0.1500 45);
+  --streak-90: oklch(0.5400 0.1400 32);
+  --streak-120: oklch(0.5000 0.1300 20);
+
+  --sidebar: oklch(0.9700 0.0060 85);
+  --sidebar-foreground: oklch(0.2200 0.0180 260);
+  --sidebar-primary: oklch(0.2850 0.0650 258);
+  --sidebar-primary-foreground: oklch(0.9850 0.0040 85);
+  --sidebar-accent: oklch(0.9250 0.0090 85);
+  --sidebar-accent-foreground: oklch(0.2850 0.0650 258);
+  --sidebar-border: oklch(0.8850 0.0090 85);
+  --sidebar-ring: oklch(0.5200 0.0600 258);
+
+  /* Muted correct / incorrect / flagged states for the practice screen.
+     Correct answers use the brand teal (soft mint bg, teal indicator). */
+  --success: oklch(0.55 0.13 165);
+  --success-foreground: oklch(0.3800 0.0950 198);
+  --error: oklch(0.9250 0.0450 35);
+  --error-foreground: oklch(0.4400 0.1300 35);
+  --flag: oklch(0.9300 0.0350 90);
+  --flag-foreground: oklch(0.4200 0.0850 75);
+
+  --radius: 0.75rem;
+  --brand-deep: oklch(0.27 0.12 294);
+  --brand-ink: oklch(0.27 0.12 294);
+  --brand-on-deep: oklch(0.97 0.018 294);
+  --brand-line: oklch(0.75 0.13 294 / 35%);
+  --overlay: oklch(0.22 0.025 294 / 88%);
+  --overlay-foreground: oklch(1 0 0);
+}
+
+.dark {
+  --background: oklch(0.17 0.022 294);
+  --foreground: oklch(0.96 0.008 295);
+
+  --card: oklch(0.215 0.028 294);
+  --card-foreground: oklch(0.96 0.008 295);
+
+  --popover: oklch(0.215 0.028 294);
+  --popover-foreground: oklch(0.96 0.008 295);
+
+  --primary: oklch(0.72 0.16 294);
+  --primary-foreground: oklch(0.17 0.03 294);
+
+  --secondary: oklch(0.28 0.04 294);
+  --secondary-foreground: oklch(0.95 0.015 295);
+
+  --muted: oklch(0.27 0.03 294);
+  --muted-foreground: oklch(0.72 0.03 293);
+
+  --accent: oklch(0.3 0.055 294);
+  --accent-foreground: oklch(0.88 0.07 294);
+
+  --teal: oklch(0.7000 0.1050 198);
+  --teal-foreground: oklch(0.2000 0.0180 260);
+
+  --destructive: oklch(0.63 0.19 25);
+  --destructive-foreground: oklch(0.985 0.004 295);
+
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.66 0.15 294);
+
+  --chart-1: oklch(0.8000 0.0450 258);
+  --chart-2: oklch(0.7400 0.1350 75);
+  --chart-3: oklch(0.7000 0.1050 198);
+  --chart-4: oklch(0.6600 0.1350 35);
+  --chart-5: oklch(0.6800 0.0500 258);
+
+  --streak-warming: oklch(0.7600 0.0700 198);
+  --streak-hot: oklch(0.6800 0.1100 208);
+  --streak-blazing: oklch(0.6400 0.1300 222);
+  --streak-legendary: oklch(0.7400 0.1500 75);
+  --streak-45: oklch(0.7000 0.1600 60);
+  --streak-60: oklch(0.6600 0.1500 45);
+  --streak-90: oklch(0.6200 0.1400 32);
+  --streak-120: oklch(0.5800 0.1300 20);
+
+  --sidebar: oklch(0.1800 0.0180 260);
+  --sidebar-foreground: oklch(0.9500 0.0080 85);
+  --sidebar-primary: oklch(0.8000 0.0450 258);
+  --sidebar-primary-foreground: oklch(0.2000 0.0180 260);
+  --sidebar-accent: oklch(0.2700 0.0200 258);
+  --sidebar-accent-foreground: oklch(0.9500 0.0080 85);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.6200 0.0550 258);
+
+  --success: oklch(0.7 0.13 165);
+  --success-foreground: oklch(0.8200 0.0850 190);
+  --error: oklch(0.3300 0.0850 30);
+  --error-foreground: oklch(0.8200 0.0750 30);
+  --flag: oklch(0.3300 0.0550 90);
+  --flag-foreground: oklch(0.8400 0.0700 90);
+  --brand-deep: oklch(0.235 0.055 294);
+  --brand-ink: oklch(0.95 0.02 294);
+  --brand-on-deep: oklch(0.96 0.015 294);
+  --brand-line: oklch(0.72 0.13 294 / 40%);
+  --overlay: oklch(0.15 0.02 294 / 90%);
+  --overlay-foreground: oklch(1 0 0);
+}
+
+/* ---------------------------------------------------------------------
+   Accent-color presets, switchable at runtime via the theme picker
+   (components/dev/theme-palette-picker.tsx). Only the brand-accent
+   tokens vary between presets — navy, off-white, and every other token
+   stay fixed, so this is purely an "which accent color?" comparison
+   tool, not a full re-theme.
+   --------------------------------------------------------------------- */
+
+
+
+
+
+/* ---------------------------------------------------------------------
+   Primary/ink-color presets — the "main text + button background" color
+   family (headings, body text, primary buttons, active sidebar item,
+   focus ring). Separate from the accent presets above: this is "what
+   shade is the brand ink?", not "what is the highlight color?".
+   --------------------------------------------------------------------- */
+
+[data-primary="navy"] {
+  --primary: oklch(0.2850 0.0650 258);
+  --primary-foreground: oklch(0.9850 0.0040 85);
+  --foreground: oklch(0.2200 0.0180 260);
+  --secondary-foreground: oklch(0.2850 0.0650 258);
+  --sidebar-primary: oklch(0.2850 0.0650 258);
+  --sidebar-primary-foreground: oklch(0.9850 0.0040 85);
+  --sidebar-foreground: oklch(0.2200 0.0180 260);
+  --ring: oklch(0.5200 0.0600 258);
+  --sidebar-ring: oklch(0.5200 0.0600 258);
+  --chart-1: oklch(0.2850 0.0650 258);
+}
+.dark[data-primary="navy"] {
+  --primary: oklch(0.8000 0.0450 258);
+  --primary-foreground: oklch(0.2000 0.0180 260);
+  --foreground: oklch(0.9500 0.0080 85);
+  --secondary-foreground: oklch(0.9500 0.0080 85);
+  --sidebar-primary: oklch(0.8000 0.0450 258);
+  --sidebar-primary-foreground: oklch(0.2000 0.0180 260);
+  --sidebar-foreground: oklch(0.9500 0.0080 85);
+  --ring: oklch(0.6200 0.0550 258);
+  --sidebar-ring: oklch(0.6200 0.0550 258);
+  --chart-1: oklch(0.8000 0.0450 258);
+}
+
+[data-primary="charcoal"] {
+  --primary: oklch(0.2600 0.0080 260);
+  --primary-foreground: oklch(0.9850 0.0040 85);
+  --foreground: oklch(0.2000 0.0040 260);
+  --secondary-foreground: oklch(0.2600 0.0080 260);
+  --sidebar-primary: oklch(0.2600 0.0080 260);
+  --sidebar-primary-foreground: oklch(0.9850 0.0040 85);
+  --sidebar-foreground: oklch(0.2000 0.0040 260);
+  --ring: oklch(0.5000 0.0080 260);
+  --sidebar-ring: oklch(0.5000 0.0080 260);
+  --chart-1: oklch(0.2600 0.0080 260);
+}
+.dark[data-primary="charcoal"] {
+  --primary: oklch(0.8200 0.0060 260);
+  --primary-foreground: oklch(0.1800 0.0040 260);
+  --foreground: oklch(0.9500 0.0040 85);
+  --secondary-foreground: oklch(0.9500 0.0040 85);
+  --sidebar-primary: oklch(0.8200 0.0060 260);
+  --sidebar-primary-foreground: oklch(0.1800 0.0040 260);
+  --sidebar-foreground: oklch(0.9500 0.0040 85);
+  --ring: oklch(0.6200 0.0080 260);
+  --sidebar-ring: oklch(0.6200 0.0080 260);
+  --chart-1: oklch(0.8200 0.0060 260);
+}
+
+[data-primary="slate"] {
+  --primary: oklch(0.4200 0.0950 250);
+  --primary-foreground: oklch(0.9850 0.0040 85);
+  --foreground: oklch(0.3200 0.0550 252);
+  --secondary-foreground: oklch(0.4200 0.0950 250);
+  --sidebar-primary: oklch(0.4200 0.0950 250);
+  --sidebar-primary-foreground: oklch(0.9850 0.0040 85);
+  --sidebar-foreground: oklch(0.3200 0.0550 252);
+  --ring: oklch(0.5500 0.0850 250);
+  --sidebar-ring: oklch(0.5500 0.0850 250);
+  --chart-1: oklch(0.4200 0.0950 250);
+}
+.dark[data-primary="slate"] {
+  --primary: oklch(0.7500 0.0850 248);
+  --primary-foreground: oklch(0.2000 0.0180 260);
+  --foreground: oklch(0.9500 0.0080 85);
+  --secondary-foreground: oklch(0.9500 0.0080 85);
+  --sidebar-primary: oklch(0.7500 0.0850 248);
+  --sidebar-primary-foreground: oklch(0.2000 0.0180 260);
+  --sidebar-foreground: oklch(0.9500 0.0080 85);
+  --ring: oklch(0.6400 0.0800 248);
+  --sidebar-ring: oklch(0.6400 0.0800 248);
+  --chart-1: oklch(0.7500 0.0850 248);
+}
+
+[data-primary="indigo"] {
+  --primary: oklch(0.3400 0.1250 288);
+  --primary-foreground: oklch(0.9850 0.0040 85);
+  --foreground: oklch(0.2600 0.0700 285);
+  --secondary-foreground: oklch(0.3400 0.1250 288);
+  --sidebar-primary: oklch(0.3400 0.1250 288);
+  --sidebar-primary-foreground: oklch(0.9850 0.0040 85);
+  --sidebar-foreground: oklch(0.2600 0.0700 285);
+  --ring: oklch(0.5600 0.1100 286);
+  --sidebar-ring: oklch(0.5600 0.1100 286);
+  --chart-1: oklch(0.3400 0.1250 288);
+}
+.dark[data-primary="indigo"] {
+  --primary: oklch(0.7600 0.1050 286);
+  --primary-foreground: oklch(0.2000 0.0180 260);
+  --foreground: oklch(0.9500 0.0080 85);
+  --secondary-foreground: oklch(0.9500 0.0080 85);
+  --sidebar-primary: oklch(0.7600 0.1050 286);
+  --sidebar-primary-foreground: oklch(0.2000 0.0180 260);
+  --sidebar-foreground: oklch(0.9500 0.0080 85);
+  --ring: oklch(0.6400 0.0950 286);
+  --sidebar-ring: oklch(0.6400 0.0950 286);
+  --chart-1: oklch(0.7600 0.1050 286);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans scroll-smooth;
+  }
+  /* Tailwind v4's preflight no longer gives buttons a pointer cursor, so
+     without this every <button> in the app — question rows, options, tabs —
+     shows a default arrow and reads as unclickable. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  label:has([role="checkbox"], input[type="checkbox"], input[type="radio"]) {
+    cursor: pointer;
+  }
+}
+
+@layer utilities {
+  /* Reading surface — used for question stems, options, explanations,
+     and long-form marketing copy. Larger, serif, generous line-height. */
+  .prose-reading {
+    font-family: var(--font-serif);
+    font-size: 1.0625rem;
+    line-height: 1.7;
+  }
+
+  /* Streak feature — a slow breathing glow for higher streak tiers (idle,
+     not tied to any user action), a quick landing pulse when the completed
+     badge merges into the topbar indicator, and a milestone ring expansion
+     for the small set of "important" streak days. All restrained: short
+     duration, low amplitude, no color cycling or bounce. */
+  @keyframes streak-idle-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.72; }
+  }
+  .animate-streak-idle-pulse {
+    animation: streak-idle-pulse 2.6s ease-in-out infinite;
+  }
+
+  @keyframes streak-landed-pulse {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.18); }
+    100% { transform: scale(1); }
+  }
+  .animate-streak-landed-pulse {
+    animation: streak-landed-pulse 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes streak-milestone-ring {
+    0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--streak-ring-color, var(--teal)) 55%, transparent); }
+    100% { box-shadow: 0 0 0 14px color-mix(in oklch, var(--streak-ring-color, var(--teal)) 0%, transparent); }
+  }
+  .animate-streak-milestone-ring {
+    animation: streak-milestone-ring 900ms ease-out;
+  }
+
+  /* A continuous, subtle flicker on the flame glyph itself — reads as a
+     small live fire rather than a static icon. Colored via
+     --streak-flame-color (set inline to the current tier's accent), layered
+     on top of the tier's static glow rather than encoding intensity twice. */
+  @keyframes streak-fire-flicker {
+    0%, 100% {
+      filter: drop-shadow(0 0 2px color-mix(in oklch, var(--streak-flame-color, currentColor) 80%, transparent))
+              drop-shadow(0 0 5px color-mix(in oklch, var(--streak-flame-color, currentColor) 55%, transparent))
+              drop-shadow(0 0 9px color-mix(in oklch, var(--streak-flame-color, currentColor) 30%, transparent));
+      transform: scale(1) rotate(0deg);
+    }
+    30% {
+      filter: drop-shadow(0 0 3px color-mix(in oklch, var(--streak-flame-color, currentColor) 100%, transparent))
+              drop-shadow(0 0 8px color-mix(in oklch, var(--streak-flame-color, currentColor) 70%, transparent))
+              drop-shadow(0 0 13px color-mix(in oklch, var(--streak-flame-color, currentColor) 45%, transparent));
+      transform: scale(1.1) rotate(-2deg);
+    }
+    55% {
+      filter: drop-shadow(0 0 1.5px color-mix(in oklch, var(--streak-flame-color, currentColor) 65%, transparent))
+              drop-shadow(0 0 4px color-mix(in oklch, var(--streak-flame-color, currentColor) 40%, transparent))
+              drop-shadow(0 0 7px color-mix(in oklch, var(--streak-flame-color, currentColor) 20%, transparent));
+      transform: scale(0.95) rotate(1deg);
+    }
+    80% {
+      filter: drop-shadow(0 0 3.5px color-mix(in oklch, var(--streak-flame-color, currentColor) 100%, transparent))
+              drop-shadow(0 0 9px color-mix(in oklch, var(--streak-flame-color, currentColor) 75%, transparent))
+              drop-shadow(0 0 14px color-mix(in oklch, var(--streak-flame-color, currentColor) 50%, transparent));
+      transform: scale(1.08) rotate(-1deg);
+    }
+  }
+  .animate-streak-fire {
+    animation: streak-fire-flicker 1.6s ease-in-out infinite;
+    transform-origin: 50% 85%;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Storefront design system.
+
+   Ported from the Lovable reference. These are presentation-only primitives
+   used by the public storefront (`src/app/(store)`); the admin panel keeps the
+   denser component styles it was built around and does not use them.
+   --------------------------------------------------------------------------- */
+
+@utility nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.5rem 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: 160ms ease;
+  &:hover {
+    background: var(--accent);
+    color: var(--foreground);
+  }
+}
+
+@utility nav-link-active {
+  background: var(--accent);
+  color: var(--primary);
+}
+
+@utility eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--accent);
+  padding: 0.4rem 0.75rem;
+  color: var(--primary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@utility credential-chip {
+  border-radius: 999px;
+  background: var(--accent);
+  padding: 0.35rem 0.55rem;
+  color: var(--primary);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+/* The floating card that overlaps the portrait's lower-right corner. It is
+   absolutely positioned against the portrait wrapper, so that wrapper needs
+   `relative` and room to bleed. */
+@utility doctor-credential {
+  position: absolute;
+  right: -1rem;
+  bottom: -1.5rem;
+  width: min(19rem, 88%);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-editorial);
+}
+
+@utility doctor-placeholder {
+  position: relative;
+  display: grid;
+  aspect-ratio: 4 / 5;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  background: linear-gradient(145deg, var(--accent), var(--muted));
+  color: var(--muted-foreground);
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 8%;
+    border: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
+    border-radius: 50%;
+  }
+  & p {
+    position: absolute;
+    bottom: 1.25rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+}
+
+@utility doctor-monogram {
+  position: relative;
+  display: grid;
+  width: 7rem;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--primary);
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-editorial);
+}
+
+@utility field-label {
+  display: grid;
+  gap: 0.5rem;
+  color: var(--foreground);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+@utility field {
+  width: 100%;
+  border: 1px solid var(--input);
+  border-radius: 0.75rem;
+  background: var(--background);
+  padding: 0.75rem 1rem;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 400;
+  outline: none;
+  transition: 160ms ease;
+  &::placeholder {
+    color: var(--muted-foreground);
+  }
+  &:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 12%, transparent);
+  }
+  /* The label wrapping this input is bold; without resetting it the typed
+     value inherits 700 and every field reads as if it were pre-filled. */
+  &:is(input) {
+    font-weight: 400;
+  }
+}
+
+@utility filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--background);
+  padding: 0.5rem 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition: 160ms ease;
+  &:hover {
+    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+    color: var(--primary);
+  }
+  & span {
+    opacity: 0.55;
+  }
+}
+
+@utility filter-chip-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+@utility auth-stage {
+  margin-inline: auto;
+  display: grid;
+  min-height: calc(100vh - 145px);
+  max-width: 80rem;
+  align-items: center;
+  gap: 4rem;
+  padding: 3rem 1.25rem;
+  @media (min-width: 768px) {
+    grid-template-columns: 1fr 28rem;
+    padding-inline: 2rem;
+  }
+}
+
+@utility auth-aside {
+  display: none;
+  @media (min-width: 768px) {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+}
+
+@utility auth-card {
+  width: 100%;
+  max-width: 28rem;
+  justify-self: center;
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--card);
+  padding: 2rem;
+  box-shadow: var(--shadow-editorial);
+}

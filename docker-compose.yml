@@ -1,0 +1,93 @@
+# Full-stack Docker setup: database, cache, API, and the PDF platform
+# frontend, all in containers. This is separate from `backend/docker-compose.yml`
+# (which starts only Postgres + Redis for local `npm run start:dev` workflows) —
+# run one or the other, not both, since they'd otherwise fight over the same
+# host ports.
+#
+# Quick start:
+#   docker compose up -d --build
+#   cd backend && npm run db:seed   # first run only — seed uses `tsx`, a
+#                                    # dev-only dependency not present in the
+#                                    # production image, so it runs from the
+#                                    # host against the same exposed :5433
+#
+# The API applies pending Prisma migrations itself on every start
+# (docker-entrypoint.sh), so there is no separate migrate step here.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: jsmf-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jsmf
+      POSTGRES_PASSWORD: jsmf
+      POSTGRES_DB: jsmf
+    ports:
+      - "5433:5432"
+    volumes:
+      - jsmf_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jsmf -d jsmf"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Off by default in the application (REDIS_ENABLED=false below) — see
+  # docs/03-architecture.md#redis-is-off-in-v1-on-purpose. Present so the flag
+  # can be flipped without any infra work.
+  redis:
+    image: redis:7-alpine
+    container_name: jsmf-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - jsmf_redis_data:/data
+
+  api:
+    build:
+      context: ./backend
+    container_name: jsmf-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Overrides for container networking — .env's values are for running the
+      # API directly on the host, where "localhost" means this machine. Inside
+      # this compose network it must mean the other containers by service name.
+      DATABASE_URL: postgresql://jsmf:jsmf@postgres:5432/jsmf?schema=public
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: http://localhost:3001,http://localhost:3000
+    volumes:
+      # STORAGE_DRIVER=local writes uploaded PDFs and covers under /app/.storage.
+      # Without a volume those live only in the container's writable layer, so
+      # `docker compose down` would delete every uploaded file while Postgres
+      # survives in its own volume — leaving product rows pointing at assets
+      # that no longer exist. This is a dev-only concern (production uses
+      # STORAGE_DRIVER=cloudinary), but a silently broken catalogue after a
+      # routine `down` is not an acceptable dev experience.
+      - jsmf_storage:/app/.storage
+
+  web:
+    build:
+      context: ./pdf-web
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000/api
+        NEXT_PUBLIC_MAX_UPLOAD_MB: "10"
+    container_name: jsmf-pdf-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3001:3001"
+
+volumes:
+  jsmf_storage:
+  jsmf_postgres_data:
+  jsmf_redis_data:

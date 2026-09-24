@@ -23,9 +23,14 @@ services:
       timeout: 5s
       retries: 10
 
-  # Not used by V1 application code. Present because the architecture commits
-  # to Redis for caching and background jobs, and having it in the local stack
-  # from the start means adding the first queue is not also an infra change.
+  # Off by default in the application: V1 sets REDIS_ENABLED=false and keeps
+  # rate-limit counters in process memory, because Redis is a paid service in
+  # production and nothing in V1 needs it.
+  #
+  # This container stays here so that flipping REDIS_ENABLED=true locally works
+  # immediately with no infra work. It costs nothing while the app ignores it;
+  # if you would rather not have it running at all, comment this service out —
+  # the application does not connect to it unless REDIS_ENABLED=true.
   redis:
     image: redis:7-alpine
     container_name: jsmf-redis

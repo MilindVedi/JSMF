@@ -17,12 +17,13 @@ This `docs/` folder is the single source of truth for what is being built, why, 
 | [07 — Future Scope](./07-future-scope.md) | A running backlog of product ideas deliberately deferred past V1 — e.g. making question difficulty (Easy/Medium/Hard) a real, actionable feature rather than just a data field. |
 | [Diagrams](./diagrams/) | PlantUML flowcharts of the roadmap and the mock-UI feedback loop, kept in sync with the prose in [06 — Roadmap](./06-roadmap.md) — useful for a quick visual read rather than the full write-up. |
 | [PDF Platform](./pdf-platform/) | The JSMF PDF & digital-content storefront — a **separate product** from the PYQ question bank, shipping before it, and the first part of JSMF with a real backend, payments, and accounts. Has its own scope, architecture, and data model. |
+| [Identity](./identity/) | The centralized login, account, and role system shared by **every** JSMF application — not a feature of any one product. Has its own architecture and data model. |
 
 ## How this documentation is split
 
 JSMF is becoming more than one product, so these documents fall into three groups:
 
-- **Overall product / platform-wide** — [01 — Product Vision](./01-product-vision.md), [03 — Architecture](./03-architecture.md), [06 — Roadmap](./06-roadmap.md), [07 — Future Scope](./07-future-scope.md). These apply to every JSMF product.
+- **Overall product / platform-wide** — [01 — Product Vision](./01-product-vision.md), [03 — Architecture](./03-architecture.md), [06 — Roadmap](./06-roadmap.md), [07 — Future Scope](./07-future-scope.md), and [`identity/`](./identity/) (the login and account system every product uses). These apply to every JSMF product.
 - **The PYQ question-bank application** — [02 — V1 Scope](./02-v1-scope.md), [04 — Content Pipeline](./04-content-pipeline.md), [05 — UI/UX Plan](./05-ui-ux-plan.md). These describe that product specifically.
 - **The PDF platform** — everything in [`pdf-platform/`](./pdf-platform/).
 

@@ -1,0 +1,19 @@
+# Dev-mode image: installs dependencies and generates the Prisma client, then
+# hands off to `nest start --watch`. The actual source is bind-mounted at
+# runtime (see ../docker-compose.dev.yml) — this image never bakes in a
+# snapshot of it, which is the entire difference from Dockerfile.
+FROM node:20-alpine
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY prisma ./prisma
+RUN npx prisma generate
+
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+
+EXPOSE 4000
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["npm", "run", "start:dev"]

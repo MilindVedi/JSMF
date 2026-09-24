@@ -30,34 +30,40 @@ enum UserStatus {
 }
 
 model User {
-  id              String     @id @default(uuid(7)) @db.Uuid
+  id                    String           @id @default(uuid(7)) @db.Uuid
   // citext: "Milind@x.com" and "milind@x.com" must never become two accounts.
-  email           String     @unique @db.Citext
-  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz(6)
-  phone           String?    @unique @db.VarChar(20)
-  name            String     @db.VarChar(120)
-  avatarUrl       String?    @map("avatar_url")
+  email                 String           @unique @db.Citext
+  emailVerifiedAt       DateTime?        @map("email_verified_at") @db.Timestamptz(6)
+  phone                 String?          @unique @db.VarChar(20)
+  name                  String           @db.VarChar(120)
+  // No avatarUrl column: an avatar is a file we host, addressed the same way
+  // as every other stored file (provider + object key), never a raw URL —
+  // both null together when no avatar has been set.
+  avatarStorageProvider StorageProvider? @map("avatar_storage_provider")
+  avatarObjectKey       String?          @map("avatar_object_key")
   // Nullable: an OAuth-only account has no password.
-  passwordHash    String?    @map("password_hash")
-  status          UserStatus @default(ACTIVE)
-  lastLoginAt     DateTime?  @map("last_login_at") @db.Timestamptz(6)
-  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  passwordHash          String?          @map("password_hash")
+  status                UserStatus       @default(ACTIVE)
+  lastLoginAt           DateTime?        @map("last_login_at") @db.Timestamptz(6)
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  roles              UserRole[]
-  refreshTokens      RefreshToken[]
-  authoredProducts   Product[]             @relation("ProductAuthor")
-  createdProducts    Product[]             @relation("ProductCreatedBy")
-  updatedProducts    Product[]             @relation("ProductUpdatedBy")
-  uploadedAssets     ProductAsset[]
-  orders             Order[]
-  entitlements       Entitlement[]
-  grantedRoles       UserRole[]            @relation("RoleGrantedBy")
-  initiatedRefunds   Refund[]
-  accessEvents       ContentAccessEvent[]
-  auditLogs          AuditLog[]
-  publisherProfile   PublisherProfile?
-  couponRedemptions  CouponRedemption[]
+  roles             UserRole[]
+  refreshTokens     RefreshToken[]
+  oauthAccounts     OAuthAccount[]
+  verificationCodes VerificationCode[]
+  authoredProducts  Product[]            @relation("ProductAuthor")
+  createdProducts   Product[]            @relation("ProductCreatedBy")
+  updatedProducts   Product[]            @relation("ProductUpdatedBy")
+  uploadedAssets    ProductAsset[]
+  orders            Order[]
+  entitlements      Entitlement[]
+  grantedRoles      UserRole[]           @relation("RoleGrantedBy")
+  initiatedRefunds  Refund[]
+  accessEvents      ContentAccessEvent[]
+  auditLogs         AuditLog[]
+  publisherProfile  PublisherProfile?
+  couponRedemptions CouponRedemption[]
 
   @@map("users")
 }
@@ -66,11 +72,11 @@ model User {
 /// realistically both ADMIN and EDUCATOR, which a single enum column cannot
 /// express without a migration the first time it happens.
 model Role {
-  id          String     @id @default(uuid(7)) @db.Uuid
-  key         String     @unique @db.VarChar(40) // ADMIN | EDUCATOR | STUDENT
-  name        String     @db.VarChar(80)
+  id          String   @id @default(uuid(7)) @db.Uuid
+  key         String   @unique @db.VarChar(40) // ADMIN | EDUCATOR | STUDENT
+  name        String   @db.VarChar(80)
   description String?
-  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   users UserRole[]
 
@@ -91,21 +97,140 @@ model UserRole {
   @@map("user_roles")
 }
 
+/// Why a refresh token is revoked. The distinction is not bookkeeping: telling
+/// a normal rotation apart from a replay is exactly what reuse detection needs.
+enum RefreshTokenRevokedReason {
+  /// Normal rotation — this token was exchanged for a successor.
+  ROTATED
+  /// An already-rotated token was presented again. Treated as a stolen-token
+  /// replay: the whole family is revoked.
+  REUSE_DETECTED
+  LOGOUT
+  ADMIN_REVOKED
+}
+
+/// Refresh tokens rotate: each one is single-use, and exchanging it issues a
+/// successor in the same family.
+///
+/// The family is what makes theft survivable. If a token that has already been
+/// rotated is presented again, either the legitimate client or an attacker is
+/// replaying it — and there is no way to tell which. So every token in that
+/// family is revoked at once and the user re-authenticates. Without a family
+/// id, a stolen token could be refreshed indefinitely alongside the real
+/// session and nothing would ever notice.
 model RefreshToken {
-  id        String    @id @default(uuid(7)) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
+  id            String                     @id @default(uuid(7)) @db.Uuid
+  userId        String                     @map("user_id") @db.Uuid
+  /// Every token descended from a single login shares this id.
+  tokenFamilyId String                     @map("token_family_id") @db.Uuid
   // The raw token is never stored — only a SHA-256 hash of it.
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
-  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
-  userAgent String?   @map("user_agent")
-  ip        String?   @db.Inet
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  tokenHash     String                     @unique @map("token_hash")
+  expiresAt     DateTime                   @map("expires_at") @db.Timestamptz(6)
+  revokedAt     DateTime?                  @map("revoked_at") @db.Timestamptz(6)
+  revokedReason RefreshTokenRevokedReason? @map("revoked_reason")
+  userAgent     String?                    @map("user_agent")
+  ip            String?                    @db.Inet
+  createdAt     DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+  @@index([tokenFamilyId])
   @@map("refresh_tokens")
+}
+
+/// Identity providers a JSMF account can be linked to. Platform-wide: the same
+/// linkage serves the PDF platform, the PYQ application, and the mobile apps,
+/// because identity is one service for all of them.
+enum OAuthProvider {
+  GOOGLE
+}
+
+/// A third-party identity linked to a JSMF account.
+///
+/// Separate from `users` rather than a `google_id` column, because an account
+/// may eventually link several providers (Google today, Apple on iOS later),
+/// and because the provider's own user id — not the email — is the stable
+/// identifier. Emails change hands; `sub` does not.
+model OAuthAccount {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  provider       OAuthProvider
+  /// The provider's immutable subject identifier (Google's `sub`). Never the
+  /// email: Google explicitly documents that email is not a stable key.
+  providerUserId String        @map("provider_user_id") @db.VarChar(255)
+  /// The email the provider asserted at link time, kept for support and audit
+  /// only — authorisation never reads it.
+  email          String?       @db.VarChar(255)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastLoginAt    DateTime?     @map("last_login_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One JSMF account per provider identity, and one link per provider per
+  /// user — so a Google account cannot be attached to two JSMF accounts.
+  @@unique([provider, providerUserId])
+  @@unique([userId, provider])
+  @@map("oauth_accounts")
+}
+
+/// What a one-time code authorises. Kept as an enum on one table rather than a
+/// table per flow, because every one of these is the same mechanism — a hashed,
+/// expiring, single-use, attempt-limited secret bound to a subject — and only
+/// the meaning differs.
+enum VerificationPurpose {
+  /// An existing admin invited this address to become an admin. Emailed as a
+  /// link directly to the invitee — there is no public way to request one, so
+  /// creating an admin is always an authenticated act by an existing admin.
+  ADMIN_INVITATION
+  /// Hands a completed OAuth session back to a browser without putting tokens
+  /// in a URL. Never emailed.
+  OAUTH_HANDOFF
+  /// Not used yet — present so adding these flows needs no migration.
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+/// A single-use, expiring secret.
+///
+/// Generic on purpose: admin-registration OTPs, OAuth handoff codes, and the
+/// email-verification and password-reset flows that will follow are the same
+/// primitive with different meanings. Building four near-identical tables would
+/// mean four places to get expiry, attempt-limiting and single-use wrong.
+///
+/// The code itself is never stored — only a hash, verified through the same
+/// `PasswordHasher` port used for passwords. A six-digit code has a small
+/// keyspace, so `maxAttempts` and `expiresAt`, not hash strength, are what make
+/// guessing impractical.
+model VerificationCode {
+  id          String              @id @default(uuid(7)) @db.Uuid
+  purpose     VerificationPurpose
+  /// What the code is about: the applicant's email for ADMIN_REGISTRATION, the
+  /// user id for OAUTH_HANDOFF. Not a foreign key — for admin registration the
+  /// subject is an email that has no account yet, which is the entire point.
+  subject     String              @db.VarChar(255)
+  codeHash    String              @map("code_hash")
+  /// Where the code was actually delivered. Null when it is not emailed at all
+  /// (OAUTH_HANDOFF). For ADMIN_REGISTRATION this is the approver's address,
+  /// deliberately different from `subject` — that difference is the gate.
+  sentToEmail String?             @map("sent_to_email") @db.VarChar(255)
+  /// Set once the code resolves to a real account (OAUTH_HANDOFF).
+  userId      String?             @map("user_id") @db.Uuid
+  /// Flow-specific payload — e.g. the applicant's requested name, or which
+  /// front-end the OAuth flow must return to.
+  metadata    Json                @default("{}")
+  expiresAt   DateTime            @map("expires_at") @db.Timestamptz(6)
+  consumedAt  DateTime?           @map("consumed_at") @db.Timestamptz(6)
+  attempts    Int                 @default(0)
+  maxAttempts Int                 @default(5) @map("max_attempts")
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdIp   String?             @map("created_ip") @db.Inet
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Finding the live code for a subject is the only lookup this table serves.
+  @@index([purpose, subject, expiresAt])
+  @@map("verification_codes")
 }
 
 // ---------------------------------------------------------------------------
@@ -148,11 +273,15 @@ model Product {
   title                String        @db.VarChar(200)
   subtitle             String?       @db.VarChar(300)
   description          String?
-  /// A plain URL because covers live in the PUBLIC bucket. Deliberately not a
-  /// relation to ProductAsset — that table is for private, entitlement-gated
-  /// files, and mixing the two would force a signed-URL round trip just to
-  /// render a listing page.
-  coverImageUrl        String?       @map("cover_image_url")
+  // No coverImageUrl column, deliberately: the cover is a ProductAsset row
+  // (kind = COVER_IMAGE) like every other file, not a URL. However the image
+  // arrives — an admin upload, or a URL an admin pastes in — the service layer
+  // always re-uploads it to our own storage first and records the resulting
+  // object_key; a third-party URL is never written to a row directly. This
+  // also means the cover gets the same free win the primary PDF already has:
+  // replacing it is a new asset version, not a destructive overwrite, and
+  // "exactly one current cover" falls out of the existing
+  // product_assets_current_unique partial index with no extra constraint.
   status               ProductStatus @default(DRAFT)
   accessType           AccessType    @map("access_type")
   priceAmountMinor     BigInt        @default(0) @map("price_amount_minor")
@@ -174,15 +303,15 @@ model Product {
   createdBy User? @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy User? @relation("ProductUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  assets         ProductAsset[]
-  links          ProductLink[]
-  taxonomyTerms  ProductTaxonomyTerm[]
-  orderItems     OrderItem[]
-  entitlements   Entitlement[]        @relation("EntitlementProduct")
-  grantedVia     Entitlement[]        @relation("EntitlementSourceProduct")
-  accessEvents   ContentAccessEvent[]
-  bundleItems    ProductBundleItem[]  @relation("BundleParent")
-  inBundles      ProductBundleItem[]  @relation("BundleChild")
+  assets        ProductAsset[]
+  links         ProductLink[]
+  taxonomyTerms ProductTaxonomyTerm[]
+  orderItems    OrderItem[]
+  entitlements  Entitlement[]         @relation("EntitlementProduct")
+  grantedVia    Entitlement[]         @relation("EntitlementSourceProduct")
+  accessEvents  ContentAccessEvent[]
+  bundleItems   ProductBundleItem[]   @relation("BundleParent")
+  inBundles     ProductBundleItem[]   @relation("BundleChild")
 
   @@index([status, publishedAt(sort: Desc)])
   @@index([type])
@@ -194,12 +323,25 @@ enum AssetKind {
   PRIMARY_FILE
   SAMPLE_PREVIEW
   ATTACHMENT
+  /// The product's cover/thumbnail. The one PUBLIC kind in this table — every
+  /// other kind is private and entitlement-gated. Which bucket a row's `kind`
+  /// belongs in (public vs. private) is a service-layer rule, not a column:
+  /// see docs/pdf-platform/02-architecture.md, "Storage and download access".
+  COVER_IMAGE
 }
 
-/// An enum rather than an assumption, so moving to S3 is a value not a migration.
+/// Where an asset physically lives. Recorded per asset rather than assumed
+/// globally, so that migrating providers is a background job that moves files
+/// and updates rows — not a flag day where every existing asset's location
+/// becomes a lie the moment the config changes.
 enum StorageProvider {
+  /// The intended production provider.
+  CLOUDINARY
+  /// Local-disk adapter, used in development before any cloud account exists.
+  LOCAL
+  /// Supported destinations, no adapter written yet — listed because the point
+  /// of this column is that the provider is data, not a structural assumption.
   GCS
-  LOCAL // local-disk adapter used for development before GCS credentials exist
   S3
 }
 
@@ -208,11 +350,19 @@ enum StorageProvider {
 /// file, the previous file is retained for audit, and no download link breaks.
 /// Overwriting the object in place would destroy the only copy of what people
 /// actually paid for.
+///
+/// product: Restrict, not Cascade — the product this asset belongs to is
+/// never supposed to be hard-deleted at all (the product only ever gets
+/// archived), so this is a backstop against a bug or a stray admin action
+/// doing it anyway, not a case the application is expected to hit.
 model ProductAsset {
   id               String          @id @default(uuid(7)) @db.Uuid
   productId        String          @map("product_id") @db.Uuid
   kind             AssetKind
-  storageProvider  StorageProvider @default(GCS) @map("storage_provider")
+  /// Deliberately no default: the writer always knows which provider it just
+  /// uploaded to, and a default would let a forgotten field silently record a
+  /// location the file is not actually at.
+  storageProvider  StorageProvider @map("storage_provider")
   bucket           String          @db.VarChar(255)
   objectKey        String          @map("object_key")
   originalFilename String?         @map("original_filename") @db.VarChar(255)
@@ -226,7 +376,7 @@ model ProductAsset {
   uploadedById     String?         @map("uploaded_by") @db.Uuid
   createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  product      Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product      Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
   uploadedBy   User?                @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   accessEvents ContentAccessEvent[]
 
@@ -244,16 +394,26 @@ enum LinkKind {
 
 /// A table rather than a `youtube_url` column on Product, so that "also link
 /// the Instagram reel" is data entry rather than a migration.
+///
+/// product: Restrict, for the same reason as ProductAsset — a Product is
+/// never supposed to be hard-deleted, so this only ever fires if something
+/// tries to anyway, and a curated link (the one in a YouTube description) is
+/// exactly the kind of thing that should never silently vanish.
 model ProductLink {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  productId String   @map("product_id") @db.Uuid
+  id        String    @id @default(uuid(7)) @db.Uuid
+  productId String    @map("product_id") @db.Uuid
   kind      LinkKind
   url       String
-  label     String?  @db.VarChar(160)
-  sortOrder Int      @default(0) @map("sort_order")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  label     String?   @db.VarChar(160)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Soft delete, like everything else customer-facing on this platform. A
+  /// link removed by mistake — or one an admin wants to temporarily hide
+  /// without losing the URL and label they typed — is recoverable rather than
+  /// gone.
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@index([productId, sortOrder])
   @@map("product_links")
@@ -288,39 +448,63 @@ model Taxonomy {
   @@map("taxonomies")
 }
 
+/// taxonomy: Restrict, not Cascade. A taxonomy KIND (e.g. "subject") is master
+/// data, and deleting one used to cascade-delete every term under it, each of
+/// which cascaded again into every product tag using that term — one delete
+/// statement on a single taxonomy row could have silently untagged the entire
+/// catalog. Restrict means a taxonomy kind must have its terms cleared out
+/// first, deliberately, one decision at a time.
 model TaxonomyTerm {
-  id           String   @id @default(uuid(7)) @db.Uuid
-  taxonomyId   String   @map("taxonomy_id") @db.Uuid
+  id           String    @id @default(uuid(7)) @db.Uuid
+  taxonomyId   String    @map("taxonomy_id") @db.Uuid
   /// Self-referencing, and deliberately allowed to cross taxonomies: a `topic`
   /// term's parent is a `subject` term. That is what makes Subject → Topic
   /// nesting work without a bespoke table.
-  parentTermId String?  @map("parent_term_id") @db.Uuid
-  slug         String   @db.VarChar(120)
-  name         String   @db.VarChar(160)
+  parentTermId String?   @map("parent_term_id") @db.Uuid
+  slug         String    @db.VarChar(120)
+  name         String    @db.VarChar(160)
   description  String?
-  sortOrder    Int      @default(0) @map("sort_order")
-  metadata     Json     @default("{}")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sortOrder    Int       @default(0) @map("sort_order")
+  metadata     Json      @default("{}")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// Soft delete. A term can still only be deleted while unused (see
+  /// ProductTaxonomyTerm/TaxonomyTerm's Restrict relations below) — this
+  /// column is what makes that deletion recoverable rather than destroying the
+  /// term's id, description and history outright.
+  ///
+  /// The (taxonomyId, slug) uniqueness this table needs is therefore a PARTIAL
+  /// unique index scoped to WHERE deleted_at IS NULL, declared in
+  /// constraints.sql — Prisma cannot express it — so that a slug freed up by a
+  /// soft delete can be reused, the same reasoning as
+  /// entitlements_user_product_active_unique.
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  taxonomy Taxonomy       @relation(fields: [taxonomyId], references: [id], onDelete: Cascade)
-  parent   TaxonomyTerm?  @relation("TermHierarchy", fields: [parentTermId], references: [id], onDelete: SetNull)
-  children TaxonomyTerm[] @relation("TermHierarchy")
+  taxonomy Taxonomy              @relation(fields: [taxonomyId], references: [id], onDelete: Restrict)
+  parent   TaxonomyTerm?         @relation("TermHierarchy", fields: [parentTermId], references: [id], onDelete: SetNull)
+  children TaxonomyTerm[]        @relation("TermHierarchy")
   products ProductTaxonomyTerm[]
 
-  @@unique([taxonomyId, slug])
   @@index([parentTermId])
   @@index([taxonomyId, sortOrder])
   @@map("taxonomy_terms")
 }
 
+/// term: Restrict, not Cascade. This is the sharper edge of the taxonomy risk
+/// above — deleting one term directly (e.g. "Pathology") is a far more
+/// plausible admin mistake than deleting a whole taxonomy kind, and nothing
+/// used to stop it from silently stripping that tag off every product that
+/// had it. Restrict means a term in use must be explicitly untagged first.
 model ProductTaxonomyTerm {
   productId String   @map("product_id") @db.Uuid
   termId    String   @map("term_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
+  // product stays Cascade: this only removes the PRODUCT's own tag rows when
+  // the product itself is gone, which is harmless — the risk being fixed here
+  // is specifically a TERM taking every product that uses it down with it.
   product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  term    TaxonomyTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+  term    TaxonomyTerm @relation(fields: [termId], references: [id], onDelete: Restrict)
 
   @@id([productId, termId])
   @@index([termId])
@@ -367,8 +551,8 @@ model Order {
   paidAt              DateTime?   @map("paid_at") @db.Timestamptz(6)
   cancelledAt         DateTime?   @map("cancelled_at") @db.Timestamptz(6)
 
-  user         User               @relation(fields: [userId], references: [id], onDelete: Restrict)
-  coupon       Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  coupon       Coupon?           @relation(fields: [couponId], references: [id], onDelete: SetNull)
   items        OrderItem[]
   payments     Payment[]
   refunds      Refund[]
@@ -385,17 +569,17 @@ model Order {
 /// the customer actually bought and paid. Joining live to Product for an
 /// invoice would silently rewrite financial history.
 model OrderItem {
-  id                    String      @id @default(uuid(7)) @db.Uuid
-  orderId               String      @map("order_id") @db.Uuid
-  productId             String      @map("product_id") @db.Uuid
-  productTitleSnapshot  String      @map("product_title_snapshot") @db.VarChar(200)
-  productTypeSnapshot   ProductType @map("product_type_snapshot")
-  unitPriceAmountMinor  BigInt      @map("unit_price_amount_minor")
-  quantity              Int         @default(1)
-  totalAmountMinor      BigInt      @map("total_amount_minor")
-  createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                   String      @id @default(uuid(7)) @db.Uuid
+  orderId              String      @map("order_id") @db.Uuid
+  productId            String      @map("product_id") @db.Uuid
+  productTitleSnapshot String      @map("product_title_snapshot") @db.VarChar(200)
+  productTypeSnapshot  ProductType @map("product_type_snapshot")
+  unitPriceAmountMinor BigInt      @map("unit_price_amount_minor")
+  quantity             Int         @default(1)
+  totalAmountMinor     BigInt      @map("total_amount_minor")
+  createdAt            DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   /// Restrict, never Cascade: a product that has been sold can never be hard
   /// deleted. This is precisely why ARCHIVED exists as a status.
   product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -575,22 +759,29 @@ model Entitlement {
 /// engagement analytics possible later — and it has to be collected from day
 /// one, because the expensive part of an analytics feature is the history you
 /// did not record, not the chart.
+///
+/// `product`/`asset` are SetNull, not Cascade, and deliberately nullable: this
+/// is an audit log, and an audit log that can be erased by deleting the thing
+/// it was auditing defeats its own purpose. A free product with no order and
+/// no entitlement behind it has nothing else stopping it from being deleted —
+/// SetNull is what keeps its download history intact even then; only the
+/// pointer to the now-gone product/asset is cleared, not the event itself.
 model ContentAccessEvent {
   id                 String   @id @default(uuid(7)) @db.Uuid
   /// Null for an anonymous free download.
   userId             String?  @map("user_id") @db.Uuid
-  productId          String   @map("product_id") @db.Uuid
-  assetId            String   @map("asset_id") @db.Uuid
+  productId          String?  @map("product_id") @db.Uuid
+  assetId            String?  @map("asset_id") @db.Uuid
   entitlementId      String?  @map("entitlement_id") @db.Uuid
   signedUrlExpiresAt DateTime @map("signed_url_expires_at") @db.Timestamptz(6)
   ip                 String?  @db.Inet
   userAgent          String?  @map("user_agent")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  product     Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  asset       ProductAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  entitlement Entitlement? @relation(fields: [entitlementId], references: [id], onDelete: SetNull)
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  product     Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  asset       ProductAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  entitlement Entitlement?  @relation(fields: [entitlementId], references: [id], onDelete: SetNull)
 
   @@index([productId, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
@@ -668,15 +859,16 @@ model ProductBundleItem {
 
 /// For the multi-educator marketplace.
 model PublisherProfile {
-  userId              String   @id @map("user_id") @db.Uuid
-  displayName         String   @map("display_name") @db.VarChar(160)
-  slug                String   @unique @db.VarChar(160)
-  bio                 String?
-  avatarUrl           String?  @map("avatar_url")
-  payoutDetails       Json     @default("{}") @map("payout_details")
-  revenueSharePercent Int      @default(0) @map("revenue_share_percent")
-  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  userId                String           @id @map("user_id") @db.Uuid
+  displayName           String           @map("display_name") @db.VarChar(160)
+  slug                  String           @unique @db.VarChar(160)
+  bio                   String?
+  avatarStorageProvider StorageProvider? @map("avatar_storage_provider")
+  avatarObjectKey       String?          @map("avatar_object_key")
+  payoutDetails         Json             @default("{}") @map("payout_details")
+  revenueSharePercent   Int              @default(0) @map("revenue_share_percent")
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -686,15 +878,15 @@ model PublisherProfile {
 /// Worth having as soon as more than one person has admin access to a system
 /// that handles money.
 model AuditLog {
-  id           String   @id @default(uuid(7)) @db.Uuid
-  actorUserId  String?  @map("actor_user_id") @db.Uuid
-  action       String   @db.VarChar(80)
-  entityType   String   @map("entity_type") @db.VarChar(80)
-  entityId     String?  @map("entity_id") @db.VarChar(80)
-  before       Json?
-  after        Json?
-  ip           String?  @db.Inet
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id          String   @id @default(uuid(7)) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String   @db.VarChar(80)
+  entityType  String   @map("entity_type") @db.VarChar(80)
+  entityId    String?  @map("entity_id") @db.VarChar(80)
+  before      Json?
+  after       Json?
+  ip          String?  @db.Inet
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
 

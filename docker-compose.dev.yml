@@ -1,0 +1,58 @@
+# Dev-mode override: bind-mounts source into the API and web containers and
+# runs their watch-mode dev servers, so an edit on the host is reflected
+# without rebuilding or restarting anything.
+#
+# Usage (in addition to the base file, not instead of it):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#
+# The `--build` matters the first time and after a `package.json` change —
+# after that, editing source under backend/src or pdf-web/src needs neither
+# `--build` nor a restart.
+#
+# node_modules is an anonymous volume, not bind-mounted, on both services.
+# Without that, the container's Linux-built native binaries (Prisma's query
+# engine, @node-rs/argon2) would be shadowed by whatever the host's
+# `node_modules` contains — which on Windows is either absent or built for the
+# wrong OS entirely, and the container would crash on startup.
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    environment:
+      NODE_ENV: development
+    # `nest start --watch` compiles with `tsc --watch`, not chokidar, so its
+    # file watching is controlled by tsconfig `watchOptions`, not
+    # CHOKIDAR_USEPOLLING. tsconfig.docker.json turns on polling, which is what
+    # actually makes edits on a Windows host reach this container.
+    command: ["npx", "nest", "start", "--watch", "--path", "tsconfig.docker.json"]
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+      - ./backend/tsconfig.json:/app/tsconfig.json
+      - ./backend/tsconfig.build.json:/app/tsconfig.build.json
+      - ./backend/tsconfig.docker.json:/app/tsconfig.docker.json
+      - ./backend/nest-cli.json:/app/nest-cli.json
+      - /app/node_modules
+
+  web:
+    build:
+      context: ./pdf-web
+      dockerfile: Dockerfile.dev
+    environment:
+      # Turbopack (this project's default dev bundler) watches via native
+      # filesystem events, which — like tsc's default watcher — don't reliably
+      # propagate from a Windows-host bind mount into the container. Turbopack
+      # has no polling fallback, so `--webpack` switches to the older bundler,
+      # which does respect WATCHPACK_POLLING.
+      WATCHPACK_POLLING: "true"
+    command: ["npx", "next", "dev", "-p", "3001", "--webpack"]
+    volumes:
+      - ./pdf-web/src:/app/src
+      - ./pdf-web/public:/app/public
+      - ./pdf-web/next.config.ts:/app/next.config.ts
+      - ./pdf-web/tsconfig.json:/app/tsconfig.json
+      - ./pdf-web/postcss.config.mjs:/app/postcss.config.mjs
+      - ./pdf-web/components.json:/app/components.json
+      - /app/node_modules
+      - /app/.next

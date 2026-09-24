@@ -1,5 +1,16 @@
 import { PrismaClient } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
+import { Algorithm, hash } from '@node-rs/argon2';
+
+// Must stay in step with ARGON2_OPTIONS in
+// src/modules/identity/infrastructure/argon2-password-hasher.ts — a seeded
+// admin hashed with different parameters still logs in fine (the app rehashes
+// opportunistically), but keeping them aligned avoids a pointless rehash.
+const ARGON2_OPTIONS = {
+  algorithm: Algorithm.Argon2id,
+  memoryCost: 19456,
+  timeCost: 2,
+  parallelism: 1,
+} as const;
 
 /**
  * Seeds the reference data the platform cannot function without: roles, the
@@ -71,12 +82,32 @@ async function seedRoles(): Promise<void> {
   console.log(`  roles: ${ROLES.length}`);
 }
 
+/**
+ * Creates a bootstrap admin **only when no admin account exists at all**.
+ *
+ * Admins are normally created through the approval-code flow (`/admin/signup`),
+ * which emails a single-use code to ADMIN_APPROVAL_EMAIL. That makes email
+ * delivery load-bearing for admin access, so this exists as the escape hatch:
+ * if SMTP is misconfigured on a fresh deployment there is still a way in.
+ *
+ * It disables itself the moment a real admin is registered, so the default
+ * credentials do not linger as a permanent shared password nobody rotates —
+ * which is precisely what the approval flow replaced.
+ */
 async function seedAdmin(): Promise<void> {
+  const adminRole = await prisma.role.findUniqueOrThrow({ where: { key: 'ADMIN' } });
+  const existingAdmins = await prisma.userRole.count({ where: { roleId: adminRole.id } });
+
+  if (existingAdmins > 0) {
+    console.log(`  admin: ${existingAdmins} already exist — bootstrap account not created`);
+    return;
+  }
+
   const email = process.env.SEED_ADMIN_EMAIL ?? 'admin@jsmf.local';
   const password = process.env.SEED_ADMIN_PASSWORD ?? 'ChangeMe123!';
   const name = process.env.SEED_ADMIN_NAME ?? 'JSMF Admin';
 
-  const passwordHash = await bcrypt.hash(password, 12);
+  const passwordHash = await hash(password, ARGON2_OPTIONS);
 
   const admin = await prisma.user.upsert({
     where: { email },
@@ -95,7 +126,8 @@ async function seedAdmin(): Promise<void> {
     });
   }
 
-  console.log(`  admin: ${email}`);
+  console.log(`  admin: ${email} (bootstrap — no other admin existed)`);
+  console.log(`         create a real admin at /admin/signup, then change this password`);
 }
 
 async function seedTaxonomy(
@@ -118,13 +150,27 @@ async function seedTaxonomy(
     },
   });
 
+  // Not a Prisma `upsert`: (taxonomyId, slug) is a PARTIAL unique index scoped
+  // to live rows (so a soft-deleted term's slug can be reused), and Prisma's
+  // upsert requires a plain unique key to target.
   let index = 0;
   for (const [slug, termName] of terms) {
-    await prisma.taxonomyTerm.upsert({
-      where: { taxonomyId_slug: { taxonomyId: taxonomy.id, slug } },
-      update: { name: termName, sortOrder: index },
-      create: { taxonomyId: taxonomy.id, slug, name: termName, sortOrder: index },
+    const existing = await prisma.taxonomyTerm.findFirst({
+      where: { taxonomyId: taxonomy.id, slug, deletedAt: null },
+      select: { id: true },
     });
+
+    if (existing) {
+      await prisma.taxonomyTerm.update({
+        where: { id: existing.id },
+        data: { name: termName, sortOrder: index },
+      });
+    } else {
+      await prisma.taxonomyTerm.create({
+        data: { taxonomyId: taxonomy.id, slug, name: termName, sortOrder: index },
+      });
+    }
+
     index += 1;
   }
 
