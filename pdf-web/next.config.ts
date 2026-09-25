@@ -8,7 +8,6 @@ const nextConfig: NextConfig = {
   async rewrites() {
     const rawBackendUrl =
       process.env.BACKEND_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
       "http://localhost:4000";
 
     // Ensure trailing slashes and trailing /api are cleanly stripped for the origin

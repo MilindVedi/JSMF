@@ -6,9 +6,7 @@
  * refresh, or the API's base URL.
  */
 
-const BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL ?? "/api"
-).replace(/\/+$/, "");
+const BASE_URL = "/api";
 
 const REFRESH_STORAGE_KEY = "jsmf.refreshToken";
 

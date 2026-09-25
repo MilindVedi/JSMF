@@ -1,9 +1,7 @@
 import { api } from "./client";
 import type { AuthSession } from "./types";
 
-const BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL ?? "/api"
-).replace(/\/+$/, "");
+const BASE_URL = "/api";
 
 export interface AdminSummary {
   id: string;
