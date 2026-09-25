@@ -286,15 +286,12 @@ gcloud run deploy jsmf-backend `
 
 ## Phase 6: Build & Deploy Frontend (`pdf-web` Next.js)
 
-The Next.js image requires your backend URL at build time so the browser knows where to send API requests.
+The Next.js app uses Middleware to dynamically proxy `/api/*` requests to the backend at **runtime**. This means you do **not** need to bake URLs into the image at build time.
 
 ### Step 6.1: Build & Push Frontend Image
-```powershell
-$BACKEND_URL = "https://jsmf-backend-67890.a.run.app/api"  # Use your actual backend URL + /api
 
+```powershell
 docker build `
-  --build-arg NEXT_PUBLIC_API_URL="$BACKEND_URL" `
-  --build-arg NEXT_PUBLIC_MAX_UPLOAD_MB=10 `
   -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/jsmf-repo/pdf-web:latest `
   ./pdf-web
 
@@ -311,8 +308,9 @@ docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/jsmf-repo/pdf-web:latest
    - **Region**: `asia-south1`
    - **Authentication**: *Allow unauthenticated invocations*
    - **Container port**: `3001`
-   - **Memory**: `256 MiB`
-   - **Min instances**: `0`, **Max instances**: `2`
+   - **Memory**: `512 MiB`
+   - **Min instances**: `0`, **Max instances**: `3`
+   - **Environment variables**: Add `BACKEND_API_URL` and set it to your Backend Cloud Run URL (e.g. `https://jsmf-backend-67890.a.run.app`).
 4. Click **CREATE**.
 
 #### ⚡ CLI:
@@ -324,9 +322,10 @@ gcloud run deploy jsmf-pdf-web `
   --allow-unauthenticated `
   --port=3001 `
   --min-instances=0 `
-  --max-instances=2 `
-  --memory=256Mi `
-  --cpu=1
+  --max-instances=3 `
+  --memory=512Mi `
+  --cpu=1 `
+  --set-env-vars="BACKEND_API_URL=https://jsmf-backend-67890.a.run.app"
 ```
 
 > 📌 **Copy your Frontend URL from the output!** (e.g. `https://jsmf-pdf-web-12345.a.run.app`)
@@ -362,7 +361,26 @@ gcloud run services update jsmf-backend `
 
 ---
 
-## Phase 8: Verification & Health Check
+## Phase 8: Seed the Production Database
+
+Your Cloud SQL or Neon database is currently completely empty! (The automated entrypoint only runs `prisma migrate deploy`, which creates tables but does not insert the seed admin account).
+
+You must seed the production database so you can log in.
+
+### 🖥️ How to Seed (Serverless/Neon Database):
+1. In your local `backend/.env` file, temporarily swap your `DATABASE_URL` to your production URL.
+2. Open your terminal in the `/backend` folder.
+3. Run the following command:
+```powershell
+npm run db:seed
+```
+4. Once it finishes successfully, immediately revert your `DATABASE_URL` in `.env` back to localhost.
+
+> 🎉 You can now log into your production admin dashboard using `admin@jsmf.local` / `ChangeMe123!`.
+
+---
+
+## Phase 9: Verification & Health Check
 
 1. Open your backend health endpoint in browser:
    `https://jsmf-backend-67890.a.run.app/api/health`
@@ -371,5 +389,5 @@ gcloud run services update jsmf-backend `
 3. Test actions:
    - Browse public documents & listings.
    - Test PDF upload (verifying Cloudinary storage).
-   - Test user registration and login (verifying RS256 JWT auth).
+   - Test admin login with your seeded credentials (`admin@jsmf.local`).
    - Test checkout with Razorpay test mode.
