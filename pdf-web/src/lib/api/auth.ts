@@ -2,7 +2,7 @@ import { api } from "./client";
 import type { AuthSession } from "./types";
 
 const BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api"
+  process.env.NEXT_PUBLIC_API_URL ?? "/api"
 ).replace(/\/+$/, "");
 
 export interface AdminSummary {
