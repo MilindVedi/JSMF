@@ -37,7 +37,7 @@ export interface SendMailResult {
   provider: MailProviderName;
 }
 
-export type MailProviderName = 'log' | 'smtp';
+export type MailProviderName = 'log' | 'smtp' | 'resend';
 
 export abstract class MailProvider {
   abstract readonly name: MailProviderName;

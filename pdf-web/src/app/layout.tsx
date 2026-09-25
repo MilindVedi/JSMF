@@ -52,9 +52,6 @@ export const metadata: Metadata = {
   },
   description:
     "PYQ compilations, notes and guides for NEET-PG, FMGE and INI-CET, from JSMF.",
-  // Not yet launched. Product pages become indexable once this is live — a
-  // /p/{slug} link is meant to be found, unlike the admin panel below it.
-  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

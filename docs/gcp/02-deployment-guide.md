@@ -23,7 +23,11 @@ This guide is designed for you to follow along and execute each step yourself. F
     │
 [Phase 7] Connect Frontend & Backend (CORS & Webhooks)
     │
-[Phase 8] Live Health Check & Verification
+[Phase 8] Seed the Production Database
+    │
+[Phase 9] Live Health Check & Verification
+    │
+[Phase 10] Custom Domain via Firebase Hosting (Optional)
 ```
 
 ---
@@ -427,3 +431,66 @@ npm run db:seed
    - Test PDF upload (verifying Cloudinary storage).
    - Test admin login with your seeded credentials (`admin@jsmf.local`).
    - Test checkout with Razorpay test mode.
+
+---
+
+## Phase 10: Custom Domain via Firebase Hosting (Optional)
+
+Because native Cloud Run custom domains are not available in all regions (like `asia-south1`), Google officially recommends using **Firebase Hosting** as a free, global CDN to reverse-proxy traffic to your Cloud Run frontend.
+
+### Step 10.1: Connect Firebase to GCP
+1. Go to [console.firebase.google.com](https://console.firebase.google.com).
+2. Click **Add Project** and select your existing GCP project (e.g., `jsmf-production`).
+3. Click Continue (you can disable Google Analytics).
+
+### Step 10.2: Add Domain to Firebase
+1. In the Firebase Console, go to **Hosting**.
+2. Click **Get Started** and skip through the setup wizard.
+3. On the dashboard, click **Add Custom Domain** and enter your domain (e.g., `app.jsmf.com`).
+4. Firebase will provide DNS records (TXT and/or A records). Add these to your DNS provider (e.g., GoDaddy). 
+
+### Step 10.3: Deploy the Proxy Rule
+Open a terminal in your project root and run the following:
+
+```powershell
+# 1. Install CLI
+npm install -g firebase-tools
+
+# 2. Login
+npx firebase-tools login
+
+# 3. Initialize Hosting
+npx firebase-tools init hosting
+# - Select your existing project
+# - Public directory: public
+# - Single-page app: No
+# - Automatic builds: No
+```
+
+Open the newly created `firebase.json` and replace it with:
+```json
+{
+  "hosting": {
+    "public": "public",
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "jsmf-pdf-web",
+          "region": "asia-south1"
+        }
+      }
+    ]
+  }
+}
+```
+
+Deploy the rule:
+```powershell
+npx firebase-tools deploy --only hosting
+```
+
+> ⚠️ **CRITICAL CLEANUP:** Now that your URL has changed from `.run.app` to your custom domain, you MUST go back and update:
+> 1. **Google OAuth:** Change Authorized Origins & Redirect URIs to your custom domain.
+> 2. **Razorpay:** Change the Webhook URL to your custom domain.
+> 3. **CORS:** Update `CORS_ORIGINS` in your Backend Cloud Run service to include your custom domain.

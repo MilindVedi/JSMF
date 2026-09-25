@@ -12,12 +12,11 @@ import {
 /**
  * SMTP delivery.
  *
- * SMTP rather than one vendor's HTTP API because it is the one protocol every
- * provider speaks: Gmail, Resend, Brevo, SES, Mailgun and Postmark are all a
- * credentials change away, with no second adapter to write. The cost is that a
- * few hosting platforms block outbound SMTP ports — if that turns up in
- * production, an HTTP adapter is a new class behind this same port and nothing
- * that sends mail changes.
+ * Not what production uses — see `ResendMailAdapter`, written when the
+ * outbound-SMTP-port blocking anticipated here turned up on Cloud Run. Kept
+ * because SMTP is the one protocol every provider speaks: Gmail, Brevo, SES,
+ * Mailgun and Postmark are all a credentials change away, with no third adapter
+ * to write, which makes this the fallback if Resend is ever unavailable.
  */
 @Injectable()
 export class SmtpMailAdapter extends MailProvider {

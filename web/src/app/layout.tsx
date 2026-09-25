@@ -36,10 +36,6 @@ export const metadata: Metadata = {
   title: "JSMF — Medical Exam Preparation",
   description:
     "Memory-based PYQ preparation for NEET-PG, FMGE, and INI-CET, covering all 19 MBBS subjects.",
-  // Pre-launch mock UI shared only via direct link for feedback — keep it out
-  // of search results until there's a real product to be found. Paired with
-  // robots.ts, since some crawlers honor this meta tag more reliably.
-  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

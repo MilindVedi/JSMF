@@ -99,14 +99,16 @@ const schema = z
     /// them, so flows that depend on email — admin invitations today, password
     /// reset and receipts later — work end to end before any mail account
     /// exists. Refused in production by the check below.
-    MAIL_DRIVER: z.enum(['log', 'smtp']).default('log'),
-    /// The envelope sender. Must be an address the SMTP account is allowed to
-    /// send as, or providers will reject or spam-folder the message.
+    MAIL_DRIVER: z.enum(['log', 'smtp', 'resend']).default('log'),
+    /// The envelope sender. Must be an address the mail account is allowed to
+    /// send as — for Resend, a domain verified in the dashboard — or providers
+    /// will reject or spam-folder the message.
     MAIL_FROM: z.string().default('JSMF <no-reply@jsmf.local>'),
     SMTP_HOST: z.string().optional(),
     SMTP_PORT: z.coerce.number().int().positive().default(587),
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
 
     /// Base URL of the admin front-end, used to build invitation links that are
     /// emailed to invitees. Not inferred from the request: an invitation link is
@@ -152,7 +154,7 @@ const schema = z
     RAZORPAY_KEY_ID: z.string().optional(),
     RAZORPAY_KEY_SECRET: z.string().optional(),
     RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
-    STUB_PAYMENT_SECRET: z.string().min(16),
+    STUB_PAYMENT_SECRET: z.string().min(16).optional(),
 
     /**
      * The sweep that catches payments the webhook never told us about. On by
@@ -193,6 +195,14 @@ const schema = z
           });
         }
       }
+    }
+
+    if (env.MAIL_DRIVER === 'resend' && !env.RESEND_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['RESEND_API_KEY'],
+        message: 'RESEND_API_KEY is required when MAIL_DRIVER=resend',
+      });
     }
 
     if (env.MAIL_DRIVER === 'smtp') {
@@ -258,6 +268,14 @@ const schema = z
           });
         }
       }
+    }
+
+    if (env.PAYMENT_DRIVER === 'stub' && !env.STUB_PAYMENT_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['STUB_PAYMENT_SECRET'],
+        message: 'STUB_PAYMENT_SECRET is required when PAYMENT_DRIVER=stub',
+      });
     }
 
     if (env.NODE_ENV === 'production') {

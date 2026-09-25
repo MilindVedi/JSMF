@@ -81,7 +81,7 @@ Codes are hashed through the same `PasswordHasher` port as passwords, never stor
 
 ## Email
 
-`backend/src/shared/mail/` — a `MailProvider` port with a `log` adapter (prints to the application log) and an `smtp` adapter. SMTP rather than one vendor's HTTP API because it is the one protocol Gmail, Resend, Brevo, SES, Mailgun and Postmark all speak, so switching provider is a credentials change with no second adapter to write. If a host turns out to block outbound SMTP ports, an HTTP adapter is a new class behind the same port.
+`backend/src/shared/mail/` — a `MailProvider` port with three adapters: `log` (prints to the application log), `smtp` (any provider that speaks SMTP), and `resend` (Resend's REST API), selected by `MAIL_DRIVER`. Production uses `resend`: Cloud Run blocks outbound SMTP ports, and an API that reports bounces per message beats an SMTP relay that answers `250 OK` and goes quiet. `smtp` is kept because it is the one protocol Gmail, Brevo, SES, Mailgun and Postmark all speak, so falling back to any of them is a credentials change. Neither adapter uses a vendor SDK — Resend is a single `POST`, called with `fetch`, for the reason the Razorpay adapter gives.
 
 It lives in `shared/` rather than inside identity because it is cross-cutting: invitations need it today, and password reset, receipts and refund notices need it next. `MAIL_DRIVER=log` is refused in production by env validation — an invitation link written to a log file is both a broken flow and a credential in plaintext logs.
 

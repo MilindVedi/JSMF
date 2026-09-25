@@ -15,13 +15,11 @@ This document outlines upcoming architectural enhancements and migration milesto
 
 ---
 
-## 2. Email Delivery Modernization (SendGrid / Transactional Mail API)
+## 2. Email Delivery
 
-- [ ] **Current State:** Using Gmail SMTP via app passwords (subject to daily sending limits ~500-2000 emails/day and potential delivery throttling).
-- [ ] **Next Step (SendGrid / Resend / Mailgun):**
-  - Migrate email driver from raw SMTP to a dedicated transactional email provider like **SendGrid** or **Resend**.
-  - Configure domain DNS authentication (**SPF, DKIM, DMARC**) on the custom domain (GoDaddy) to ensure 99%+ deliverability into inbox (preventing spam filters).
-  - Update NestJS mail module to support native SendGrid API / HTTP dispatch instead of SMTP socket connection latency.
+- [x] **Done — migrated from Gmail SMTP to Resend** (`MAIL_DRIVER=resend`). Gmail app passwords capped sending at ~500-2000/day with no bounce reporting, and Cloud Run blocks outbound SMTP ports, so an HTTPS API is the right transport here regardless of volume. Implemented as `ResendMailAdapter` behind the existing `MailProvider` port — the SMTP adapter remains available via `MAIL_DRIVER=smtp` for any provider that speaks SMTP.
+- [ ] **Remaining — domain authentication:** add the custom domain under https://resend.com/domains and complete the **SPF, DKIM and DMARC** DNS records at GoDaddy. Until this is done, `MAIL_FROM` must use a verified domain or Resend rejects the send. This is what actually gets mail into the inbox rather than spam.
+- [ ] **Later — volume:** Resend's free tier is 3,000 emails/month (100/day). Move to a paid tier when receipts plus password resets approach that.
 
 ---
 

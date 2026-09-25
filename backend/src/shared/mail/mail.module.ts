@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { AppConfig } from '../../config/config.module';
 import { MailProvider } from './domain/mail-provider.port';
 import { LogMailAdapter } from './infrastructure/log-mail.adapter';
+import { ResendMailAdapter } from './infrastructure/resend-mail.adapter';
 import { SmtpMailAdapter } from './infrastructure/smtp-mail.adapter';
 
 /**
@@ -22,8 +23,16 @@ import { SmtpMailAdapter } from './infrastructure/smtp-mail.adapter';
     LogMailAdapter,
     {
       provide: MailProvider,
-      useFactory: (config: AppConfig, log: LogMailAdapter): MailProvider =>
-        config.get('MAIL_DRIVER') === 'smtp' ? new SmtpMailAdapter(config) : log,
+      useFactory: (config: AppConfig, log: LogMailAdapter): MailProvider => {
+        switch (config.get('MAIL_DRIVER')) {
+          case 'resend':
+            return new ResendMailAdapter(config);
+          case 'smtp':
+            return new SmtpMailAdapter(config);
+          default:
+            return log;
+        }
+      },
       inject: [AppConfig, LogMailAdapter],
     },
   ],
