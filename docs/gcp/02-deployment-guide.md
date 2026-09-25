@@ -332,10 +332,36 @@ gcloud run deploy jsmf-pdf-web `
 
 ---
 
-## Phase 7: Connect Frontend & Backend (CORS & Webhooks)
+## Phase 7: Security Lockdown & External Services
 
-### Step 7.1: Update CORS on Backend
-Now that you have your frontend URL, whitelist it in the backend so browser API calls succeed:
+### Step 7.1: Enable "Military-Grade" IAM Security
+To prevent the public internet from accessing your backend directly, we enforce IAM restrictions. Only your Next.js Frontend is allowed to talk to the backend.
+
+```powershell
+# 1. Grant the Frontend Service Account permission to invoke the Backend
+$PROJECT_NUMBER = (gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+gcloud run services add-iam-policy-binding jsmf-backend `
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" `
+  --role="roles/run.invoker" `
+  --region=$REGION `
+  --project=$PROJECT_ID
+
+# 2. Remove public access from the Backend
+gcloud run services remove-iam-policy-binding jsmf-backend `
+  --member="allUsers" `
+  --role="roles/run.invoker" `
+  --region=$REGION `
+  --project=$PROJECT_ID
+
+# 3. Explicitly enforce the IAM check on the Backend
+gcloud run services update jsmf-backend `
+  --region=$REGION `
+  --project=$PROJECT_ID `
+  --invoker-iam-check
+```
+
+### Step 7.2: Update CORS on Backend
+Update the backend to accept requests originating from the frontend URL:
 
 ```powershell
 $FRONTEND_URL = "https://jsmf-pdf-web-12345.a.run.app"
@@ -346,18 +372,26 @@ gcloud run services update jsmf-backend `
   --update-env-vars="CORS_ORIGINS=${FRONTEND_URL},APP_PUBLIC_URL=${BACKEND_URL}"
 ```
 
-*(In Web Console: Go to Cloud Run > `jsmf-backend` > **Edit & Deploy New Revision** > Variables > Update `CORS_ORIGINS` & `APP_PUBLIC_URL`)*
+### Step 7.3: Configure Razorpay Webhooks (Frontend Proxy)
+Because your backend is now private, Razorpay must send webhooks to your **Frontend URL**. The frontend will automatically attach its IAM token and proxy it to the backend.
 
-### Step 7.2: Configure Razorpay Webhook
 1. Log in to [Razorpay Dashboard](https://dashboard.razorpay.com/) > **Settings** > **Webhooks**.
 2. Click **+ Add New Webhook**.
-3. **Webhook URL**: `https://jsmf-backend-67890.a.run.app/api/payments/webhook`
-4. **Secret**: Enter the same secret you stored in `RAZORPAY_WEBHOOK_SECRET` (if used).
-5. **Active Events**:
-   - `payment.captured`
-   - `payment.failed`
-   - `order.paid`
+3. **Webhook URL**: `https://jsmf-pdf-web-12345.a.run.app/api/webhooks/razorpay` *(Use your actual frontend URL)*
+4. **Secret**: Enter the same secret you stored in `RAZORPAY_WEBHOOK_SECRET`.
+5. **Active Events**: `payment.captured`, `payment.failed`, `order.paid`
 6. Click **Save**.
+
+### Step 7.4: Update Google OAuth Settings
+Just like Razorpay, Google OAuth must redirect users back to the frontend proxy.
+
+1. Go to the [Google Cloud Console Credentials Page](https://console.cloud.google.com/apis/credentials).
+2. Click on your OAuth 2.0 Client ID.
+3. Add your Frontend URL to **Authorized JavaScript origins**:
+   `https://jsmf-pdf-web-12345.a.run.app`
+4. Add your Frontend Callback URL to **Authorized redirect URIs**:
+   `https://jsmf-pdf-web-12345.a.run.app/api/auth/google/callback`
+5. Click **Save**.
 
 ---
 
@@ -382,10 +416,12 @@ npm run db:seed
 
 ## Phase 9: Verification & Health Check
 
-1. Open your backend health endpoint in browser:
+1. Try opening your backend health endpoint in browser:
    `https://jsmf-backend-67890.a.run.app/api/health`
-2. Open your frontend web app:
-   `https://jsmf-pdf-web-12345.a.run.app`
+   *(It should securely return a **403 Forbidden** because you are not the frontend!)*
+2. Try opening it through your frontend proxy:
+   `https://jsmf-pdf-web-12345.a.run.app/api/health`
+   *(It should return `{ status: "ok" }`!)*
 3. Test actions:
    - Browse public documents & listings.
    - Test PDF upload (verifying Cloudinary storage).

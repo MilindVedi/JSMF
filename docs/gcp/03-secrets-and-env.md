@@ -35,12 +35,14 @@ This document provides a reference for all environment variables, flags, and sec
 
 ## 2. Frontend (`pdf-web` Next.js) Configuration
 
-| Build Argument / Variable | Description | Example Production Value |
+| Environment Variable | Description | Example Production Value |
 | :--- | :--- | :--- |
-| `NEXT_PUBLIC_API_URL` | URL of the NestJS backend API (baked into static client assets) | `https://your-backend-app.run.app/api` |
+| `BACKEND_API_URL` | URL of the NestJS backend API. Resolved at **runtime** by `middleware.ts` to dynamically reverse proxy requests. | `https://jsmf-backend-67890.a.run.app` |
 | `NEXT_PUBLIC_MAX_UPLOAD_MB`| Max client file size in MB | `10` |
 | `PORT` | Listening Port | `3001` |
 | `NODE_ENV` | Production Environment | `production` |
+
+> 💡 **Note on Runtime Proxying:** In V1, the Next.js app does NOT bake backend URLs into static client assets during build time. Instead, the browser makes API calls to relative paths (e.g. `/api/users`), and Next.js `middleware.ts` dynamically intercepts and forwards them to `BACKEND_API_URL` at runtime.
 
 ---
 
