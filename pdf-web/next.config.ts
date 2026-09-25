@@ -5,21 +5,6 @@ const nextConfig: NextConfig = {
   // dependencies it actually uses traced in — what the Dockerfile copies into
   // the runtime image, instead of shipping the full node_modules tree.
   output: "standalone",
-  async rewrites() {
-    const rawBackendUrl =
-      process.env.BACKEND_API_URL ||
-      "http://localhost:4000";
-
-    // Ensure trailing slashes and trailing /api are cleanly stripped for the origin
-    const backendOrigin = rawBackendUrl.replace(/\/api\/?$/, "").replace(/\/+$/, "");
-
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${backendOrigin}/api/:path*`,
-      },
-    ];
-  },
 };
 
 export default nextConfig;
