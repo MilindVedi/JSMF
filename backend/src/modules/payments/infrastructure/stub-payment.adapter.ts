@@ -249,13 +249,13 @@ export class StubPaymentAdapter extends PaymentProvider {
 
   /** The signature a simulated checkout widget would hand the browser. */
   signCheckout(providerOrderId: string, providerPaymentId: string): string {
-    return createHmac('sha256', this.config.get('STUB_PAYMENT_SECRET'))
+    return createHmac('sha256', this.config.get('STUB_PAYMENT_SECRET')!)
       .update(`${providerOrderId}|${providerPaymentId}`)
       .digest('hex');
   }
 
   private signBody(rawBody: Buffer): string {
-    return createHmac('sha256', this.config.get('STUB_PAYMENT_SECRET'))
+    return createHmac('sha256', this.config.get('STUB_PAYMENT_SECRET')!)
       .update(rawBody)
       .digest('hex');
   }
