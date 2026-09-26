@@ -13,12 +13,12 @@ export class RegisterDto {
   @MaxLength(120)
   name!: string;
 
-  // 12 rather than the more common 8: length is the only property that
-  // reliably resists offline cracking, and composition rules (a symbol, a
-  // digit) mostly push people toward predictable substitutions instead.
-  @ApiProperty({ example: 'a-long-passphrase', minLength: 12 })
+  // 8, the NIST SP 800-63B floor. No composition rules (a symbol, a digit):
+  // they mostly push people toward predictable substitutions rather than
+  // adding real entropy, and Argon2 is what makes offline cracking expensive.
+  @ApiProperty({ example: 'a-long-passphrase', minLength: 8 })
   @IsString()
-  @MinLength(12, { message: 'Password must be at least 12 characters' })
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
   @MaxLength(256)
   password!: string;
 }

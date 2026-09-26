@@ -74,14 +74,13 @@ services:
       # routine `down` is not an acceptable dev experience.
       - jsmf_storage:/app/.storage
 
-  web:
+  pdf-web:
     build:
       context: ./pdf-web
-      args:
-        NEXT_PUBLIC_API_URL: http://localhost:4000/api
-        NEXT_PUBLIC_MAX_UPLOAD_MB: "10"
     container_name: jsmf-pdf-web
     restart: unless-stopped
+    environment:
+      BACKEND_API_URL: http://api:4000
     depends_on:
       - api
     ports:

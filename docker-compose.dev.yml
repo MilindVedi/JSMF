@@ -35,10 +35,12 @@ services:
       - ./backend/nest-cli.json:/app/nest-cli.json
       - /app/node_modules
 
-  web:
+  pdf-web:
     build:
       context: ./pdf-web
       dockerfile: Dockerfile.dev
+    env_file:
+      - ./pdf-web/.env.local
     environment:
       # Turbopack (this project's default dev bundler) watches via native
       # filesystem events, which — like tsc's default watcher — don't reliably
@@ -46,6 +48,7 @@ services:
       # has no polling fallback, so `--webpack` switches to the older bundler,
       # which does respect WATCHPACK_POLLING.
       WATCHPACK_POLLING: "true"
+      BACKEND_API_URL: http://api:4000
     command: ["npx", "next", "dev", "-p", "3001", "--webpack"]
     volumes:
       - ./pdf-web/src:/app/src

@@ -18,7 +18,7 @@ import { useSessionStore } from "@/store/session-store";
 
 const schema = z
   .object({
-    password: z.string().min(12, "Use at least 12 characters"),
+    password: z.string().min(8, "Use at least 8 characters"),
     confirm: z.string(),
   })
   .refine((values) => values.password === values.confirm, {

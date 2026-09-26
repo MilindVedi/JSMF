@@ -26,7 +26,7 @@ const signupSchema = z.object({
   // Matches the server's minimum. A longer passphrase is the single most
   // effective thing a person can do here, so the hint says so rather than
   // demanding symbols nobody remembers.
-  password: z.string().min(12, "Use at least 12 characters — a memorable phrase works best."),
+  password: z.string().min(8, "Use at least 8 characters — a memorable phrase works best."),
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
@@ -195,7 +195,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
                 type={showPassword ? "text" : "password"}
                 autoComplete={signup ? "new-password" : "current-password"}
                 className="field pr-12"
-                placeholder={signup ? "At least 12 characters" : "Your password"}
+                placeholder={signup ? "At least 8 characters" : "Your password"}
                 {...register("password")}
               />
               <button

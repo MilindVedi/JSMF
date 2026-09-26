@@ -21,11 +21,11 @@ export class AcceptInvitationDto {
   @MaxLength(512)
   token!: string;
 
-  @ApiProperty({ minLength: 12 })
+  @ApiProperty({ minLength: 8 })
   @IsString()
   // Length over composition rules: a long passphrase beats a short one with a
   // symbol in it, and Argon2 handles the rest.
-  @MinLength(12)
+  @MinLength(8)
   @MaxLength(200)
   password!: string;
 }

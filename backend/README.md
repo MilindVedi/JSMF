@@ -89,7 +89,7 @@ The commands above run the API directly on your machine against a containerized 
 
 ```bash
 cd ..                                  # repo root
-docker compose up -d --build
+npm run docker:prod                    # Uses the root package.json shortcut
 cd backend && npm run db:seed          # first run only
 ```
 
@@ -103,7 +103,8 @@ The command above builds production images, so every code change needs a
 rebuild. For day-to-day work, add the dev override instead:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# Uses the root package.json shortcut to safely merge both compose files
+npm run docker:dev
 ```
 
 Source is bind-mounted and both services run their watch-mode dev servers, so
