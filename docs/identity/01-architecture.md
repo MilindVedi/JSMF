@@ -12,7 +12,7 @@ JSMF is becoming more than one product — the PYQ question bank, the [PDF platf
 - **Refresh-token families with reuse detection.** Every token descended from one login shares a family id. If an already-rotated token is presented again, either the real client or an attacker is replaying it and there is no way to tell which — so the whole family is revoked and the user re-authenticates. Without this, a stolen refresh token can be used indefinitely alongside the legitimate session and nothing ever notices. See the `refresh_tokens` table in [02 — Data Model](./02-data-model.md) for the schema this requires.
 - **Argon2id password hashing**, chosen over bcrypt because it is the current recommended default and because changing a password hash after real accounts exist means rehashing on next login for everyone.
 - **Roles as a table rather than a column**, so one person can hold several (admin *and* educator), and so per-product permissions can be added later without a migration.
-- **Rate limiting and lockout on authentication endpoints specifically**, tighter than the application-wide throttle, because credential stuffing targets exactly these routes.
+- **Rate limiting and lockout on authentication endpoints specifically**, tighter than the application-wide throttle, because credential stuffing targets exactly these routes. These limits are counted per client IP, which behind a proxy depends entirely on `TRUST_PROXY_HOPS` being set correctly — set too low, every user shares one bucket and the limits become site-wide rather than per-person; set too high, the address is forgeable and they stop applying at all. See *Phase 9.1* of `docs/gcp/02-deployment-guide.md`.
 
 ## Status: built
 
@@ -82,6 +82,16 @@ Codes are hashed through the same `PasswordHasher` port as passwords, never stor
 ## Email
 
 `backend/src/shared/mail/` — a `MailProvider` port with three adapters: `log` (prints to the application log), `smtp` (any provider that speaks SMTP), and `resend` (Resend's REST API), selected by `MAIL_DRIVER`. Production uses `resend`: Cloud Run blocks outbound SMTP ports, and an API that reports bounces per message beats an SMTP relay that answers `250 OK` and goes quiet. `smtp` is kept because it is the one protocol Gmail, Brevo, SES, Mailgun and Postmark all speak, so falling back to any of them is a credentials change. Neither adapter uses a vendor SDK — Resend is a single `POST`, called with `fetch`, for the reason the Razorpay adapter gives.
+
+Callers go through `MailService`, not the port directly. It records every
+attempt to `email_deliveries` and offers two methods, and which one a flow uses
+is a real decision: `send` throws when delivery fails, for mail that *is* the
+feature (an invitation nobody receives is a broken invitation); `sendBestEffort`
+never throws, for mail that merely accompanies something that already happened
+and cannot be undone (an account created, a payment captured). Provider
+failures are logged in full but never returned — a caller is told only "could
+not send right now", because "Resend daily limit exceeded" describes our
+billing arrangement, not the user's problem.
 
 It lives in `shared/` rather than inside identity because it is cross-cutting: invitations need it today, and password reset, receipts and refund notices need it next. `MAIL_DRIVER=log` is refused in production by env validation — an invitation link written to a log file is both a broken flow and a credential in plaintext logs.
 

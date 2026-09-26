@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
  * well as looking broken. The paths are Google's own; the mark must not be
  * recoloured, rotated, or redrawn.
  */
-function GoogleMark({ className }: { className?: string }) {
+export function GoogleMark({ className }: { className?: string }) {
   return (
     <svg
       className={className}

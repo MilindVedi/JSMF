@@ -1,8 +1,18 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  NotFoundException,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { Public } from '../../../common/decorators/public.decorator';
+import { AppConfig } from '../../../config/config.module';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import {
   AuthService,
@@ -21,8 +31,20 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly keys: JwtKeyProvider,
+    private readonly config: AppConfig,
   ) {}
 
+  /**
+   * Off in V1 (`PASSWORD_SIGNUP_ENABLED=false`), where buyers sign up with
+   * Google only — see the flag's own note for why that is an email-volume
+   * decision rather than an authentication one.
+   *
+   * 404 rather than 403, and gated here rather than deleted: hiding the form
+   * while leaving the route open would still let anyone create, via the API or
+   * the Swagger page, exactly the kind of account V1 has no forgot-password
+   * flow to recover. The service beneath is untouched, so turning this back on
+   * is a config change.
+   */
   @Public()
   @Post('register')
   // Far tighter than the app-wide limit: signup and login are what credential
@@ -33,6 +55,10 @@ export class AuthController {
     @Body() dto: RegisterDto,
     @Req() request: Request,
   ): Promise<{ user: AuthenticatedUser; tokens: SessionTokens }> {
+    if (!this.config.get('PASSWORD_SIGNUP_ENABLED')) {
+      throw new NotFoundException();
+    }
+
     return this.auth.register(dto, contextOf(request));
   }
 

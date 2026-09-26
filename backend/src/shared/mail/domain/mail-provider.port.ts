@@ -39,6 +39,44 @@ export interface SendMailResult {
 
 export type MailProviderName = 'log' | 'smtp' | 'resend';
 
+/**
+ * A delivery that failed for an ordinary reason: bad credentials, an
+ * unverified sending domain, a refused recipient, a network fault.
+ *
+ * Carries the provider's own wording because that is usually the entire
+ * diagnosis ("The example.com domain is not verified"). It is for the
+ * application log — never for a response body, where it would tell a stranger
+ * about our mail account.
+ */
+export class MailDeliveryError extends Error {
+  constructor(
+    message: string,
+    readonly provider: MailProviderName,
+  ) {
+    super(message);
+    this.name = 'MailDeliveryError';
+  }
+}
+
+/**
+ * The account's sending allowance is gone for now.
+ *
+ * Separate from `MailDeliveryError` because it is the one failure that is
+ * neither a bug nor transient noise: nothing is misconfigured, retrying before
+ * the window resets cannot succeed, and the response is to upgrade the plan.
+ * Keeping it distinct is what lets the delivery log answer "are we actually
+ * outgrowing the free tier?" rather than burying it among genuine errors.
+ */
+export class MailQuotaExceededError extends Error {
+  constructor(
+    message: string,
+    readonly provider: MailProviderName,
+  ) {
+    super(message);
+    this.name = 'MailQuotaExceededError';
+  }
+}
+
 export abstract class MailProvider {
   abstract readonly name: MailProviderName;
 

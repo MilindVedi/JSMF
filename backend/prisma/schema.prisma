@@ -233,6 +233,50 @@ model VerificationCode {
   @@map("verification_codes")
 }
 
+/// Why a send ended the way it did.
+///
+/// QUOTA_EXCEEDED is split out from FAILED because it is the one failure that
+/// is neither a bug nor transient noise: the plan's allowance is simply gone,
+/// and the answer is to upgrade rather than to retry or investigate.
+enum EmailDeliveryStatus {
+  SENT
+  FAILED
+  QUOTA_EXCEEDED
+}
+
+/// One row per attempted send.
+///
+/// Exists because no provider reports remaining allowance. Resend's API returns
+/// only a per-second request rate limit (`ratelimit-remaining: 9`) and says
+/// nothing about the daily or monthly cap that actually runs out, so the counts
+/// that decide free-versus-paid have to be kept here.
+///
+/// Also the record of what was *not* delivered: a signup or purchase is
+/// deliberately allowed to succeed when its email fails, and without this table
+/// that failure would leave no trace at all.
+model EmailDelivery {
+  id                String              @id @default(uuid(7)) @db.Uuid
+  /// Which adapter ran: log, smtp or resend.
+  provider          String              @db.VarChar(32)
+  /// The stable slug the caller passed, e.g. `admin-invitation`. Groups sends
+  /// by kind, so one flow's volume can be told apart from another's.
+  tag               String?             @db.VarChar(64)
+  recipient         String              @db.VarChar(255)
+  status            EmailDeliveryStatus
+  /// The provider's own id, when it gave one — for tracing a delivery later.
+  providerMessageId String?             @map("provider_message_id") @db.VarChar(255)
+  /// The provider's diagnosis, kept for operators. Never returned to a caller:
+  /// "Resend daily limit exceeded" is an internal detail, not a user's problem.
+  error             String?             @db.VarChar(500)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  /// Counting sends within a day or a month is the only lookup this table
+  /// serves; `status` is in the index so quota-exceeded rows can be counted
+  /// without reading the table.
+  @@index([createdAt, status])
+  @@map("email_deliveries")
+}
+
 // ---------------------------------------------------------------------------
 // Catalogue
 // ---------------------------------------------------------------------------

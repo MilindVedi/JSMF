@@ -3,7 +3,7 @@ import { VerificationPurpose } from '@prisma/client';
 import { AppConfig } from '../../../config/config.module';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { AuditService } from '../../../shared/audit/audit.service';
-import { MailProvider } from '../../../shared/mail/domain/mail-provider.port';
+import { MailService } from '../../../shared/mail/application/mail.service';
 import { adminInvitation } from '../../../shared/mail/templates/mail-templates';
 import { PasswordHasher } from '../domain/password-hasher.port';
 import {
@@ -37,7 +37,7 @@ export class AdminInvitationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly codes: VerificationCodeService,
-    private readonly mail: MailProvider,
+    private readonly mail: MailService,
     private readonly config: AppConfig,
     private readonly hasher: PasswordHasher,
     private readonly auth: AuthService,

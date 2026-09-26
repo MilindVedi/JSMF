@@ -1,6 +1,5 @@
 import { api } from "./client";
 import type {
-  AuthSession,
   Order,
   Paginated,
   ProductDetail,
@@ -100,6 +99,4 @@ export const storeApi = {
       `/products/${productId}/download`,
     ),
 
-  register: (input: { email: string; name: string; password: string }) =>
-    api.postAnonymous<AuthSession>("/auth/register", input),
 };

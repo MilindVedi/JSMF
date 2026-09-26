@@ -18,7 +18,8 @@ This document outlines upcoming architectural enhancements and migration milesto
 ## 2. Email Delivery
 
 - [x] **Done — migrated from Gmail SMTP to Resend** (`MAIL_DRIVER=resend`). Gmail app passwords capped sending at ~500-2000/day with no bounce reporting, and Cloud Run blocks outbound SMTP ports, so an HTTPS API is the right transport here regardless of volume. Implemented as `ResendMailAdapter` behind the existing `MailProvider` port — the SMTP adapter remains available via `MAIL_DRIVER=smtp` for any provider that speaks SMTP.
-- [ ] **Remaining — domain authentication:** add the custom domain under https://resend.com/domains and complete the **SPF, DKIM and DMARC** DNS records at GoDaddy. Until this is done, `MAIL_FROM` must use a verified domain or Resend rejects the send. This is what actually gets mail into the inbox rather than spam.
+- [x] **Done — domain authentication:** The custom domain `stackmint.live` is verified in Resend with active SPF and DKIM records via GoDaddy. 
+  - *Note:* It is highly recommended to add a `_dmarc` TXT record (`v=DMARC1; p=none;`) to fully comply with 2024 Gmail/Yahoo sender guidelines. Also, brand new domains start with zero sender reputation, so initial emails may go to spam until the AI learns they are safe (users clicking "Not Spam").
 - [ ] **Later — volume:** Resend's free tier is 3,000 emails/month (100/day). Move to a paid tier when receipts plus password resets approach that.
 
 ---
@@ -45,3 +46,4 @@ This document outlines upcoming architectural enhancements and migration milesto
 
 - [ ] **Custom Domain Setup:** Map custom domain on GoDaddy with Cloud Run custom domain mappings / Cloud Load Balancer.
 - [ ] **Edge Caching:** Add Cloudflare or Google Cloud Armor / CDN in front of Next.js frontend to cache static assets and marketing pages at the edge across India and globally.
+- [ ] ⚠️ **Whenever a proxy is added or removed in front of the app, re-check `TRUST_PROXY_HOPS`.** Every proxy adds an entry to `X-Forwarded-For`, and that variable says how many of them to trust. Adding a CDN without raising it means the backend reads the CDN's address instead of the user's — every visitor collapses into one rate-limit bucket again. Nothing errors; the limits simply stop being per-user. Re-run *Phase 9.1* of the deployment guide after any change to the chain, including the Firebase Hosting step.

@@ -91,17 +91,14 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                   </button>
                 </>
               ) : (
-                <>
-                  <Link
-                    href="/account/login"
-                    className={storeButton({ variant: "ghost", size: "sm" })}
-                  >
-                    Sign in
-                  </Link>
-                  <Link href="/account/signup" className={storeButton({ size: "sm" })}>
-                    Create account
-                  </Link>
-                </>
+                // One CTA, not a Sign in / Create account pair: buyers
+                // continue with Google, which signs in an existing account and
+                // creates a new one through the identical flow. Offering two
+                // doors to the same room only makes people wonder which is
+                // theirs.
+                <Link href="/account/login" className={storeButton({ size: "sm" })}>
+                  Sign in
+                </Link>
               )}
             </div>
           )}
@@ -150,15 +147,10 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                     Log out
                   </button>
                 ) : (
-                  <>
-                    <Link href="/account/login" className="nav-link">
-                      <LogIn className="size-4" />
-                      Sign in
-                    </Link>
-                    <Link href="/account/signup" className={storeButton({ size: "sm" })}>
-                      Create account
-                    </Link>
-                  </>
+                  <Link href="/account/login" className="nav-link">
+                    <LogIn className="size-4" />
+                    Sign in
+                  </Link>
                 )}
               </>
             )}

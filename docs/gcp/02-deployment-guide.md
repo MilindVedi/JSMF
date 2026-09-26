@@ -256,6 +256,7 @@ docker push asia-south1-docker.pkg.dev/${PROJECT_ID}/jsmf-repo/backend:latest
    - **Scaling**: Minimum instances `0`, Maximum instances `3`
    - **Environment variables**:
      - `NODE_ENV` = `production`
+     - `TRUST_PROXY_HOPS` = `1` *(a starting point only — Phase 9.1 tells you the real value)*
      - `STORAGE_DRIVER` = `cloudinary`
      - `PAYMENT_DRIVER` = `razorpay`
      - `REDIS_ENABLED` = `false`
@@ -279,7 +280,7 @@ gcloud run deploy jsmf-backend `
   --max-instances=3 `
   --memory=512Mi `
   --cpu=1 `
-  --set-env-vars="NODE_ENV=production,STORAGE_DRIVER=cloudinary,PAYMENT_DRIVER=razorpay,REDIS_ENABLED=false,MAX_UPLOAD_SIZE_MB=10,STORAGE_PRIVATE_BUCKET=jsmf/private,STORAGE_PUBLIC_BUCKET=jsmf/public,CORS_ORIGINS=http://localhost:3000" `
+  --set-env-vars="NODE_ENV=production,TRUST_PROXY_HOPS=1,STORAGE_DRIVER=cloudinary,PAYMENT_DRIVER=razorpay,REDIS_ENABLED=false,MAX_UPLOAD_SIZE_MB=10,STORAGE_PRIVATE_BUCKET=jsmf/private,STORAGE_PUBLIC_BUCKET=jsmf/public,CORS_ORIGINS=http://localhost:3000" `
   --set-secrets="DATABASE_URL=DATABASE_URL:latest,JWT_PRIVATE_KEY_BASE64=JWT_PRIVATE_KEY_BASE64:latest,JWT_PUBLIC_KEY_BASE64=JWT_PUBLIC_KEY_BASE64:latest,STORAGE_SIGNING_SECRET=STORAGE_SIGNING_SECRET:latest,CLOUDINARY_CLOUD_NAME=CLOUDINARY_CLOUD_NAME:latest,CLOUDINARY_API_KEY=CLOUDINARY_API_KEY:latest,CLOUDINARY_API_SECRET=CLOUDINARY_API_SECRET:latest,RAZORPAY_KEY_ID=RAZORPAY_KEY_ID:latest,RAZORPAY_KEY_SECRET=RAZORPAY_KEY_SECRET:latest" `
   --add-cloudsql-instances="${PROJECT_ID}:${REGION}:jsmf-postgres"
 ```
@@ -431,6 +432,54 @@ npm run db:seed
    - Test PDF upload (verifying Cloudinary storage).
    - Test admin login with your seeded credentials (`admin@jsmf.local`).
    - Test checkout with Razorpay test mode.
+
+### Phase 9.1: Determine `TRUST_PROXY_HOPS` (do not skip)
+
+Rate limiting counts requests **per client IP**. Behind a proxy the connecting
+address is the proxy's — identical for every visitor — so the app reads the real
+address out of `X-Forwarded-For` instead. `TRUST_PROXY_HOPS` says how many
+entries at the **end** of that header were written by proxies we control.
+
+Both wrong values fail silently:
+
+| Value | Failure |
+| :--- | :--- |
+| **Too low** | Every user shares one rate-limit bucket. The per-IP limits become site-wide: ~20 Google sign-ins per minute for the *whole site*, then everyone gets `429`. |
+| **Too high** | The app reads an entry the caller can forge. Anyone can send a made-up `X-Forwarded-For`, look like a new visitor on every request, and bypass rate limiting entirely — while the logs show it working. |
+
+**This deployment has an unusually long chain**, so the value is not obviously
+`1`. An API request passes through Cloud Run's front end, then the Next.js
+service (whose middleware proxies `/api/*` to the private backend, forwarding
+the incoming headers), and — once Phase 10 is done — Firebase Hosting in front
+of that. Each adds an entry.
+
+**Determine it by measurement, starting low.** Too low is the safe failure, so
+start at `1` and raise until correct; never start high and come down.
+
+1. Deploy with `TRUST_PROXY_HOPS=1`.
+2. Open `https://<your-frontend-domain>/api/health/client-ip` on **two different
+   networks** — a phone on mobile data and a laptop on wi-fi.
+3. Compare the `clientIp` in each response:
+   - **Different on each** → correct. Done.
+   - **Identical on both** → too low. Raise by one and repeat.
+4. Then confirm it is not too high: send a forged header and check it is ignored.
+
+   ```powershell
+   curl "https://<your-frontend-domain>/api/health/client-ip" -H "X-Forwarded-For: 1.2.3.4"
+   ```
+
+   `clientIp` must **not** be `1.2.3.4`. If it is, the value is too high —
+   lower it by one.
+
+The response also echoes `forwardedFor`, so you can see the whole chain and
+count the entries directly.
+
+Changing it is an env var update, not a rebuild:
+
+```powershell
+gcloud run services update jsmf-backend --region=$REGION `
+  --update-env-vars="TRUST_PROXY_HOPS=2"
+```
 
 ---
 

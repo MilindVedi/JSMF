@@ -1,7 +1,9 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AppConfig } from '../../../config/config.module';
 import {
+  MailDeliveryError,
   MailProvider,
+  MailQuotaExceededError,
   type MailAddress,
   type MailProviderName,
   type SendMailRequest,
@@ -37,7 +39,6 @@ interface ResendError {
 export class ResendMailAdapter extends MailProvider {
   readonly name: MailProviderName = 'resend';
 
-  private readonly logger = new Logger(ResendMailAdapter.name);
   private readonly apiKey: string;
   private readonly from: string;
 
@@ -77,36 +78,48 @@ export class ResendMailAdapter extends MailProvider {
       });
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
-      this.logger.error(`Could not reach Resend: ${message}`);
-
-      throw new ServiceUnavailableException(`Could not send email: ${message}`);
+      throw new MailDeliveryError(`Could not reach Resend: ${message}`, this.name);
     }
 
     const text = await response.text();
 
     if (!response.ok) {
-      // Resend's own message is the diagnosis — "The jsmf.local domain is not
-      // verified" is the entire fix — so it is surfaced, as the SMTP adapter
-      // surfaces "535 Authentication failed". The rest of the body is not: it
-      // echoes the recipient, and mail failures get logged.
-      const detail = parseError(text) ?? `status ${response.status}`;
-      this.logger.error(`Resend rejected the send → ${response.status}: ${detail}`);
+      const error = parseError(text);
+      const detail = error.message ?? `status ${response.status}`;
 
-      throw new ServiceUnavailableException(
-        `Could not send email: ${detail}. Check RESEND_API_KEY and that MAIL_FROM uses a domain verified in Resend.`,
-      );
+      // Both arrive as 429, and conflating them would make the delivery log
+      // useless for the one question it exists to answer. The per-second limit
+      // is transient — it clears in a second and says nothing about the plan.
+      // The daily/monthly quota is the one that means "upgrade".
+      if (isQuota(response.status, error)) {
+        throw new MailQuotaExceededError(detail, this.name);
+      }
+
+      throw new MailDeliveryError(detail, this.name);
     }
 
     return { messageId: (JSON.parse(text) as ResendSuccess).id, provider: this.name };
   }
 }
 
-function parseError(body: string): string | null {
+function parseError(body: string): ResendError {
   try {
-    return (JSON.parse(body) as ResendError).message ?? null;
+    return JSON.parse(body) as ResendError;
   } catch {
-    return null;
+    return {};
   }
+}
+
+/**
+ * Resend names the daily allowance separately from the request rate limit
+ * (`daily_quota_exceeded` versus `rate_limit_exceeded`), so the name is the
+ * reliable signal; the message is checked too in case the naming changes.
+ */
+function isQuota(status: number, error: ResendError): boolean {
+  if (status !== 429) return false;
+
+  const haystack = `${error.name ?? ''} ${error.message ?? ''}`.toLowerCase();
+  return haystack.includes('quota') || haystack.includes('daily');
 }
 
 /** Resend takes recipients as an array, but accepts `"Name" <addr>` in each. */

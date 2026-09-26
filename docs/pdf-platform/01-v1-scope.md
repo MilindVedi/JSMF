@@ -80,6 +80,79 @@ These are designed for in the data model so they do not require a rewrite, but t
 - Analytics dashboards beyond the basic order list. The events are being *recorded* from day one so that the dashboards have history to show when they are built; that is the expensive part to retrofit, not the charts.
 - Any integration with the PYQ question-bank app. Same account, eventually the same library — but V1 ships independently.
 
+## Buyer accounts: Google only
+
+Buyers sign in with Google and nothing else. There is one screen
+(`/account/login`) rather than a sign-in and a sign-up, because
+**Continue with Google** resolves to whichever the person needs — the server
+looks for an account behind the Google identity and signs them in, or creates
+one and signs them in. `/account/signup` redirects there, preserving `next`,
+since that URL is already in the wild.
+
+This is a decision about **email volume**, not authentication. A password
+account needs a verification mail to prove the address and a reset mail when
+the password is forgotten, and on a plan that allows 100 sends a day those two
+flows would be most of the traffic. Google removes both: the address arrives
+already verified, and account recovery is Google's problem rather than an
+inbox we have to pay for.
+
+`POST /auth/register` is therefore gated behind `PASSWORD_SIGNUP_ENABLED`
+(default `false`) and answers 404. Hiding the form while leaving the route open
+would still let anyone create — via the API or the Swagger page — exactly the
+kind of account V1 has no forgot-password flow to recover. The service beneath
+is untouched, so re-enabling it is a config change.
+
+Admins are unaffected. They are invited by an existing admin, set a password
+through the invitation flow, and sign in at `/admin/login`, which keeps its own
+email-and-password form.
+
+## Transactional email
+
+V1 sends exactly **two** kinds of email. Everything else on the long list of
+things a store *could* email about is deferred, and Google-only signup is what
+makes that affordable.
+
+| Email | Send? | On failure |
+| :--- | :--- | :--- |
+| **Admin invitation** | Yes | **Fails the request.** An invitation nobody receives is not a partial success, it is a broken invitation. Volume is negligible and entirely controlled — an admin decides who gets one. |
+| **Purchase confirmation** | Yes *(not built yet)* | **Purchase still succeeds.** The entitlement is granted and the money kept; only the receipt is missing. The library, not the email, is the source of truth for access. |
+| Registration / email verification | No | Not needed — Google verifies the address. |
+| Forgot password | No | Not needed — buyers have no password. |
+| Password changed, payment failed, refund issued | No | Deferred. Each is best-effort when built. |
+
+The rule that outlives this list: **an email must never be the reason a
+completed action is reported as failed.** It is implemented as the split
+between `MailService.send` (throws — for mail that *is* the feature) and
+`MailService.sendBestEffort` (never throws — for mail that merely accompanies
+something already done and undoable).
+
+A user-facing failure says "we could not send that right now" and never the
+provider's wording. "Resend daily limit exceeded" describes our billing
+arrangement, not the user's problem, and it tells a stranger which vendor we
+use and how close it is to its ceiling. The real diagnosis goes to the log and
+the `email_deliveries` row.
+
+### Watching the quota
+
+No provider reports remaining allowance. Resend's API returns only a
+per-second request rate limit (`ratelimit-remaining`), never the daily or
+monthly cap, so the counts are kept in `email_deliveries` and logged after each
+send:
+
+```
+Email sent (admin-invitation) — 12/100 today, 340/3000 this month
+```
+
+The line becomes a warning past 80% of either allowance, and a distinct
+`MAIL QUOTA EXCEEDED` error once the allowance is gone — which is the signal to
+move off the free tier. `MAIL_DAILY_QUOTA` and `MAIL_MONTHLY_QUOTA` are what
+those counts are measured against; raise both on upgrade.
+
+A per-second rate limit and an exhausted daily quota both arrive as HTTP 429
+and are deliberately recorded differently. Conflating them would make the
+table useless for the one question it exists to answer: the first clears in a
+second and says nothing about the plan, the second means upgrade.
+
 ## What "done" looks like
 
 V1 is done when the doctor can, without any developer involvement: upload a PDF, price it, publish it, paste the link into a YouTube description — and a stranger who clicks that link can pay and download it, with the money arriving and the access being correct even if they close the tab mid-payment, pay twice by accident, or share the download link with a friend.

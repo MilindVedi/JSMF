@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { AppConfig } from '../../config/config.module';
+import { MailService } from './application/mail.service';
 import { MailProvider } from './domain/mail-provider.port';
 import { LogMailAdapter } from './infrastructure/log-mail.adapter';
 import { ResendMailAdapter } from './infrastructure/resend-mail.adapter';
@@ -35,7 +36,10 @@ import { SmtpMailAdapter } from './infrastructure/smtp-mail.adapter';
       },
       inject: [AppConfig, LogMailAdapter],
     },
+    MailService,
   ],
-  exports: [MailProvider],
+  // Both: MailService is what callers should use, but the port stays exported
+  // so a caller that genuinely wants raw, unrecorded delivery still can.
+  exports: [MailProvider, MailService],
 })
 export class MailModule {}

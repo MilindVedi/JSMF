@@ -1,7 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { createTransport, type Transporter } from 'nodemailer';
 import { AppConfig } from '../../../config/config.module';
 import {
+  MailDeliveryError,
   MailProvider,
   type MailAddress,
   type MailProviderName,
@@ -22,7 +23,6 @@ import {
 export class SmtpMailAdapter extends MailProvider {
   readonly name: MailProviderName = 'smtp';
 
-  private readonly logger = new Logger(SmtpMailAdapter.name);
   private readonly transporter: Transporter;
   private readonly from: string;
 
@@ -60,15 +60,11 @@ export class SmtpMailAdapter extends MailProvider {
 
       return { messageId: info.messageId, provider: this.name };
     } catch (error) {
-      // SMTP failures are operational, not caller errors: a wrong password or
-      // an unreachable host is a 503, not a 400. The provider's own message is
-      // preserved because "535 Authentication failed" is the entire diagnosis.
+      // The server's own message is preserved for the log, because "535
+      // Authentication failed" is the entire diagnosis. MailService decides
+      // what a caller is allowed to see.
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`SMTP delivery failed: ${message}`);
-
-      throw new ServiceUnavailableException(
-        `Could not send email: ${message}. Check SMTP_HOST, SMTP_USER and SMTP_PASSWORD.`,
-      );
+      throw new MailDeliveryError(message, this.name);
     }
   }
 }

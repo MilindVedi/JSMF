@@ -29,6 +29,8 @@ This document provides a reference for all environment variables, flags, and sec
 | `RAZORPAY_KEY_ID` | String | `<your-key-id>` | GCP Secret: `RAZORPAY_KEY_ID` | Razorpay public key. |
 | `RAZORPAY_KEY_SECRET` | String | `<your-key-secret>` | GCP Secret: `RAZORPAY_KEY_SECRET` | Razorpay private secret. |
 | `REDIS_ENABLED` | Boolean | `false` | Cloud Run Env Var | Keep `false` in V1 for lowest cost ($0). |
+| `TRUST_PROXY_HOPS` | Number | **Measure it** — start at `1` | Cloud Run Env Var | **Required, and the correct value depends on your proxy chain — do not assume.** Rate limiting keys on client IP; too low and every user shares one bucket, too high and the limit is forgeable. See *Phase 9.1* in the deployment guide for how to determine it. |
+| `PASSWORD_SIGNUP_ENABLED` | Boolean | `false` | Cloud Run Env Var | V1 buyers sign in with Google only; `POST /auth/register` answers 404. |
 | `MAIL_DRIVER` | Enum | `resend` | Cloud Run Env Var | HTTPS API, not an SMTP socket — Cloud Run blocks outbound SMTP ports. `log` is **refused in production** by env validation. |
 | `RESEND_API_KEY` | String | `re_...` | GCP Secret: `RESEND_API_KEY` | Required when `MAIL_DRIVER=resend`. Create at https://resend.com/api-keys. |
 | `MAIL_FROM` | String | `JSMF <no-reply@yourdomain>` | Cloud Run Env Var | Domain must be verified in Resend (https://resend.com/domains) or every send is rejected. |

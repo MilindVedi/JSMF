@@ -109,11 +109,46 @@ const schema = z
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
     RESEND_API_KEY: z.string().optional(),
+    /// What the mail plan actually allows. No provider reports this — Resend's
+    /// API returns only a per-second request rate limit — so the numbers have
+    /// to be told to us, and they are what the delivery-count log lines are
+    /// measured against. Defaults are Resend's free tier; raise both on upgrade.
+    MAIL_DAILY_QUOTA: z.coerce.number().int().positive().default(100),
+    MAIL_MONTHLY_QUOTA: z.coerce.number().int().positive().default(3000),
 
     /// Base URL of the admin front-end, used to build invitation links that are
     /// emailed to invitees. Not inferred from the request: an invitation link is
     /// built server-side and must not be steerable by a Host header.
     ADMIN_APP_URL: z.string().url().default('http://localhost:3001'),
+
+    /// How many reverse proxies sit in front of this process.
+    ///
+    /// Rate limiting counts requests per client IP, and behind a proxy the
+    /// connecting address is the proxy's, not the user's — so with this at 0 on
+    /// a platform like Cloud Run every user shares one bucket and the per-IP
+    /// limits silently become global ones. The real address arrives in
+    /// `X-Forwarded-For`, and this says how many of that header's entries are
+    /// trustworthy because a proxy we control appended them.
+    ///
+    /// 0 is correct for running directly (local development, `docker compose`),
+    /// and is the default because it fails the safe way: limits that are too
+    /// strict, rather than a header any caller can forge to mint themselves a
+    /// fresh IP and bypass throttling entirely. Set it to 1 behind Cloud Run.
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+
+    /// Buyer signup with an email and a password. Off in V1, which is a
+    /// decision about email volume rather than about authentication: a password
+    /// account needs a verification mail to prove the address and a reset mail
+    /// when the password is forgotten, and those two flows would be most of the
+    /// sending volume on a plan that allows 100 a day. Google sign-in removes
+    /// both — the address arrives verified and recovery is Google's problem.
+    ///
+    /// Admin accounts are unaffected: they are created by invitation and set a
+    /// password through that flow, which this flag does not gate.
+    PASSWORD_SIGNUP_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
 
     /// Google sign-in. Off until credentials exist, so the platform runs
     /// without a Google Cloud project — the same pattern as every other

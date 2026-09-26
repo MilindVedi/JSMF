@@ -29,6 +29,14 @@ async function bootstrap(): Promise<void> {
   const config = app.get(AppConfig);
   const logger = new Logger('Bootstrap');
 
+  // Must be set for rate limiting to see real client addresses: @nestjs/throttler
+  // keys its counters on `req.ip`, which is the connecting socket's address
+  // unless Express is told a proxy is in front. Behind one, that address is the
+  // proxy's and is identical for every user, so the per-IP limits quietly become
+  // limits shared by the entire site at once.
+  const trustProxyHops = config.get('TRUST_PROXY_HOPS');
+  app.getHttpAdapter().getInstance().set('trust proxy', trustProxyHops);
+
   app.use(helmet());
   app.enableCors({
     origin: config.get('CORS_ORIGINS'),
@@ -65,6 +73,14 @@ async function bootstrap(): Promise<void> {
   await app.listen(port);
 
   logger.log(`JSMF API listening on http://localhost:${port}/api`);
+  // Logged because the wrong value is invisible until it matters: too low and
+  // everyone shares a rate-limit bucket, too high and the limits are forgeable.
+  // GET /api/health/client-ip is how to check it against a real deployment.
+  logger.log(
+    trustProxyHops === 0
+      ? 'trust proxy: 0 (direct connections — set TRUST_PROXY_HOPS=1 behind Cloud Run)'
+      : `trust proxy: ${trustProxyHops} hop(s)`,
+  );
   if (!config.isProduction) {
     logger.log(`API docs at http://localhost:${port}/api/docs`);
     logger.log(
