@@ -12,7 +12,10 @@ import {
   RefundStatus,
   WebhookEventStatus,
 } from '@prisma/client';
+import { AppConfig } from '../../../config/config.module';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
+import { MailService } from '../../../shared/mail/application/mail.service';
+import { purchaseConfirmation } from '../../../shared/mail/templates/mail-templates';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import {
   PaymentProvider,
@@ -26,6 +29,48 @@ export interface VerifyCheckoutRequest {
   signature: string;
 }
 
+/** What the confirmation email needs, captured while the order row is in hand. */
+interface PurchaseConfirmationContext {
+  email: string;
+  name: string;
+  items: Array<{ title: string }>;
+  totalAmountMinor: bigint;
+  currency: string;
+  orderNumber: string;
+  paymentId: string;
+}
+
+/**
+ * Minor units to a displayable amount — 19900 becomes "₹199".
+ *
+ * Money is stored in minor units precisely so it is never a float, so the
+ * conversion is done with integer arithmetic rather than by dividing: dividing
+ * a bigint by 100 in JavaScript would either truncate the paise or force a
+ * float back into the one place the schema went to trouble to avoid one.
+ *
+ * Whole amounts drop the ".00", because "₹199" is how a price is written and
+ * "₹199.00" reads like an accounting system.
+ */
+function formatMoney(amountMinor: bigint, currency: string): string {
+  const negative = amountMinor < 0n;
+  const absolute = negative ? -amountMinor : amountMinor;
+  const major = absolute / 100n;
+  const minor = absolute % 100n;
+
+  const symbol = currency === 'INR' ? '₹' : `${currency} `;
+  const amount = minor === 0n ? `${major}` : `${major}.${minor.toString().padStart(2, '0')}`;
+
+  return `${negative ? '-' : ''}${symbol}${amount}`;
+}
+
+/**
+ * "Nikhil Sharma" -> "Nikhil". A confirmation opens with a greeting, and a
+ * greeting uses the name someone is called, not their full legal name.
+ */
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || name;
+}
+
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
@@ -34,6 +79,8 @@ export class PaymentService {
     private readonly prisma: PrismaService,
     private readonly provider: PaymentProvider,
     private readonly entitlements: EntitlementService,
+    private readonly mail: MailService,
+    private readonly config: AppConfig,
   ) {}
 
   /**
@@ -203,10 +250,18 @@ export class PaymentService {
     // connection for the length of an HTTP request.
     await this.ensurePaymentRecord(input.providerOrderId);
 
+    // Set inside the transaction, used after it commits. The confirmation email
+    // must be sent once per purchase, not once per caller — `settle` is invoked
+    // by the browser callback, the webhook (which the provider retries) and the
+    // reconciliation sweep, all of which can land on the same order. Only the
+    // call that actually moves the order into PAID has anything new to
+    // announce; the rest are no-ops and must stay silent.
+    let confirmation: PurchaseConfirmationContext | null = null;
+
     await this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.findFirst({
         where: { providerOrderId: input.providerOrderId },
-        include: { order: { include: { items: true } } },
+        include: { order: { include: { items: true, user: true } } },
       });
 
       if (!payment) {
@@ -243,6 +298,19 @@ export class PaymentService {
           where: { id: payment.orderId },
           data: { status: OrderStatus.PAID, paidAt: new Date() },
         });
+
+        confirmation = {
+          // The order's snapshot, not the user's current address: a buyer who
+          // later changes their email should not retroactively change where a
+          // past purchase was confirmed to.
+          email: payment.order.customerEmail,
+          name: payment.order.user.name,
+          items: payment.order.items.map((item) => ({ title: item.productTitleSnapshot })),
+          totalAmountMinor: payment.order.totalAmountMinor,
+          currency: payment.order.currency,
+          orderNumber: payment.order.orderNumber,
+          paymentId: input.providerPaymentId,
+        };
       }
 
       for (const item of payment.order.items) {
@@ -259,6 +327,53 @@ export class PaymentService {
     });
 
     this.logger.log(`Settled ${input.providerOrderId} via ${input.source}`);
+
+    // After the commit, never inside it: an open transaction holds a database
+    // connection, and this makes an HTTP call to the mail provider. It is also
+    // the only correct order — the email says the purchase succeeded, so it
+    // must not go out until that is durably true.
+    if (confirmation) {
+      await this.sendPurchaseConfirmation(confirmation);
+    }
+  }
+
+  /**
+   * Best-effort by design, and the one place in this service where a failure is
+   * deliberately swallowed.
+   *
+   * The money has been taken and the entitlement granted by the time this runs.
+   * Refusing the settlement because a receipt bounced would turn a completed
+   * purchase into an error the buyer cannot act on — one they have already paid
+   * for — and would leave the webhook retrying an operation that has, in every
+   * way that matters, already worked. The library is the source of truth for
+   * access; this email is a courtesy on top of it.
+   */
+  private async sendPurchaseConfirmation(context: PurchaseConfirmationContext): Promise<void> {
+    const rendered = purchaseConfirmation({
+      buyerName: firstName(context.name),
+      items: context.items,
+      totalFormatted: formatMoney(context.totalAmountMinor, context.currency),
+      orderNumber: context.orderNumber,
+      paymentId: context.paymentId,
+      libraryUrl: `${this.config.get('APP_PUBLIC_URL').replace(/\/$/, '')}/library`,
+    });
+
+    const outcome = await this.mail.sendBestEffort({
+      to: { email: context.email, name: context.name },
+      subject: rendered.subject,
+      text: rendered.text,
+      html: rendered.html,
+      tag: 'purchase-confirmation',
+    });
+
+    if (!outcome.delivered) {
+      // Logged against the order number rather than left to the mail log alone,
+      // so "the buyer says they got nothing" is answerable from the order.
+      this.logger.warn(
+        `Purchase confirmation not delivered for ${context.orderNumber} (${outcome.reason}) — ` +
+          `the purchase itself is complete and the entitlement is granted`,
+      );
+    }
   }
 
   /**

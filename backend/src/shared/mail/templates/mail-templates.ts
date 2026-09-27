@@ -78,6 +78,98 @@ export function adminInvitation(input: {
   return { subject: `${invitedByName} invited you to administer JSMF`, text, html };
 }
 
+/**
+ * Sent after a payment clears — a confirmation, deliberately not an invoice.
+ *
+ * Two things it is careful about. It states where the resource actually lives
+ * (the library, not this email), because the email is the one part of a
+ * purchase that can fail: `sendBestEffort` means a buyer may never receive it,
+ * and the entitlement is granted either way. Nothing here is the only copy of
+ * anything.
+ *
+ * And it carries both identifiers. The order number is what a buyer can read
+ * out in a support conversation; the payment id is what reconciles against the
+ * provider's dashboard when the question is "did this actually go through".
+ * Keeping both means a support request arrives with the evidence already in it.
+ *
+ * Not a GST invoice: `taxAmountMinor` is carried as zero today, and calling
+ * this a receipt would make it a document with legal requirements it does not
+ * meet. When tax becomes real, that is a separate document, not a bigger
+ * version of this one.
+ */
+export function purchaseConfirmation(input: {
+  buyerName: string;
+  items: Array<{ title: string }>;
+  totalFormatted: string;
+  orderNumber: string;
+  paymentId: string;
+  libraryUrl: string;
+}): RenderedMail {
+  const { buyerName, items, totalFormatted, orderNumber, paymentId, libraryUrl } = input;
+
+  const titles = items.map((item) => item.title);
+  // "your resource" / "your resources" — the singular case is the overwhelming
+  // majority and reads badly as "resource(s)".
+  const noun = titles.length === 1 ? 'resource is' : 'resources are';
+
+  const text = [
+    `Hi ${buyerName},`,
+    ``,
+    `Your purchase was successful.`,
+    ``,
+    ...titles.map((title) => `  ${title}`),
+    ``,
+    `Amount paid: ${totalFormatted}`,
+    `Order ID: ${orderNumber}`,
+    `Payment ID: ${paymentId}`,
+    ``,
+    `Your ${noun} now available in your JSMF account.`,
+    `${libraryUrl}`,
+    ``,
+    `You can access ${titles.length === 1 ? 'it' : 'them'} anytime from your JSMF account.`,
+    ``,
+    `—`,
+    `JSMF`,
+    `by Dr. Angad Rai`,
+  ].join('\n');
+
+  const itemsHtml = titles
+    .map(
+      (title) =>
+        `<p style="margin:0 0 6px;font-size:15px;line-height:1.55;font-weight:600;">${escapeHtml(title)}</p>`,
+    )
+    .join('');
+
+  const detailRow = (label: string, value: string): string =>
+    `<tr>
+      <td style="padding:4px 0;font-size:13px;color:#71717a;">${escapeHtml(label)}</td>
+      <td style="padding:4px 0;font-size:13px;color:#3f3f46;text-align:right;">${escapeHtml(value)}</td>
+    </tr>`;
+
+  const html = layout(
+    'Your purchase is confirmed',
+    `
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Hi ${escapeHtml(buyerName)},</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Your purchase was successful.</p>
+    <div style="margin:0 0 20px;padding:16px;background:#fafafa;border-radius:8px;">
+      ${itemsHtml}
+      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin-top:12px;">
+        ${detailRow('Amount paid', totalFormatted)}
+        ${detailRow('Order ID', orderNumber)}
+        ${detailRow('Payment ID', paymentId)}
+      </table>
+    </div>
+    <p style="margin:0 0 28px;text-align:center;">
+      <a href="${escapeHtml(libraryUrl)}" style="display:inline-block;padding:12px 24px;background:#18181b;color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:500;">Open my library</a>
+    </p>
+    <p style="margin:0 0 20px;font-size:13px;line-height:1.55;color:#71717a;">Your ${noun} now available in your JSMF account. You can access ${titles.length === 1 ? 'it' : 'them'} anytime from your account — you do not need this email.</p>
+    <p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">JSMF<br>Medically led by Dr. Angad Rai</p>
+    `,
+  );
+
+  return { subject: 'Your JSMF purchase is confirmed', text, html };
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')

@@ -115,10 +115,21 @@ makes that affordable.
 | Email | Send? | On failure |
 | :--- | :--- | :--- |
 | **Admin invitation** | Yes | **Fails the request.** An invitation nobody receives is not a partial success, it is a broken invitation. Volume is negligible and entirely controlled — an admin decides who gets one. |
-| **Purchase confirmation** | Yes *(not built yet)* | **Purchase still succeeds.** The entitlement is granted and the money kept; only the receipt is missing. The library, not the email, is the source of truth for access. |
+| **Purchase confirmation** | Yes | **Purchase still succeeds.** The entitlement is granted and the money kept; only the confirmation is missing. The library, not the email, is the source of truth for access. |
 | Registration / email verification | No | Not needed — Google verifies the address. |
 | Forgot password | No | Not needed — buyers have no password. |
 | Password changed, payment failed, refund issued | No | Deferred. Each is best-effort when built. |
+
+The purchase confirmation is sent from `settle()` **after the transaction
+commits**, and only by the call that actually moves the order into `PAID`.
+Settlement is idempotent and reached from three directions — the browser
+callback, the provider's webhook (which Razorpay retries) and the reconciliation
+sweep — so sending on every settlement attempt would mean a buyer receiving the
+same confirmation two or three times. It states the order number *and* the
+payment id, so a support conversation starts with the evidence already in it,
+and it is a confirmation rather than a GST invoice: tax is carried as zero
+today, and calling it a receipt would make it a document with legal
+requirements it does not meet.
 
 The rule that outlives this list: **an email must never be the reason a
 completed action is reported as failed.** It is implemented as the split

@@ -37,7 +37,24 @@ const config = {
     if (key === 'STUB_PAYMENT_SECRET') {
       return process.env.STUB_PAYMENT_SECRET ?? 'test-stub-secret-at-least-16-chars';
     }
+    if (key === 'APP_PUBLIC_URL') {
+      return process.env.APP_PUBLIC_URL ?? 'http://localhost:3001';
+    }
     return process.env[key];
+  },
+} as never;
+
+/**
+ * Records sends instead of making them. The confirmation email is best-effort,
+ * so a real adapter failing here would be silently swallowed and the assertions
+ * about *how many* were sent would still pass — which is exactly the bug the
+ * once-only test is looking for.
+ */
+const sentMail: Array<{ to: unknown; subject: string; text: string; tag?: string }> = [];
+const mail = {
+  sendBestEffort(request: { to: unknown; subject: string; text: string; tag?: string }) {
+    sentMail.push(request);
+    return Promise.resolve({ delivered: true as const, messageId: 'test-message-id' });
   },
 } as never;
 
@@ -45,7 +62,7 @@ const prisma = new PrismaService();
 const provider = new StubPaymentAdapter(config);
 const entitlements = new EntitlementService(prisma);
 const orders = new OrderService(prisma, provider, entitlements);
-const payments = new PaymentService(prisma, provider, entitlements);
+const payments = new PaymentService(prisma, provider, entitlements, mail, config);
 
 /** Everything created here, so teardown deletes exactly this and nothing else. */
 const created = { userIds: [] as string[], productIds: [] as string[] };
@@ -250,6 +267,43 @@ describe('payment settlement', () => {
       where: { userId, productId, status: EntitlementStatus.ACTIVE },
     });
     expect(active).toBe(1);
+  });
+
+  /**
+   * The failure this guards against is not a crash — it is a buyer receiving
+   * three identical "your purchase is confirmed" emails, because the browser
+   * callback, the provider's webhook retry and the reconciliation sweep all
+   * settle the same order. Only the call that actually moves the order into
+   * PAID may send.
+   */
+  it('sends exactly one confirmation email however many times settlement is attempted', async () => {
+    await clearEntitlement();
+    sentMail.length = 0;
+
+    const checkout = await startCheckout();
+    const providerPaymentId = `pay_stub_${randomUUID().replace(/-/g, '').slice(0, 14)}`;
+    const delivery = provider.simulateWebhook({
+      providerOrderId: checkout.providerOrderId,
+      amountMinor: PRICE,
+      providerPaymentId,
+    });
+
+    // The webhook, then the browser callback, then a redelivery of the same
+    // webhook — the ordinary sequence for a single purchase.
+    await payments.handleWebhook(delivery.rawBody, delivery.headers);
+    await payments.verifyCheckout({
+      userId,
+      providerOrderId: checkout.providerOrderId,
+      providerPaymentId,
+      signature: provider.signCheckout(checkout.providerOrderId, providerPaymentId),
+    });
+    await payments.handleWebhook(delivery.rawBody, delivery.headers);
+
+    expect(sentMail).toHaveLength(1);
+    expect(sentMail[0].tag).toBe('purchase-confirmation');
+    // The identifiers a support conversation needs are actually in the body.
+    expect(sentMail[0].text).toContain(checkout.orderNumber);
+    expect(sentMail[0].text).toContain(providerPaymentId);
   });
 });
 
