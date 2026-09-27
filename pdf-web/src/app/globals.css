@@ -522,6 +522,32 @@
   box-shadow: var(--shadow-editorial);
 }
 
+/* The rank badge sitting on the portrait's upper-left corner. Positioned
+   against the portrait wrapper like `doctor-credential`, but tucked *inside*
+   the image rather than bleeding past it: the two are at opposite corners so
+   they never meet, and a badge that overhung the edge would read as a second
+   floating card competing with the credential one. */
+@utility doctor-badge {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  /* Solid, not translucent: it sits on a photograph whose colours are not
+     known in advance, and legibility here matters more than seeing through
+     to the shoulder behind it. */
+  background: var(--primary);
+  padding: 0.5rem 0.85rem;
+  color: var(--primary-foreground);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: var(--shadow-editorial);
+}
+
 @utility doctor-placeholder {
   position: relative;
   display: grid;

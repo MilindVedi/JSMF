@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ExternalLink, Play, Sparkles } from "lucide-react";
+import { ArrowRight, Award, ExternalLink, Play, Sparkles } from "lucide-react";
 import { DoctorPortrait } from "@/components/store/doctor-portrait";
 import { InstagramIcon, YouTubeIcon } from "@/components/store/social-icons";
 import { ResourceCard } from "@/components/store/resource-card";
@@ -75,6 +75,12 @@ export default function LandingPage() {
               the bottom margin that keeps it clear of the section edge. */}
           <div className="relative mx-auto mb-16 w-full max-w-md lg:col-span-5 lg:mb-10">
             <DoctorPortrait />
+            {author.featuredCredential && (
+              <p className="doctor-badge">
+                <Award className="size-3.5" aria-hidden />
+                {author.featuredCredential}
+              </p>
+            )}
             <div className="doctor-credential">
               <p className="text-[10px] font-bold uppercase text-primary">Lead academic</p>
               <h2 className="mt-1 font-display font-semibold text-brand-ink">{author.name}</h2>

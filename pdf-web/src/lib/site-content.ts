@@ -38,6 +38,17 @@ export const author = {
    * hero of the first page a visitor sees — often on mobile data.
    */
   photo: "/dr-angad-rai.jpg" as string | null,
+  /**
+   * The single achievement shown on the portrait itself, separate from
+   * `credentials` because it is the headline one — the rank a visitor should
+   * take away if they read nothing else on the page.
+   *
+   * Deliberately one, not a stack: the badge sits over the photograph, and
+   * every additional line there costs the portrait and buys less attention
+   * than the one before it. Further credentials belong in the card below,
+   * which is built for a list. Set to `null` to remove the badge entirely.
+   */
+  featuredCredential: "AIR 925 · NEET-PG 2026" as string | null,
   initials: "AR",
   quote: {
     text: "Preparation shouldn't mean solving thousands of random questions. It should mean solving the right questions, understanding why they're right, and knowing exactly what to revise.",
