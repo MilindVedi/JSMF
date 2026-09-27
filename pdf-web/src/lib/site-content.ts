@@ -30,12 +30,14 @@ export const author = {
   qualification: "MBBS, MD — Medical Lead, JSMF",
   credentials: ["AIR 9 · FMGE 2023", "MBBS Bronze Medalist"],
   /**
-   * No photograph exists in the repository yet, so the UI falls back to the
-   * initials portrait — the same approach `web/` takes. Set this to a path
-   * under `public/` (e.g. `/dr-angad-rai.jpg`) and the real image is used with
-   * no other change.
+   * Served from `public/`. Setting this to `null` restores the initials
+   * portrait everywhere the photograph appears, with no other change.
+   *
+   * Stored as a 1024x1536 JPEG (~107KB) rather than the original PNG (~1.7MB):
+   * it is a photograph, where JPEG is the right format, and it loads in the
+   * hero of the first page a visitor sees — often on mobile data.
    */
-  photo: null as string | null,
+  photo: "/dr-angad-rai.jpg" as string | null,
   initials: "AR",
   quote: {
     text: "Preparation shouldn't mean solving thousands of random questions. It should mean solving the right questions, understanding why they're right, and knowing exactly what to revise.",

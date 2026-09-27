@@ -2,13 +2,14 @@ import { author } from "@/lib/site-content";
 import { cn } from "@/lib/utils";
 
 /**
- * Dr. Angad Rai's portrait, falling back to an initials block until a real
- * photograph exists.
+ * Dr. Angad Rai's portrait, falling back to an initials block when
+ * `author.photo` is unset.
  *
- * Deliberately not a stock photo or a generated face: this represents a real
- * person on a page whose entire job is establishing that he is real. An
- * obviously-placeholder block is honest; a stock doctor is not. Setting
- * `author.photo` swaps in the real image with no other change.
+ * The fallback is an initials block rather than a stock doctor photograph, and
+ * that distinction still matters: this image sits on a page whose entire job is
+ * establishing that a named, credentialled person stands behind the material.
+ * An obviously-placeholder block is honest about having no photograph; a
+ * stranger in a white coat is not.
  *
  * `size` exists because the placeholder is a composition, not a scalable
  * image: the hero version is a 4:5 panel with a 7rem monogram and a caption,

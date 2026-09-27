@@ -34,9 +34,13 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     // without an account, so offering it signed-out sends a first-time visitor
     // to a dead end before they have seen a single resource.
     { href: "/library", label: "My Library", icon: Library, show: Boolean(user) },
-    // The storefront and the admin panel are separate shells with separate
-    // navs, so without this an admin who lands on a buyer page has no way back
-    // and it looks as though the admin features have disappeared.
+    // Never rendered for buyers or signed-out visitors — `isAdmin` gates it, so
+    // the public storefront never shows a route into the admin panel.
+    //
+    // It exists for the admin who is already signed in and has landed on a
+    // buyer page: the storefront and the admin panel are separate shells with
+    // separate navs, so without this there is no way back and it looks as
+    // though the admin features have disappeared.
     { href: "/admin/products", label: "Admin", icon: Shield, show: isAdmin(user) },
   ].filter((link) => link.show);
 
