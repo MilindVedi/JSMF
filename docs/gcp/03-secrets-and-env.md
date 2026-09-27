@@ -29,7 +29,9 @@ This document provides a reference for all environment variables, flags, and sec
 | `RAZORPAY_KEY_ID` | String | `<your-key-id>` | GCP Secret: `RAZORPAY_KEY_ID` | Razorpay public key. |
 | `RAZORPAY_KEY_SECRET` | String | `<your-key-secret>` | GCP Secret: `RAZORPAY_KEY_SECRET` | Razorpay private secret. |
 | `REDIS_ENABLED` | Boolean | `false` | Cloud Run Env Var | Keep `false` in V1 for lowest cost ($0). |
-| `TRUST_PROXY_HOPS` | Number | **Measure it** — start at `1` | Cloud Run Env Var | **Required, and the correct value depends on your proxy chain — do not assume.** Rate limiting keys on client IP; too low and every user shares one bucket, too high and the limit is forgeable. See *Phase 9.1* in the deployment guide for how to determine it. |
+| `RATE_LIMIT_PER_MINUTE` | Number | *(leave unset — 120)* | Cloud Run Env Var | Per-caller limit, counted per account when signed in. Tunable without a rebuild; the default is an estimate that real traffic should settle. |
+| `RATE_LIMIT_IP_CEILING_PER_MINUTE` | Number | *(leave unset — 3000)* | Cloud Run Env Var | Per-IP backstop. Must be >= `RATE_LIMIT_PER_MINUTE` or the app refuses to start. |
+| `TRUST_PROXY_RANGES` | CSV String | *(leave unset)* | Cloud Run Env Var | Which upstream addresses are trusted proxies, for resolving the real client IP that rate limiting counts on. The built-in default already covers Cloud Run, Firebase Hosting and Google load balancers - **only set this if a new proxy is added**. See *Phase 9.1*. |
 | `PASSWORD_SIGNUP_ENABLED` | Boolean | `false` | Cloud Run Env Var | V1 buyers sign in with Google only; `POST /auth/register` answers 404. |
 | `MAIL_DRIVER` | Enum | `resend` | Cloud Run Env Var | HTTPS API, not an SMTP socket — Cloud Run blocks outbound SMTP ports. `log` is **refused in production** by env validation. |
 | `RESEND_API_KEY` | String | `re_...` | GCP Secret: `RESEND_API_KEY` | Required when `MAIL_DRIVER=resend`. Create at https://resend.com/api-keys. |

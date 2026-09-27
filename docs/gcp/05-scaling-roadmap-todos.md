@@ -42,8 +42,18 @@ This document outlines upcoming architectural enhancements and migration milesto
 
 ---
 
+## 6. Move reconciliation off an in-process timer
+
+- [ ] **Replace `@Cron` with Cloud Scheduler calling an authenticated endpoint.** The sweep currently runs on a timer inside the API process, which forces two Cloud Run settings it should not need: `--min-instances=1` and `--no-cpu-throttling`, together costing the scale-to-zero saving the V1 cost model is built around. It also fires against a connection pool that has been idle, which is why sweeps fail with `Can't reach database server` once Neon's free tier has suspended.
+- [ ] Driving it as an ordinary HTTP request removes all three problems at once: Cloud Run allocates CPU for the duration, the database connection is established as part of serving it, and the backend can go back to `--min-instances=0`. Cloud Scheduler allows 3 jobs free per month, so this is cheaper than the instance it replaces.
+- [ ] Until then, keep `--min-instances=1 --no-cpu-throttling` on the backend and check the logs for the `Reconciliation: N checked` line; see *Phase 9.2* of the deployment guide.
+
 ## 5. Frontend & Global Edge Acceleration
+
+- [ ] **Edge rate limiting (the gap backend throttling cannot close).** Every API request reaches the backend *through* the Next.js service, so a flood is absorbed by frontend instances before the backend rejects it: they accept the connection, run middleware, forward it, and Cloud Run bills for all of it. Backend limits protect the database and the expensive work behind it, not the frontend's compute. The fix is rejecting traffic before it reaches any instance - Cloud Armor, or the CDN's own rate limiting - which is a paid component and the reason this is deferred rather than solved. Doing it in the Next.js middleware instead is not equivalent: it would have to verify tokens itself to key by account, and its counters would sit in per-instance memory on a service that scales to zero.
+
 
 - [ ] **Custom Domain Setup:** Map custom domain on GoDaddy with Cloud Run custom domain mappings / Cloud Load Balancer.
 - [ ] **Edge Caching:** Add Cloudflare or Google Cloud Armor / CDN in front of Next.js frontend to cache static assets and marketing pages at the edge across India and globally.
-- [ ] ⚠️ **Whenever a proxy is added or removed in front of the app, re-check `TRUST_PROXY_HOPS`.** Every proxy adds an entry to `X-Forwarded-For`, and that variable says how many of them to trust. Adding a CDN without raising it means the backend reads the CDN's address instead of the user's — every visitor collapses into one rate-limit bucket again. Nothing errors; the limits simply stop being per-user. Re-run *Phase 9.1* of the deployment guide after any change to the chain, including the Firebase Hosting step.
+- [ ] **Whenever a proxy is added in front of the app, add its IP range to `TRUST_PROXY_RANGES`.** Client IPs are resolved by walking `X-Forwarded-For` and skipping known-proxy addresses; an unrecognised proxy is taken for the client, so every visitor collapses into one rate-limit bucket. Nothing errors - the limits just stop being per-user. Re-run the checks in *Phase 9.1* of the deployment guide after any change to the chain.
+- [ ] **Single front door (deferred):** the service's `.run.app` URL bypasses Firebase and the CDN. Closing it needs a Cloud Load Balancer with ingress set to *Internal and Cloud Load Balancing* - restricting ingress without one locks Firebase out and takes the site down. Not urgent: client-IP resolution is already correct on both paths.

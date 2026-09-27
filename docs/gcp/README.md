@@ -25,3 +25,18 @@ This directory contains the documentation and step-by-step guides for deploying 
    - GCP Free Tier allocation strategy.
    - Database options (Supabase/Neon Free tier vs Cloud SQL `db-f1-micro`).
    - Rationale for omitting Redis in V1 (`REDIS_ENABLED=false`).
+
+5. **[05-scaling-roadmap-todos.md](file:///docs/gcp/05-scaling-roadmap-todos.md)**
+   - Scaling milestones (V1 -> V2 -> V3).
+   - Redis caching and queue activation path.
+   - Database migration runbooks.
+
+6. **[06-capacity-and-security-report.md](file:///docs/gcp/06-capacity-and-security-report.md)**
+   - Comprehensive V1 security posture analysis.
+   - Concurrent user capacity limits (Cloud Run, Neon DB, Resend, Cloudinary).
+   - Dynamic rate-limiting architecture & hostel network resolution.
+
+7. **[07-security-architecture-and-tradeoffs.md](file:///docs/gcp/07-security-architecture-and-tradeoffs.md)**
+   - Deep-dive into active security layers (Zero-Trust IAM, RS256 cryptography, token family tracking).
+   - Known architectural trade-offs in V1 (Frontend public exposure, in-memory rate limiting drift).
+   - Cloud Armor, WAF, Redis Throttling, and Cloudflare Turnstile upgrade roadmap.

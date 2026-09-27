@@ -121,20 +121,71 @@ const schema = z
     /// built server-side and must not be steerable by a Host header.
     ADMIN_APP_URL: z.string().url().default('http://localhost:3001'),
 
-    /// How many reverse proxies sit in front of this process.
+    /// The rate limit a single caller gets per minute — counted against their
+    /// account when signed in, and only against their IP address when not.
     ///
-    /// Rate limiting counts requests per client IP, and behind a proxy the
-    /// connecting address is the proxy's, not the user's — so with this at 0 on
-    /// a platform like Cloud Run every user shares one bucket and the per-IP
-    /// limits silently become global ones. The real address arrives in
-    /// `X-Forwarded-For`, and this says how many of that header's entries are
-    /// trustworthy because a proxy we control appended them.
+    /// Sized for one person rather than one network: a page view costs two or
+    /// three API calls, so a student opening a new page every few seconds
+    /// produces 40-50 a minute. The default sits well clear of that and far
+    /// below anything automated.
     ///
-    /// 0 is correct for running directly (local development, `docker compose`),
-    /// and is the default because it fails the safe way: limits that are too
-    /// strict, rather than a header any caller can forge to mint themselves a
-    /// fresh IP and bypass throttling entirely. Set it to 1 behind Cloud Run.
-    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+    /// In configuration rather than in code because it is a number to tune
+    /// against real traffic, not a decision: the defaults are derived from
+    /// estimated usage, and the first weeks of real load are what actually
+    /// settle them. Raising it should not cost a rebuild and a redeploy.
+    RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(120),
+
+    /// The per-IP backstop, counted per minute against the source address even
+    /// for signed-in callers.
+    ///
+    /// Exists because counting per account widens one gap: someone holding
+    /// several accounts would otherwise get an allowance for each. This closes
+    /// it without reintroducing the shared-network problem, because it is set
+    /// where no legitimate network reaches — roughly 100 students browsing hard
+    /// behind one NAT is ~2,000/min, while a script manages ten times this
+    /// default from a single source.
+    ///
+    /// A backstop, not a budget: if it trips, something is wrong.
+    RATE_LIMIT_IP_CEILING_PER_MINUTE: z.coerce.number().int().positive().default(3_000),
+
+    /// Which addresses are proxies we control, as a comma-separated list of
+    /// CIDR ranges or Express presets (`loopback`, `linklocal`, `uniquelocal`).
+    ///
+    /// Rate limiting counts requests per client IP. Behind a proxy the
+    /// connecting address is the proxy's — identical for every visitor — so the
+    /// real one is read from `X-Forwarded-For`, whose entries are walked from
+    /// the right, skipping addresses listed here, and stopping at the first that
+    /// is not. That address is the client.
+    ///
+    /// A list rather than a hop count, which this replaces, because a count
+    /// cannot be correct here: the same deployment is reachable through two
+    /// chains of different lengths. Via the custom domain the request crosses
+    /// Firebase Hosting and Cloud Run (three entries); via the service's own
+    /// `.run.app` URL it crosses only Cloud Run, and whatever the caller put in
+    /// the header is preserved. A count right for one is wrong for the other —
+    /// and wrong in the dangerous direction for the second, where it would read
+    /// an attacker-supplied entry and let anyone mint a fresh identity per
+    /// request. Matching on address is correct for both, because it stops at the
+    /// first address Google did not write regardless of how many precede it.
+    ///
+    /// The defaults are the ranges this deployment actually runs behind:
+    /// `34.96.0.0/12` is Cloud Run's front end, `66.249.64.0/19` is Firebase
+    /// Hosting's edge, `35.191.0.0/16` and `130.211.0.0/22` are Google's load
+    /// balancers, and the three presets cover the local and container networks
+    /// that stand in for a proxy in development.
+    ///
+    /// Empty trusts nothing, which is correct for a process reached directly.
+    TRUST_PROXY_RANGES: z
+      .string()
+      .default(
+        'loopback,linklocal,uniquelocal,34.96.0.0/12,35.191.0.0/16,130.211.0.0/22,66.249.64.0/19',
+      )
+      .transform((value) =>
+        value
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0),
+      ),
 
     /// Buyer signup with an email and a password. Off in V1, which is a
     /// decision about email volume rather than about authentication: a password
@@ -230,6 +281,21 @@ const schema = z
           });
         }
       }
+    }
+
+    if (env.RATE_LIMIT_IP_CEILING_PER_MINUTE < env.RATE_LIMIT_PER_MINUTE) {
+      // Inverted, the ceiling stops being a backstop and becomes the real
+      // limit — reintroducing exactly the shared-network problem that counting
+      // per account was meant to remove, and silently, because both limits
+      // still appear to work.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['RATE_LIMIT_IP_CEILING_PER_MINUTE'],
+        message:
+          `RATE_LIMIT_IP_CEILING_PER_MINUTE (${env.RATE_LIMIT_IP_CEILING_PER_MINUTE}) must be at ` +
+          `least RATE_LIMIT_PER_MINUTE (${env.RATE_LIMIT_PER_MINUTE}) — a ceiling below the ` +
+          'per-caller limit would bite first, putting every user on a shared network back into one allowance',
+      });
     }
 
     if (env.MAIL_DRIVER === 'resend' && !env.RESEND_API_KEY) {

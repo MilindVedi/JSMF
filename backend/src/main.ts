@@ -34,8 +34,11 @@ async function bootstrap(): Promise<void> {
   // unless Express is told a proxy is in front. Behind one, that address is the
   // proxy's and is identical for every user, so the per-IP limits quietly become
   // limits shared by the entire site at once.
-  const trustProxyHops = config.get('TRUST_PROXY_HOPS');
-  app.getHttpAdapter().getInstance().set('trust proxy', trustProxyHops);
+  const trustedProxies = config.get('TRUST_PROXY_RANGES');
+  // `false` rather than an empty array: Express treats an empty list as a
+  // malformed setting, while `false` means "trust nothing", which is what an
+  // empty configuration is asking for.
+  app.getHttpAdapter().getInstance().set('trust proxy', trustedProxies.length > 0 ? trustedProxies : false);
 
   app.use(helmet());
   app.enableCors({
@@ -77,9 +80,9 @@ async function bootstrap(): Promise<void> {
   // everyone shares a rate-limit bucket, too high and the limits are forgeable.
   // GET /api/health/client-ip is how to check it against a real deployment.
   logger.log(
-    trustProxyHops === 0
-      ? 'trust proxy: 0 (direct connections — set TRUST_PROXY_HOPS=1 behind Cloud Run)'
-      : `trust proxy: ${trustProxyHops} hop(s)`,
+    trustedProxies.length > 0
+      ? `trust proxy: ${trustedProxies.length} trusted range(s) — verify with GET /api/health/client-ip`
+      : 'trust proxy: nothing trusted (direct connections only)',
   );
   if (!config.isProduction) {
     logger.log(`API docs at http://localhost:${port}/api/docs`);

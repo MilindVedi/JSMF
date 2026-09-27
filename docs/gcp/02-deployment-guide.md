@@ -256,14 +256,12 @@ docker push asia-south1-docker.pkg.dev/${PROJECT_ID}/jsmf-repo/backend:latest
    - **Scaling**: Minimum instances `0`, Maximum instances `3`
    - **Environment variables**:
      - `NODE_ENV` = `production`
-     - `TRUST_PROXY_HOPS` = `1` *(a starting point only — Phase 9.1 tells you the real value)*
      - `STORAGE_DRIVER` = `cloudinary`
      - `PAYMENT_DRIVER` = `razorpay`
      - `REDIS_ENABLED` = `false`
      - `MAX_UPLOAD_SIZE_MB` = `10`
      - `STORAGE_PRIVATE_BUCKET` = `jsmf/private`
      - `STORAGE_PUBLIC_BUCKET` = `jsmf/public`
-     - `CORS_ORIGINS` = `http://localhost:3000` *(will update once frontend is deployed)*
    - **Secrets**: Add references to the 9 secrets created in Secret Manager.
    - **Cloud SQL Connections** (if using Cloud SQL): Add `jsmf-postgres`.
 5. Click **CREATE**.
@@ -276,11 +274,12 @@ gcloud run deploy jsmf-backend `
   --platform=managed `
   --allow-unauthenticated `
   --port=4000 `
-  --min-instances=0 `
+  --min-instances=1 `
   --max-instances=3 `
   --memory=512Mi `
-  --cpu=1 `
-  --set-env-vars="NODE_ENV=production,TRUST_PROXY_HOPS=1,STORAGE_DRIVER=cloudinary,PAYMENT_DRIVER=razorpay,REDIS_ENABLED=false,MAX_UPLOAD_SIZE_MB=10,STORAGE_PRIVATE_BUCKET=jsmf/private,STORAGE_PUBLIC_BUCKET=jsmf/public,CORS_ORIGINS=http://localhost:3000" `
+  --cpu=2 `
+  --no-cpu-throttling `
+  --set-env-vars="NODE_ENV=production,STORAGE_DRIVER=cloudinary,PAYMENT_DRIVER=razorpay,REDIS_ENABLED=false,MAX_UPLOAD_SIZE_MB=10,STORAGE_PRIVATE_BUCKET=jsmf/private,STORAGE_PUBLIC_BUCKET=jsmf/public" `
   --set-secrets="DATABASE_URL=DATABASE_URL:latest,JWT_PRIVATE_KEY_BASE64=JWT_PRIVATE_KEY_BASE64:latest,JWT_PUBLIC_KEY_BASE64=JWT_PUBLIC_KEY_BASE64:latest,STORAGE_SIGNING_SECRET=STORAGE_SIGNING_SECRET:latest,CLOUDINARY_CLOUD_NAME=CLOUDINARY_CLOUD_NAME:latest,CLOUDINARY_API_KEY=CLOUDINARY_API_KEY:latest,CLOUDINARY_API_SECRET=CLOUDINARY_API_SECRET:latest,RAZORPAY_KEY_ID=RAZORPAY_KEY_ID:latest,RAZORPAY_KEY_SECRET=RAZORPAY_KEY_SECRET:latest" `
   --add-cloudsql-instances="${PROJECT_ID}:${REGION}:jsmf-postgres"
 ```
@@ -329,7 +328,7 @@ gcloud run deploy jsmf-pdf-web `
   --min-instances=0 `
   --max-instances=3 `
   --memory=512Mi `
-  --cpu=1 `
+  --cpu=2 `
   --set-env-vars="BACKEND_API_URL=https://jsmf-backend-67890.a.run.app"
 ```
 
@@ -365,16 +364,15 @@ gcloud run services update jsmf-backend `
   --invoker-iam-check
 ```
 
-### Step 7.2: Update CORS on Backend
-Update the backend to accept requests originating from the frontend URL:
+### Step 7.2: Inform Backend of Public URL
+The backend needs to know its public-facing URL to construct absolute links (like email invites or payment callbacks).
 
 ```powershell
-$FRONTEND_URL = "https://jsmf-pdf-web-12345.a.run.app"
 $BACKEND_URL = "https://jsmf-backend-67890.a.run.app/api"
 
 gcloud run services update jsmf-backend `
   --region=$REGION `
-  --update-env-vars="CORS_ORIGINS=${FRONTEND_URL},APP_PUBLIC_URL=${BACKEND_URL}"
+  --update-env-vars="APP_PUBLIC_URL=${BACKEND_URL}"
 ```
 
 ### Step 7.3: Configure Razorpay Webhooks (Frontend Proxy)
@@ -433,53 +431,117 @@ npm run db:seed
    - Test admin login with your seeded credentials (`admin@jsmf.local`).
    - Test checkout with Razorpay test mode.
 
-### Phase 9.1: Determine `TRUST_PROXY_HOPS` (do not skip)
+### Phase 9.1: Verify client IP resolution
 
 Rate limiting counts requests **per client IP**. Behind a proxy the connecting
-address is the proxy's — identical for every visitor — so the app reads the real
-address out of `X-Forwarded-For` instead. `TRUST_PROXY_HOPS` says how many
-entries at the **end** of that header were written by proxies we control.
+address is the proxy's - identical for every visitor - so the real one is read
+from `X-Forwarded-For`. `TRUST_PROXY_RANGES` lists which upstream addresses are
+proxies we control; the app walks that header from the right, skips those, and
+stops at the first address they did not write.
 
-Both wrong values fail silently:
+**This is configured correctly by default and normally needs no change.** The
+built-in list covers Cloud Run (`34.96.0.0/12`), Firebase Hosting
+(`66.249.64.0/19`), Google's load balancers, and local/container networks.
 
-| Value | Failure |
+#### Why a list and not a count of proxies
+
+This deployment is reachable through **two chains of different lengths**:
+
+| Path | `X-Forwarded-For` at the backend |
 | :--- | :--- |
-| **Too low** | Every user shares one rate-limit bucket. The per-IP limits become site-wide: ~20 Google sign-ins per minute for the *whole site*, then everyone gets `429`. |
-| **Too high** | The app reads an entry the caller can forge. Anyone can send a made-up `X-Forwarded-For`, look like a new visitor on every request, and bypass rate limiting entirely — while the logs show it working. |
+| `https://<custom-domain>` | `<client>,<firebase>,<cloudrun>` - Firebase discards anything the caller sent |
+| `https://<service>.run.app` | `<whatever the caller sent>,<client>,<cloudrun>` - preserved |
 
-**This deployment has an unusually long chain**, so the value is not obviously
-`1`. An API request passes through Cloud Run's front end, then the Next.js
-service (whose middleware proxies `/api/*` to the private backend, forwarding
-the incoming headers), and — once Phase 10 is done — Firebase Hosting in front
-of that. Each adds an entry.
+A fixed hop count cannot serve both. Counting three entries back is right for
+the first and, for the second, lands on an attacker-supplied value - letting
+anyone forge a fresh IP per request and bypass rate limiting entirely while the
+logs look healthy. Matching on address is correct for both paths, because it
+stops at the first address Google did not write however many precede it.
 
-**Determine it by measurement, starting low.** Too low is the safe failure, so
-start at `1` and raise until correct; never start high and come down.
+Closing the `.run.app` route would remove the ambiguity, but Firebase Hosting
+reaches Cloud Run over the public path: restricting ingress or removing the
+`allUsers` invoker binding locks Firebase out too and takes the site down with
+a 404. Doing it properly needs a Cloud Load Balancer in front with ingress set
+to *Internal and Cloud Load Balancing* - a separate piece of work, and not
+required, because address matching is already correct on both paths.
 
-1. Deploy with `TRUST_PROXY_HOPS=1`.
-2. Open `https://<your-frontend-domain>/api/health/client-ip` on **two different
-   networks** — a phone on mobile data and a laptop on wi-fi.
-3. Compare the `clientIp` in each response:
-   - **Different on each** → correct. Done.
-   - **Identical on both** → too low. Raise by one and repeat.
-4. Then confirm it is not too high: send a forged header and check it is ignored.
+#### Verify after deploying
+
+```powershell
+curl "https://<your-domain>/api/health/client-ip"
+```
+
+1. `clientIp` must be **your own public address**, not `34.96.x` or `66.249.x`.
+   If it is one of those, an upstream proxy is missing from the list - add its
+   range to `TRUST_PROXY_RANGES`.
+2. Confirm it cannot be forged:
 
    ```powershell
-   curl "https://<your-frontend-domain>/api/health/client-ip" -H "X-Forwarded-For: 1.2.3.4"
+   curl "https://<your-domain>/api/health/client-ip" -H "X-Forwarded-For: 1.2.3.4"
    ```
 
-   `clientIp` must **not** be `1.2.3.4`. If it is, the value is too high —
-   lower it by one.
+   `clientIp` must **not** be `1.2.3.4`.
+3. Opening it on two different networks (phone on mobile data, laptop on wi-fi)
+   must give two different `clientIp` values.
 
-The response also echoes `forwardedFor`, so you can see the whole chain and
-count the entries directly.
+`forwardedFor` in the response shows the whole chain, so a new proxy is visible
+as an extra entry.
 
-Changing it is an env var update, not a rebuild:
+> **Adding a proxy later** - another CDN, a WAF, a load balancer - puts a new
+> address in that chain. Add its range to `TRUST_PROXY_RANGES` and re-run the
+> checks above. Miss it and nothing errors; every visitor silently collapses
+> into one rate-limit bucket.
+
+---
+
+### Phase 9.2: Keep the reconciliation job alive
+
+The payment reconciliation sweep is an **in-process timer**
+(`@Cron(EVERY_5_MINUTES)` in `reconciliation.service.ts`), not an external
+scheduler. It is the safety net for a payment whose webhook never arrived, so
+it is the one piece of background work that must actually run. Two Cloud Run
+defaults stop it, and both are on the **backend** service only:
+
+| Setting | Default | Why it breaks the sweep | Required |
+| :--- | :--- | :--- | :--- |
+| `--min-instances` | `0` | With no traffic the instance is shut down. A timer cannot fire in a process that does not exist. | `1` |
+| CPU allocation | throttled outside requests | Even with an instance alive, CPU is frozen between requests, so a timer that fires on its own schedule gets no cycles. | `--no-cpu-throttling` |
 
 ```powershell
 gcloud run services update jsmf-backend --region=$REGION `
-  --update-env-vars="TRUST_PROXY_HOPS=2"
+  --min-instances=1 --no-cpu-throttling
 ```
+
+**This applies to the backend only.** The sweep receives no HTTP request — it
+runs on a timer inside the API process and calls *outward* to Razorpay and the
+database. The frontend is not involved, and its `--min-instances` can stay at
+`0`.
+
+#### Verify it is actually running
+
+```powershell
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="jsmf-backend" AND textPayload:"Reconciliation"' --limit=20 --freshness=2h
+```
+
+Expect a `Reconciliation: N checked, N settled, N errored` line roughly every
+five minutes. Sporadic entries clustered around periods of user traffic mean
+the instance is only alive while serving requests — the sweep is not running on
+schedule, whatever the setting says.
+
+#### The database also has to be awake
+
+Neon's free tier suspends compute after a few minutes idle. A sweep firing
+against a connection that went stale while both the instance and the database
+were idle fails with:
+
+```
+Invalid `prisma.payment.findMany()` invocation:
+Can't reach database server at `ep-....neon.tech:5432`
+```
+
+Keeping the instance alive with CPU allocated is what prevents this, because
+the pool stays warm. If sweeps still fail after the settings above, the durable
+fix is to stop using an in-process timer at all — see the scaling roadmap.
 
 ---
 
@@ -542,4 +604,3 @@ npx firebase-tools deploy --only hosting
 > ⚠️ **CRITICAL CLEANUP:** Now that your URL has changed from `.run.app` to your custom domain, you MUST go back and update:
 > 1. **Google OAuth:** Change Authorized Origins & Redirect URIs to your custom domain.
 > 2. **Razorpay:** Change the Webhook URL to your custom domain.
-> 3. **CORS:** Update `CORS_ORIGINS` in your Backend Cloud Run service to include your custom domain.

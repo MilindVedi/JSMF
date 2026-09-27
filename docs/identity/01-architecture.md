@@ -12,7 +12,7 @@ JSMF is becoming more than one product — the PYQ question bank, the [PDF platf
 - **Refresh-token families with reuse detection.** Every token descended from one login shares a family id. If an already-rotated token is presented again, either the real client or an attacker is replaying it and there is no way to tell which — so the whole family is revoked and the user re-authenticates. Without this, a stolen refresh token can be used indefinitely alongside the legitimate session and nothing ever notices. See the `refresh_tokens` table in [02 — Data Model](./02-data-model.md) for the schema this requires.
 - **Argon2id password hashing**, chosen over bcrypt because it is the current recommended default and because changing a password hash after real accounts exist means rehashing on next login for everyone.
 - **Roles as a table rather than a column**, so one person can hold several (admin *and* educator), and so per-product permissions can be added later without a migration.
-- **Rate limiting and lockout on authentication endpoints specifically**, tighter than the application-wide throttle, because credential stuffing targets exactly these routes. These limits are counted per client IP, which behind a proxy depends entirely on `TRUST_PROXY_HOPS` being set correctly — set too low, every user shares one bucket and the limits become site-wide rather than per-person; set too high, the address is forgeable and they stop applying at all. See *Phase 9.1* of `docs/gcp/02-deployment-guide.md`.
+- **Rate limiting counted per account, not per IP address**, so a shared campus or hostel network does not pool every student into one allowance. See *Rate limiting* below.
 
 ## Status: built
 
@@ -92,6 +92,90 @@ and cannot be undone (an account created, a payment captured). Provider
 failures are logged in full but never returned — a caller is told only "could
 not send right now", because "Resend daily limit exceeded" describes our
 billing arrangement, not the user's problem.
+
+## Rate limiting
+
+Counted **per signed-in account**, falling back to IP only for anonymous
+traffic, with a second per-IP ceiling underneath.
+
+An IP address was only ever standing in for an identity, and on a shared
+network it stands in badly. A school or hostel puts hundreds of devices behind
+one public address, so under plain IP limiting they share a single allowance:
+with a 20/minute sign-in limit, the twenty-first student is refused for
+something the other twenty did. Raising the numbers does not fix that. It moves
+the point at which the wrong people are blocked, and buys it by weakening the
+limit against the abuse it exists to stop.
+
+So `IdentityThrottlerGuard` keys on the access token's `sub` when there is a
+valid one, and on the address otherwise.
+
+| Layer | Default | Setting | Keyed on |
+| :--- | :--- | :--- | :--- |
+| `default` | 120/min | `RATE_LIMIT_PER_MINUTE` | account when signed in, address when not |
+| `ip-ceiling` | 3,000/min | `RATE_LIMIT_IP_CEILING_PER_MINUTE` | address, always |
+
+Both are configuration rather than constants, because the defaults are derived
+from estimated usage and only real traffic settles them — tuning a limit should
+not cost a rebuild and a redeploy. The window is fixed at one minute: every
+limit here, in the route decorators and in this document is expressed per
+minute, and making the window variable too would turn "120" into a number that
+means nothing on its own.
+
+Boot fails if the ceiling is set below the per-caller limit. Inverted, it stops
+being a backstop and becomes the real limit — reinstating the shared-network
+problem that counting per account exists to remove, and silently, because both
+limits still appear to work.
+
+**Why 120.** A page view costs two or three API calls, so a student clicking a
+new page every few seconds generates 40–50 a minute. 120 is well clear of that
+and far below anything automated.
+
+**Why 3,000, and why a ceiling at all.** Per-account counting widens one gap:
+someone holding several accounts would get an allowance per account. The
+ceiling closes it by counting every request against its source address as well.
+It is sized from the other end — roughly 100 students browsing hard on one NAT
+is ~2,000/min, while a trivial script manages ten times 3,000 from a single
+source. Nothing legitimate should ever reach it; if it trips, something is
+wrong. It is a backstop, not a budget.
+
+**The token is verified, never merely decoded.** A JWT's payload is readable and
+writable by anyone holding it, so trusting an unverified `sub` would let a
+caller invent an identity per request and mint unlimited buckets — strictly
+worse than counting by address, which at least cannot be chosen freely. Only
+the signature is checked; there is no lookup to confirm the account still
+exists, because rate limiting needs a stable name to count against and a
+suspended user is refused a moment later by the guard that does care.
+
+**Why the throttler verifies the token itself** rather than reading
+`request.user`: guard order runs throttling before authentication, so that a
+flood is rejected without paying for signature checks. Reordering so
+`request.user` were populated first would undo exactly that.
+
+Anonymous limits remain per-address, because there is genuinely nothing else to
+key on. `/auth/google/start` is therefore set higher than its siblings (60/min):
+it only mints a state token and redirects, so flooding it achieves nothing,
+while `exchange` and the payment routes stay tight because they do real work.
+
+### What this does not cover
+
+Requests reach the API through the Next.js service, which proxies `/api/*`. A
+flood is therefore absorbed by the **frontend** instances before the backend
+ever rejects it — they still accept the connection, run middleware and forward
+it, and Cloud Run still bills for that. Limiting in the backend protects the
+database and the expensive work behind it; it does not protect the frontend's
+compute from volume.
+
+That is deliberate for V1 rather than overlooked. The backend is where the
+limit can be meaningful — it is the side that knows who the caller is, and the
+side where a request actually costs something. The Next.js middleware would
+have to verify tokens itself to key by account, and its counters would live in
+per-instance memory on a service that scales to zero, so they would be
+approximate at best and reset constantly.
+
+The right home for volumetric protection is the edge, in front of both
+services — Cloud Armor or a CDN's own rate limiting, which reject traffic
+before it reaches any instance. That is a paid component and is deferred; see
+`docs/gcp/05-scaling-roadmap-todos.md`.
 
 It lives in `shared/` rather than inside identity because it is cross-cutting: invitations need it today, and password reset, receipts and refund notices need it next. `MAIL_DRIVER=log` is refused in production by env validation — an invitation link written to a log file is both a broken flow and a credential in plaintext logs.
 

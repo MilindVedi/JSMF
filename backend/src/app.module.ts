@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { AppConfig, AppConfigModule } from './config/config.module';
 import { PrismaModule } from './shared/prisma/prisma.module';
@@ -14,6 +14,10 @@ import { IdentityModule } from './modules/identity/identity.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { StorageModule } from './modules/storage/storage.module';
+import {
+  IdentityThrottlerGuard,
+  IP_CEILING_THROTTLER,
+} from './common/guards/identity-throttler.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -35,7 +39,27 @@ import { RolesGuard } from './common/guards/roles.guard';
     ThrottlerModule.forRootAsync({
       inject: [AppConfig],
       useFactory: (config: AppConfig) => ({
-        throttlers: [{ ttl: 60_000, limit: 120 }],
+        // Both limits come from configuration so they can be tuned against real
+        // traffic without a rebuild; their notes in `config/env.ts` explain how
+        // the defaults were arrived at. The window stays fixed at one minute
+        // deliberately — every limit in this codebase, its decorators and its
+        // docs is expressed per minute, and making the window a variable too
+        // would turn "120" into a number that means nothing on its own.
+        throttlers: [
+          // The real limit: per signed-in account, per address only when
+          // anonymous.
+          {
+            name: 'default',
+            ttl: 60_000,
+            limit: config.get('RATE_LIMIT_PER_MINUTE'),
+          },
+          // The backstop, always per address.
+          {
+            name: IP_CEILING_THROTTLER,
+            ttl: 60_000,
+            limit: config.get('RATE_LIMIT_IP_CEILING_PER_MINUTE'),
+          },
+        ],
         storage: config.get('REDIS_ENABLED')
           ? new ThrottlerStorageRedisService(config.get('REDIS_URL'))
           : undefined,
@@ -55,7 +79,12 @@ import { RolesGuard } from './common/guards/roles.guard';
     // Order matters: throttling runs first (cheapest, and should apply to
     // unauthenticated floods too), then authentication, then authorisation.
     // RolesGuard depends on JwtAuthGuard having already populated request.user.
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    //
+    // Throttling running first is also why it verifies the access token itself
+    // rather than reading `request.user`: that is not populated yet, and
+    // reordering so it were would make every request in a flood pay for a
+    // signature check before anything could reject it.
+    { provide: APP_GUARD, useClass: IdentityThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

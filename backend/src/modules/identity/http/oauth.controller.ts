@@ -22,7 +22,12 @@ export class OAuthController {
 
   @Public()
   @Get('start')
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  // Higher than the other auth routes because this one is always anonymous —
+  // there is no account to count against yet, so a shared campus or hostel
+  // network pools every sign-in here into one allowance. It only mints a state
+  // token and redirects, so flooding it achieves nothing; `exchange`, which
+  // does the real work with Google, stays tight.
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @ApiQuery({ name: 'redirect', required: false, description: 'Must be in OAUTH_ALLOWED_REDIRECTS.' })
   @ApiQuery({ name: 'intent', required: false, enum: ['user', 'admin'] })
   @ApiQuery({ name: 'invitation', required: false, description: 'Admin invitation token, when intent=admin.' })
