@@ -7,6 +7,7 @@ import { PaymentService } from './application/payment.service';
 import { PaymentReconciliationService } from './application/reconciliation.service';
 import { AdminOrderController } from './http/admin-order.controller';
 import { OrderController } from './http/order.controller';
+import { ReconciliationController } from './http/reconciliation.controller';
 import { WebhookController } from './http/webhook.controller';
 
 /**
@@ -19,7 +20,12 @@ import { WebhookController } from './http/webhook.controller';
  */
 @Module({
   imports: [PrismaModule, PaymentsModule, EntitlementsModule],
-  controllers: [OrderController, WebhookController, AdminOrderController],
+  controllers: [
+    OrderController,
+    WebhookController,
+    AdminOrderController,
+    ReconciliationController,
+  ],
   providers: [OrderService, PaymentService, PaymentReconciliationService],
   exports: [OrderService, PaymentService],
 })

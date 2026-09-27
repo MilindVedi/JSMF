@@ -42,11 +42,12 @@ This document outlines upcoming architectural enhancements and migration milesto
 
 ---
 
-## 6. Move reconciliation off an in-process timer
+## 6. Move reconciliation off an in-process timer — **done**
 
-- [ ] **Replace `@Cron` with Cloud Scheduler calling an authenticated endpoint.** The sweep currently runs on a timer inside the API process, which forces two Cloud Run settings it should not need: `--min-instances=1` and `--no-cpu-throttling`, together costing the scale-to-zero saving the V1 cost model is built around. It also fires against a connection pool that has been idle, which is why sweeps fail with `Can't reach database server` once Neon's free tier has suspended.
-- [ ] Driving it as an ordinary HTTP request removes all three problems at once: Cloud Run allocates CPU for the duration, the database connection is established as part of serving it, and the backend can go back to `--min-instances=0`. Cloud Scheduler allows 3 jobs free per month, so this is cheaper than the instance it replaces.
-- [ ] Until then, keep `--min-instances=1 --no-cpu-throttling` on the backend and check the logs for the `Reconciliation: N checked` line; see *Phase 9.2* of the deployment guide.
+- [x] **Replaced `@Cron` with Cloud Scheduler calling an authenticated endpoint.** The sweep used to run on a timer inside the API process, which forced two Cloud Run settings it should not need — `--min-instances=1` and `--no-cpu-throttling` — together costing the scale-to-zero saving the V1 cost model is built around. It also fired against a pool that had been idle, which is why sweeps failed with `Can't reach database server` once Neon's free tier had suspended.
+- [x] Driving it as an ordinary HTTP request removed all three problems at once: Cloud Run allocates CPU for the duration, the database connection is established as part of serving it, and the backend is back to `--min-instances=0`. Cloud Scheduler allows 3 jobs free per month, so this is cheaper than the instance it replaced.
+- [x] `PAYMENT_RECONCILIATION_TRIGGER=cron|http` keeps the in-process timer for local development and Docker Compose, where a long-lived container makes it the simpler thing. Both paths call the same code. See *Phase 9.2* of the deployment guide.
+- [x] **The trigger endpoint carries no secret of its own.** The backend already restricts `roles/run.invoker` to a single service account — the frontend's — which is how `pdf-web/src/middleware.ts` is able to call it at all. Cloud Scheduler gets a second service account added to that same IAM binding and calls the endpoint with `--oidc-service-account-email`; Cloud Run verifies the identity token at the platform layer before the request reaches the container. Nothing application-level to leak, rotate, or forget to check.
 
 ## 5. Frontend & Global Edge Acceleration
 

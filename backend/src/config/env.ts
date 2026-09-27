@@ -259,6 +259,18 @@ const schema = z
     PAYMENT_RECONCILIATION_GIVE_UP_AFTER_HOURS: z.coerce.number().int().positive().default(72),
     PAYMENT_RECONCILIATION_BATCH_SIZE: z.coerce.number().int().positive().max(200).default(50),
 
+    /**
+     * Where the sweep's clock lives. `cron` is an in-process timer, which needs
+     * a process to exist — true under Docker Compose, false on Cloud Run with
+     * `min-instances=0`, where the timer has nothing to fire in and CPU is
+     * frozen between requests. `http` moves the schedule to Cloud Scheduler,
+     * which arrives as a request and so wakes the container it needs. The
+     * endpoint itself carries no secret of its own — Cloud Run's IAM policy is
+     * the authentication, the same way it already is for every `/api/*` call
+     * the frontend makes (see `pdf-web/src/middleware.ts`).
+     */
+    PAYMENT_RECONCILIATION_TRIGGER: z.enum(['cron', 'http']).default('cron'),
+
     SEED_ADMIN_EMAIL: z.string().email().default('admin@jsmf.local'),
     SEED_ADMIN_PASSWORD: z.string().min(8).default('ChangeMe123!'),
     SEED_ADMIN_NAME: z.string().default('JSMF Admin'),

@@ -36,6 +36,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `MAIL_DRIVER` | Enum | `resend` | Cloud Run Env Var | HTTPS API, not an SMTP socket — Cloud Run blocks outbound SMTP ports. `log` is **refused in production** by env validation. |
 | `RESEND_API_KEY` | String | `re_...` | GCP Secret: `RESEND_API_KEY` | Required when `MAIL_DRIVER=resend`. Create at https://resend.com/api-keys. |
 | `MAIL_FROM` | String | `JSMF <no-reply@yourdomain>` | Cloud Run Env Var | Domain must be verified in Resend (https://resend.com/domains) or every send is rejected. |
+| `PAYMENT_RECONCILIATION_TRIGGER` | Enum | `http` | Cloud Run Env Var | `http` on Cloud Run: an in-process `cron` cannot fire at `--min-instances=0`. No app secret involved — Cloud Scheduler authenticates as an IAM identity granted `roles/run.invoker`, same as the frontend. See *Phase 9.2*. |
 
 ---
 

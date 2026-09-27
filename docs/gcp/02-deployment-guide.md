@@ -494,54 +494,166 @@ as an extra entry.
 
 ---
 
-### Phase 9.2: Keep the reconciliation job alive
+### Phase 9.2: Schedule the reconciliation sweep (Cloud Scheduler)
 
-The payment reconciliation sweep is an **in-process timer**
-(`@Cron(EVERY_5_MINUTES)` in `reconciliation.service.ts`), not an external
-scheduler. It is the safety net for a payment whose webhook never arrived, so
-it is the one piece of background work that must actually run. Two Cloud Run
-defaults stop it, and both are on the **backend** service only:
+The payment reconciliation sweep is the safety net for a payment whose webhook
+never arrived — the one piece of background work that must actually run, because
+without it a buyer who closed the tab mid-payment can be charged and never
+receive anything.
 
-| Setting | Default | Why it breaks the sweep | Required |
-| :--- | :--- | :--- | :--- |
-| `--min-instances` | `0` | With no traffic the instance is shut down. A timer cannot fire in a process that does not exist. | `1` |
-| CPU allocation | throttled outside requests | Even with an instance alive, CPU is frozen between requests, so a timer that fires on its own schedule gets no cycles. | `--no-cpu-throttling` |
+It supports two clocks, chosen by `PAYMENT_RECONCILIATION_TRIGGER`:
+
+| Mode | Clock | Use where |
+| :--- | :--- | :--- |
+| `cron` (default) | in-process `@Cron`, every 5 min | Docker Compose, a VM, or Cloud Run with `--min-instances=1 --no-cpu-throttling` |
+| `http` | Cloud Scheduler POSTs an endpoint | **Cloud Run with `--min-instances=0`** |
+
+**On Cloud Run, use `http`.** An in-process timer needs a process, and a
+scaled-to-zero service does not have one between bursts of traffic; CPU is also
+frozen outside request handling, so even a live instance gives a self-scheduled
+timer no cycles. This is not theoretical — in `cron` mode the sweep fired 8
+times in 24 hours instead of ~288, and every run failed to reach the database,
+because a throttled container cannot hold a connection open either.
+
+A scheduled HTTP request fixes all of it at once: the request wakes the
+instance, CPU is allocated for its duration, and the database connection is
+opened as part of serving it. Cloud Scheduler's free tier covers 3 jobs, so
+this also costs less than the always-on instance it replaces.
+
+#### 1. Point the backend at `http` mode
+
+**Via CLI:**
+```powershell
+gcloud run services update jsmf-backend --region=$REGION `
+  --update-env-vars=PAYMENT_RECONCILIATION_TRIGGER=http `
+  --min-instances=0
+```
+
+**Via GCP Console (UI):**
+1. Navigate to **Cloud Run** > click **`jsmf-backend`** > click **Edit & Deploy New Revision**.
+2. In the **Variables & Secrets** (or Container) tab, add/update the environment variable:
+   * **Name**: `PAYMENT_RECONCILIATION_TRIGGER`
+   * **Value**: `http`
+3. Under **Scaling**, ensure **Minimum number of instances** is set to `0`.
+4. Click **Deploy**.
+
+No secret is needed. The backend's IAM policy grants `roles/run.invoker` to
+the frontend's service account (so `pdf-web/src/middleware.ts` can call `/api/*`)
+and to Cloud Scheduler. Verified at the Cloud Run platform layer, unauthenticated
+callers receive a 403 before container execution.
+
+---
+
+#### 2. Give Cloud Scheduler its own identity & IAM permissions
+
+**Via CLI:**
+```powershell
+# 1. Create the service account
+gcloud iam service-accounts create jsmf-reconciliation-scheduler `
+  --display-name="Cloud Scheduler: payment reconciliation trigger"
+
+# 2. Grant Cloud Run Invoker role on the backend
+gcloud run services add-iam-policy-binding jsmf-backend --region=$REGION `
+  --member="serviceAccount:jsmf-reconciliation-scheduler@$PROJECT_ID.iam.gserviceaccount.com" `
+  --role="roles/run.invoker"
+```
+
+**Via GCP Console (UI):**
+1. **Create Service Account**:
+   * Navigate to **IAM & Admin** > **Service Accounts** > click **+ Create Service Account**.
+   * **Service account name**: `jsmf-reconciliation-scheduler`
+   * **Description**: `Triggers payment reconciliation sweep via Cloud Scheduler`
+   * Click **Create and Continue**.
+   * Skip Step 2 (*Grant access to project*) and Step 3 (*Principals with access*) by clicking **Done** (least-privilege principle: permissions are bound directly to the service).
+2. **Grant Cloud Run Invoker Role**:
+   * Navigate to **Cloud Run** > Services list.
+   * Check the checkbox next to **`jsmf-backend`** (do not click the name; tick the box to open the info panel).
+   * In the right-hand **Permissions / Info Panel**, click **Add Principal**.
+   * **New principals**: `jsmf-reconciliation-scheduler@$PROJECT_ID.iam.gserviceaccount.com`
+   * **Role**: **Cloud Run** > **Cloud Run Invoker** (`roles/run.invoker`)
+   * Click **Save**.
+
+---
+
+#### 3. Create the Cloud Scheduler Job
+
+**Via CLI:**
+```powershell
+gcloud scheduler jobs create http payment-reconciliation `
+  --location=$REGION `
+  --schedule="*/5 * * * *" `
+  --uri="https://jsmf-backend-569375141363.asia-south1.run.app/api/internal/reconcile-payments" `
+  --http-method=POST `
+  --oidc-service-account-email="jsmf-reconciliation-scheduler@$PROJECT_ID.iam.gserviceaccount.com" `
+  --oidc-token-audience="https://jsmf-backend-569375141363.asia-south1.run.app" `
+  --attempt-deadline=120s
+```
+
+**Via GCP Console (UI):**
+1. Navigate to **Cloud Scheduler** > click **+ Create Job**.
+2. **Define the schedule**:
+   * **Name**: `payment-reconciliation` (or `payment-reconciliation-sweep`)
+   * **Region**: `asia-south1` (must match your Cloud Run backend region)
+   * **Frequency**: `*/5 * * * *` *(every 5 minutes)*
+   * **Timezone**: Select your timezone (e.g. `India Standard Time (IST)` or `UTC`)
+   * Click **Continue**.
+3. **Configure the execution**:
+   * **Target type**: `HTTP`
+   * **URL**: `https://jsmf-backend-569375141363.asia-south1.run.app/api/internal/reconcile-payments`
+   * **HTTP method**: `POST`
+   * **Auth header**: Select **Add OIDC token**
+   * **Service account**: Select `jsmf-reconciliation-scheduler@$PROJECT_ID.iam.gserviceaccount.com`
+   * **Audience**: `https://jsmf-backend-569375141363.asia-south1.run.app` (or leave default pre-fill)
+   * Click **Continue**.
+4. **Configure optional settings**:
+   * Leave retry config and attempt deadline as default (or set Attempt deadline to `120s`).
+   * Click **Create**.
+
+`--oidc-service-account-email` / **Add OIDC token** is what makes this an IAM-verified call rather
+than a bare POST: Cloud Scheduler mints an identity token for that service
+account on every run and Cloud Run checks it against the invoker binding above
+— the same mechanism as the frontend's own calls.
+
+Note the `.run.app` URL, not the custom domain: the scheduler talks to the
+backend directly and has no reason to route through Firebase Hosting.
+
+---
+
+#### Verify
+
+**Via CLI:**
+```powershell
+gcloud scheduler jobs run payment-reconciliation --location=$REGION
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="jsmf-backend" AND textPayload:"Reconciliation"' --limit=20 --freshness=1h
+```
+
+**Via GCP Console (UI):**
+1. In **Cloud Scheduler**, find the `payment-reconciliation` job in the list.
+2. Click the three dots `⋮` on the right side of the row and select **Force Run**.
+3. Go to **Cloud Run** > **`jsmf-backend`** > **Logs** tab to view the execution log.
+
+Expect a `Reconciliation: N checked, N settled, N errored` line roughly every
+five minutes. The endpoint answers `{"ran":true}`; `{"ran":false,"reason":...}`
+means the sweep was skipped (`disabled`, `already-running`) or threw
+(`failed`, with the detail in the logs).
+
+It answers **200 even then**, deliberately — Cloud Scheduler retries anything
+else, and a retry cannot help a sweep skipped because the previous one is still
+running. Judge health from the log line, not the status code.
+
+#### If you stay on `cron` instead
+
+Keep `PAYMENT_RECONCILIATION_TRIGGER=cron` and set both of these on the
+**backend only** — the frontend is not involved either way, since the sweep
+calls outward to Razorpay and the database:
 
 ```powershell
 gcloud run services update jsmf-backend --region=$REGION `
   --min-instances=1 --no-cpu-throttling
 ```
 
-**This applies to the backend only.** The sweep receives no HTTP request — it
-runs on a timer inside the API process and calls *outward* to Razorpay and the
-database. The frontend is not involved, and its `--min-instances` can stay at
-`0`.
-
-#### Verify it is actually running
-
-```powershell
-gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="jsmf-backend" AND textPayload:"Reconciliation"' --limit=20 --freshness=2h
-```
-
-Expect a `Reconciliation: N checked, N settled, N errored` line roughly every
-five minutes. Sporadic entries clustered around periods of user traffic mean
-the instance is only alive while serving requests — the sweep is not running on
-schedule, whatever the setting says.
-
-#### The database also has to be awake
-
-Neon's free tier suspends compute after a few minutes idle. A sweep firing
-against a connection that went stale while both the instance and the database
-were idle fails with:
-
-```
-Invalid `prisma.payment.findMany()` invocation:
-Can't reach database server at `ep-....neon.tech:5432`
-```
-
-Keeping the instance alive with CPU allocated is what prevents this, because
-the pool stays warm. If sweeps still fail after the settings above, the durable
-fix is to stop using an in-process timer at all — see the scaling roadmap.
+This costs the scale-to-zero saving the V1 cost model is built around, which is
+why `http` is the recommended mode.
 
 ---
 

@@ -86,6 +86,24 @@ services:
     ports:
       - "3001:3001"
 
+  # Simulates Google Cloud Scheduler locally for development parity.
+  # Hits the reconciliation endpoint every 5 minutes (300s).
+  cron:
+    image: curlimages/curl:latest
+    container_name: jsmf-cron
+    restart: unless-stopped
+    depends_on:
+      - api
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Cron started. Will ping API every 5 minutes...';
+      while true; do
+        sleep 300;
+        echo 'Pinging reconciliation endpoint...';
+        curl -sS -X POST http://api:4000/api/internal/reconcile-payments || echo 'Ping failed';
+      done
+      "
+
 volumes:
   jsmf_storage:
   jsmf_postgres_data:
