@@ -40,12 +40,28 @@ const roboto = Roboto({
   weight: ["500"],
 });
 
-const siteUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3001";
+/**
+ * The one address JSMF is published at.
+ *
+ * This matters because the app is reachable at more than one hostname — the
+ * custom domain, and the Cloud Run `*.run.app` URL that Firebase Hosting
+ * proxies to — and Firebase rewrites the `Host` header on the way through, so
+ * the running container cannot tell which one a visitor actually typed. Any
+ * absolute URL the app generates therefore has to come from configuration
+ * rather than from the request, or it would name whichever host the container
+ * happens to see, which is always the `.run.app` one.
+ *
+ * Declared through `metadataBase` + `alternates.canonical`, every page then
+ * carries `<link rel="canonical">` pointing here no matter which hostname
+ * served it. That is what tells search engines the other entry points are the
+ * same pages rather than duplicates, without needing a redirect the app is not
+ * in a position to issue safely.
+ */
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "http://localhost:3001";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  alternates: { canonical: "./" },
   title: {
     default: "JSMF Resources",
     template: "%s · JSMF Resources",

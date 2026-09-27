@@ -3,7 +3,17 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BookOpen, Library, LogIn, LogOut, Menu, Shield, Stethoscope, X } from "lucide-react";
+import {
+  BookOpen,
+  Library,
+  LogIn,
+  LogOut,
+  Menu,
+  Shield,
+  Stethoscope,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { storeButton } from "@/components/store/store-button";
 import { cn } from "@/lib/utils";
 import { brand } from "@/lib/site-content";
@@ -95,14 +105,26 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                   </button>
                 </>
               ) : (
-                // One CTA, not a Sign in / Create account pair: buyers
-                // continue with Google, which signs in an existing account and
-                // creates a new one through the identical flow. Offering two
-                // doors to the same room only makes people wonder which is
-                // theirs.
-                <Link href="/account/login" className={storeButton({ size: "sm" })}>
-                  Sign in
-                </Link>
+                // Two entry points to one screen. Both land on the same
+                // Google flow, which signs in an existing account and creates
+                // one that does not exist — so the labels describe the
+                // visitor's intent rather than two different mechanisms, and
+                // neither can be the wrong choice.
+                //
+                // "Create account" is the filled button because a storefront's
+                // job is to convert a first-time visitor; a returning buyer
+                // will find "Sign in" whether or not it is emphasised.
+                <>
+                  <Link
+                    href="/account/login"
+                    className={storeButton({ variant: "ghost", size: "sm" })}
+                  >
+                    Sign in
+                  </Link>
+                  <Link href="/account/signup" className={storeButton({ size: "sm" })}>
+                    Create account
+                  </Link>
+                </>
               )}
             </div>
           )}
@@ -151,10 +173,16 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                     Log out
                   </button>
                 ) : (
-                  <Link href="/account/login" className="nav-link">
-                    <LogIn className="size-4" />
-                    Sign in
-                  </Link>
+                  <>
+                    <Link href="/account/login" className="nav-link">
+                      <LogIn className="size-4" />
+                      Sign in
+                    </Link>
+                    <Link href="/account/signup" className="nav-link">
+                      <UserPlus className="size-4" />
+                      Create account
+                    </Link>
+                  </>
                 )}
               </>
             )}

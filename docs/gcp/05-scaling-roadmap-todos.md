@@ -18,7 +18,7 @@ This document outlines upcoming architectural enhancements and migration milesto
 ## 2. Email Delivery
 
 - [x] **Done — migrated from Gmail SMTP to Resend** (`MAIL_DRIVER=resend`). Gmail app passwords capped sending at ~500-2000/day with no bounce reporting, and Cloud Run blocks outbound SMTP ports, so an HTTPS API is the right transport here regardless of volume. Implemented as `ResendMailAdapter` behind the existing `MailProvider` port — the SMTP adapter remains available via `MAIL_DRIVER=smtp` for any provider that speaks SMTP.
-- [x] **Done — domain authentication:** The custom domain `stackmint.live` is verified in Resend with active SPF and DKIM records via GoDaddy. 
+- [x] **Done — domain authentication:** The custom domain `jsmf.me` is verified in Resend with active SPF and DKIM records via GoDaddy. 
   - *Note:* It is highly recommended to add a `_dmarc` TXT record (`v=DMARC1; p=none;`) to fully comply with 2024 Gmail/Yahoo sender guidelines. Also, brand new domains start with zero sender reputation, so initial emails may go to spam until the AI learns they are safe (users clicking "Not Spam").
 - [ ] **Later — volume:** Resend's free tier is 3,000 emails/month (100/day). Move to a paid tier when receipts plus password resets approach that.
 

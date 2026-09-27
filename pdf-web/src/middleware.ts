@@ -43,6 +43,36 @@ async function getGoogleIdToken(audience: string): Promise<string | null> {
   }
 }
 
+/**
+ * No canonical-host redirect lives here, and that is a deliberate conclusion
+ * rather than an omission.
+ *
+ * The app answers on more than one hostname — the custom domain and the Cloud
+ * Run `*.run.app` URL behind it — and the obvious fix is to 301 the second to
+ * the first. It cannot be done from inside this app, for a reason that only
+ * shows up when measured against the deployed service:
+ *
+ * 1. Firebase Hosting proxies to Cloud Run with the `Host` header **rewritten**
+ *    to the `.run.app` name. A request to the custom domain appears in Cloud
+ *    Run's own logs as `https://jsmf-pdf-web-….run.app/…`, so `Host` cannot
+ *    tell a legitimate visitor from someone hitting the bare Cloud Run URL.
+ * 2. `x-forwarded-host` looks like the way out, but Next.js **synthesises** it
+ *    from `Host` when no proxy supplied one — so it reports the `.run.app`
+ *    name as well, and does it in a way indistinguishable from a real proxy
+ *    header.
+ *
+ * Either signal therefore matches *every* request, and a redirect keyed on one
+ * would bounce the whole site to the canonical domain, back through Firebase,
+ * into the same check again — an infinite loop taking the site down, rather
+ * than the narrow correction it was meant to be.
+ *
+ * What replaces it: `alternates.canonical` in the root layout, which puts a
+ * `<link rel="canonical">` naming the real domain on every page regardless of
+ * which hostname served it. That solves the part that actually matters —
+ * search engines indexing one address — and carries no such risk. Genuinely
+ * closing the second door is an infrastructure change (ingress restriction or
+ * a load balancer), not an application one.
+ */
 export async function middleware(request: NextRequest) {
   // Only intercept requests to /api/*
   if (request.nextUrl.pathname.startsWith("/api/")) {

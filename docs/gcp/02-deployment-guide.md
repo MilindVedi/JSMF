@@ -668,12 +668,12 @@ Because native Cloud Run custom domains are not available in all regions (like `
 
 ### Step 10.2: Add Domain to Firebase
 1. In the Firebase Console, go to **Hosting**.
-2. Click **Get Started** and skip through the setup wizard.
-3. On the dashboard, click **Add Custom Domain** and enter your domain (e.g., `app.jsmf.com`).
-4. Firebase will provide DNS records (TXT and/or A records). Add these to your DNS provider (e.g., GoDaddy). 
+2. Click **Get Started** (or on the Hosting dashboard, click **Add Custom Domain**).
+3. Enter your store domain (e.g. `store.jsmf.me`).
+4. Firebase will provide DNS records (`A` or `CNAME`). Add these to your DNS provider (e.g., GoDaddy DNS Management for `jsmf.me`).
 
 ### Step 10.3: Deploy the Proxy Rule
-Open a terminal in your project root and run the following:
+Open a terminal in your project root:
 
 ```powershell
 # 1. Install CLI
@@ -684,13 +684,13 @@ npx firebase-tools login
 
 # 3. Initialize Hosting
 npx firebase-tools init hosting
-# - Select your existing project
+# - Select your existing project (production-509708)
 # - Public directory: public
 # - Single-page app: No
 # - Automatic builds: No
 ```
 
-Open the newly created `firebase.json` and replace it with:
+Ensure your `firebase.json` has the rewrite pointing to `jsmf-pdf-web`:
 ```json
 {
   "hosting": {
@@ -713,6 +713,17 @@ Deploy the rule:
 npx firebase-tools deploy --only hosting
 ```
 
-> ⚠️ **CRITICAL CLEANUP:** Now that your URL has changed from `.run.app` to your custom domain, you MUST go back and update:
-> 1. **Google OAuth:** Change Authorized Origins & Redirect URIs to your custom domain.
-> 2. **Razorpay:** Change the Webhook URL to your custom domain.
+> ⚠️ **POST-DOMAIN CONFIGURATION CHECKLIST:**
+> After connecting your custom domain (`https://store.jsmf.me`), verify the following services:
+> 1. **Google OAuth Console (Credentials):**
+>    * **Authorized JavaScript origins**: Add `https://store.jsmf.me` and `http://localhost:3001`
+>    * **Authorized redirect URIs**: Add `https://store.jsmf.me/api/auth/google/callback` and `http://localhost:3001/api/auth/google/callback`
+>    * **OAuth Consent Screen**: Add `jsmf.me` to **Authorized domains**.
+> 2. **Cloud Run Backend (`jsmf-backend`) Env Vars:**
+>    * `GOOGLE_CALLBACK_URL`: `https://store.jsmf.me/api/auth/google/callback`
+>    * `OAUTH_ALLOWED_REDIRECTS`: `https://store.jsmf.me/auth/callback,https://jsmf.me/auth/callback`
+>    * `MAIL_FROM`: `JSMF <no-reply@jsmf.me>`
+> 3. **Email (Resend):**
+>    * Verify domain `jsmf.me` in Resend with SPF, DKIM, and MX records in GoDaddy.
+> 4. **Razorpay Dashboard:**
+>    * Webhook URL: `https://store.jsmf.me/api/webhooks/razorpay` (or your direct `.run.app` backend URL).

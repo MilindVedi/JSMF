@@ -208,8 +208,14 @@ const schema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
-    GOOGLE_CLIENT_ID: z.string().optional(),
-    GOOGLE_CLIENT_SECRET: z.string().optional(),
+    GOOGLE_CLIENT_ID: z
+      .string()
+      .transform((v) => v.trim())
+      .optional(),
+    GOOGLE_CLIENT_SECRET: z
+      .string()
+      .transform((v) => v.trim())
+      .optional(),
     /// Must match a redirect URI registered in the Google Cloud console exactly.
     GOOGLE_CALLBACK_URL: z.string().url().default('http://localhost:4000/api/auth/google/callback'),
     /// Signs the OAuth `state` parameter, which must survive a round trip

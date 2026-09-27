@@ -33,9 +33,15 @@ This document provides a reference for all environment variables, flags, and sec
 | `RATE_LIMIT_IP_CEILING_PER_MINUTE` | Number | *(leave unset — 3000)* | Cloud Run Env Var | Per-IP backstop. Must be >= `RATE_LIMIT_PER_MINUTE` or the app refuses to start. |
 | `TRUST_PROXY_RANGES` | CSV String | *(leave unset)* | Cloud Run Env Var | Which upstream addresses are trusted proxies, for resolving the real client IP that rate limiting counts on. The built-in default already covers Cloud Run, Firebase Hosting and Google load balancers - **only set this if a new proxy is added**. See *Phase 9.1*. |
 | `PASSWORD_SIGNUP_ENABLED` | Boolean | `false` | Cloud Run Env Var | V1 buyers sign in with Google only; `POST /auth/register` answers 404. |
+| `GOOGLE_OAUTH_ENABLED` | Boolean | `true` | Cloud Run Env Var | Enables Google OAuth 2.0 authentication. |
+| `GOOGLE_CLIENT_ID` | String | `<your-client-id>` | Cloud Run Env Var / Secret | Google Cloud OAuth Client ID (e.g. `569375141363-...apps.googleusercontent.com`). |
+| `GOOGLE_CLIENT_SECRET` | String | `<your-client-secret>` | GCP Secret: `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth Client Secret (`GOCSPX-...`). |
+| `GOOGLE_CALLBACK_URL` | URL | `https://store.jsmf.me/api/auth/google/callback` | Cloud Run Env Var | Registered OAuth redirect URL matching Google Console. |
+| `OAUTH_ALLOWED_REDIRECTS` | CSV String | `https://store.jsmf.me/auth/callback,https://jsmf.me/auth/callback` | Cloud Run Env Var | Strict allowlist of frontend URLs permitted to receive session tokens after OAuth. |
+| `OAUTH_STATE_SECRET` | String (min 16 chars) | `<Random_Secret>` | GCP Secret: `OAUTH_STATE_SECRET` | Cryptographic key used to sign and verify OAuth state parameter. |
 | `MAIL_DRIVER` | Enum | `resend` | Cloud Run Env Var | HTTPS API, not an SMTP socket — Cloud Run blocks outbound SMTP ports. `log` is **refused in production** by env validation. |
 | `RESEND_API_KEY` | String | `re_...` | GCP Secret: `RESEND_API_KEY` | Required when `MAIL_DRIVER=resend`. Create at https://resend.com/api-keys. |
-| `MAIL_FROM` | String | `JSMF <no-reply@yourdomain>` | Cloud Run Env Var | Domain must be verified in Resend (https://resend.com/domains) or every send is rejected. |
+| `MAIL_FROM` | String | `JSMF <no-reply@jsmf.me>` | Cloud Run Env Var | Verified domain in Resend (https://resend.com/domains). |
 | `PAYMENT_RECONCILIATION_TRIGGER` | Enum | `http` | Cloud Run Env Var | `http` on Cloud Run: an in-process `cron` cannot fire at `--min-instances=0`. No app secret involved — Cloud Scheduler authenticates as an IAM identity granted `roles/run.invoker`, same as the frontend. See *Phase 9.2*. |
 
 ---
@@ -45,11 +51,44 @@ This document provides a reference for all environment variables, flags, and sec
 | Environment Variable | Description | Example Production Value |
 | :--- | :--- | :--- |
 | `BACKEND_API_URL` | URL of the NestJS backend API. Resolved at **runtime** by `middleware.ts` to dynamically reverse proxy requests. | `https://jsmf-backend-67890.a.run.app` |
+| `NEXT_PUBLIC_SITE_URL` | The one public address the site is published at. Drives `<link rel="canonical">` and absolute metadata URLs. **Must be set on every deployed environment** — see the note below. | `https://store.jsmf.me` |
 | `NEXT_PUBLIC_MAX_UPLOAD_MB`| Max client file size in MB | `10` |
 | `PORT` | Listening Port | `3001` |
 | `NODE_ENV` | Production Environment | `production` |
 
 > 💡 **Note on Runtime Proxying:** In V1, the Next.js app does NOT bake backend URLs into static client assets during build time. Instead, the browser makes API calls to relative paths (e.g. `/api/users`), and Next.js `middleware.ts` dynamically intercepts and forwards them to `BACKEND_API_URL` at runtime.
+
+> ⚠️ **Why `NEXT_PUBLIC_SITE_URL` cannot be derived from the request.** The app
+> answers on **five** hostnames, all serving the identical site:
+>
+> | Hostname | Where it comes from | Removable? |
+> | :--- | :--- | :--- |
+> | `store.jsmf.me` | the custom domain — **the canonical one** | — |
+> | `jsmfstore.stackmint.live` | an earlier custom domain | Yes, if no longer wanted |
+> | `production-509708.web.app` | Firebase Hosting's automatic domain | **No** — provisioned per site |
+> | `production-509708.firebaseapp.com` | Firebase Hosting's automatic domain | **No** — provisioned per site |
+> | `jsmf-pdf-web-….a.run.app` | the Cloud Run service itself | Only via ingress restriction |
+>
+> **Firebase rewrites the `Host` header** to the `.run.app` name on the way
+> through: requests to both `store.jsmf.me` and `production-509708.web.app`
+> appear in Cloud Run's own request logs as `https://jsmf-pdf-web-….run.app/…`.
+> `x-forwarded-host` is no help either,
+> because Next.js synthesises that header from `Host` when no proxy set one, so
+> it reports the `.run.app` name too and is indistinguishable from a real proxy
+> header.
+>
+> Two consequences. First, any absolute URL the app emits must come from this
+> variable, or it will name the Cloud Run URL. Second, **a canonical-host
+> redirect in `middleware.ts` is not possible** — both candidate signals match
+> every request, so such a redirect would bounce all traffic to the canonical
+> domain, back through Firebase, into the same check again, looping until the
+> site is unreachable. This was measured, not assumed. `alternates.canonical`
+> in `src/app/layout.tsx` is what makes search engines treat the extra
+> hostnames as the same pages, and it covers all five at once because every one
+> of them serves the same tag. Genuinely closing a door needs an infrastructure
+> change, not application code — and two of the five cannot be closed at all,
+> since Firebase does not allow its automatic `.web.app` and `.firebaseapp.com`
+> domains to be removed.
 
 ---
 
