@@ -86,7 +86,13 @@ Verified end to end against the running API: **69 assertions**, including that t
 
 ## Storage and download access
 
-**`STORAGE_DRIVER=cloudinary` is active, using the production account (`dxa4fadu`).** `local` was the bootstrapping default while no Cloudinary account existed; it is now available only as an offline-dev fallback (`.storage/` on disk, no volume needed since it is unused). Because every asset row records which provider it was uploaded through (`storageProvider`), switching the active driver never orphans anything already uploaded under `local` — the local adapter stays constructed so those rows keep resolving. **Cloudinary is the V1 provider.** It satisfies the two things this design actually requires of a storage backend — private, non-guessable storage of the original file, and time-limited signed delivery URLs — via `raw` resource uploads with an authenticated delivery type. Cover images additionally benefit from its CDN and on-the-fly transforms, which would otherwise be work we did ourselves.
+**`STORAGE_DRIVER=gcs` is the intended production driver, with Cloudinary retained for reads.** The port required two things of a backend — private, non-guessable storage of the original file, and time-limited signed delivery URLs. Cloudinary satisfied both (`raw` uploads with an authenticated delivery type) and was the V1 provider; GCS satisfies both and keeps storage in the same project, region and billing account as everything else, which is why it replaced it.
+
+The GCS adapter uses **two buckets rather than one with prefixes**. Under uniform bucket-level access, visibility is a property of the bucket, so the private bucket has public access prevention *enforced* — there is no public access to grant. A bug in the adapter therefore cannot publish a purchased PDF; the worst it can do is write a cover image somewhere private, which fails visibly. Sharing one bucket would make "is this file paid for?" a per-object question, and a single wrong write would silently publish a product.
+
+It is also the one adapter that uses a vendor SDK rather than raw HTTP, unlike the Razorpay and Resend adapters. The reason is signing: a V4 signed URL is an HMAC over a canonical request, and on Cloud Run there is no private key to sign with — credentials are a metadata-server token, so signing must route through the IAM `signBlob` API. `@google-cloud/storage` handles that fallback, token refresh and retries; reimplementing it would mean owning a lot of security-critical code for no benefit.
+
+**Switching drivers is not a migration event.** Every asset row records the provider it was uploaded through (`storageProvider`), and `StorageService` writes to the configured driver but reads from the provider each row names. So flipping to `gcs` sends new uploads to GCS while every file already on Cloudinary keeps being served from Cloudinary, and `local` rows from before either account existed still resolve. The boot log states the split directly: `writes → GCS; can read from [LOCAL, CLOUDINARY, GCS]`. Cloudinary's credentials must stay configured until those older rows are copied across.
 
 Two storage postures, regardless of provider:
 
@@ -297,6 +303,35 @@ They share an identity provider (the same backend, the same JWKS) but no build-t
 The admin panel is a route group within `pdf-web/`, gated by role on the client and calling admin-only API endpoints that re-check the role server-side. Client-side route gating is treated as a UX convenience, never as the security boundary.
 
 The split surfaced one real gap immediately: the backend's `CORS_ORIGINS` allowed only `http://localhost:3000`, so the new project on 3001 was blocked outright. Both ports are now listed.
+
+### Storefront content: the author is configuration, not markup
+
+Everything identifying the person behind the material — name, qualification,
+credentials, the portrait, the pull-quote — lives in
+`pdf-web/src/lib/site-content.ts`, not in the pages that render it. It appears
+in two places (the landing hero and the smaller author block on every product
+page), so a value written into JSX would have to be changed in both, and the
+second one would eventually be missed.
+
+Two details worth knowing before changing it:
+
+- **`author.photo` is nullable, and the null path is real.** With it unset the
+  UI falls back to an initials block rather than a stock photograph. That
+  distinction matters on a page whose entire job is establishing that a named,
+  credentialled person stands behind the material: an obvious placeholder is
+  honest about having no photograph, a stranger in a white coat is not. Setting
+  it to `null` restores that fallback everywhere at once.
+
+- **`author.featuredCredential` is deliberately a single value, not a list.**
+  It renders as a badge over the portrait itself, where every additional line
+  costs the photograph and earns less attention than the one before it. The
+  `credentials` array below the portrait is the place for a list — that card is
+  built for one. `null` removes the badge.
+
+The portrait is stored as a JPEG under `pdf-web/public/`. It is a photograph in
+the hero of the first page a visitor sees, frequently on mobile data, so format
+and size are a product concern rather than an incidental one: the source PNG
+was 1.7 MB and the served JPEG is ~107 KB at the same dimensions.
 
 ### Status: built — the admin panel
 

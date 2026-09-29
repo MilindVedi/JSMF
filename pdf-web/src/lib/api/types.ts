@@ -22,7 +22,10 @@ export type OrderStatus =
 
 export interface AuthUser {
   id: string;
-  email: string;
+  /** Null for an account created with a mobile number. */
+  email: string | null;
+  /** E.164 digits (`919876543210`), present only once verified. */
+  phone: string | null;
   name: string;
   roles: string[];
 }

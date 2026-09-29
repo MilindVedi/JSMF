@@ -37,8 +37,8 @@ const config = {
     if (key === 'STUB_PAYMENT_SECRET') {
       return process.env.STUB_PAYMENT_SECRET ?? 'test-stub-secret-at-least-16-chars';
     }
-    if (key === 'APP_PUBLIC_URL') {
-      return process.env.APP_PUBLIC_URL ?? 'http://localhost:3001';
+    if (key === 'STOREFRONT_URL') {
+      return process.env.STOREFRONT_URL ?? 'http://localhost:3001';
     }
     return process.env[key];
   },
@@ -51,10 +51,42 @@ const config = {
  * once-only test is looking for.
  */
 const sentMail: Array<{ to: unknown; subject: string; text: string; tag?: string }> = [];
+/** Flipped per-test to simulate an exhausted quota or a refused send. */
+let mailOutcome: 'delivered' | 'quota' | 'error' = 'delivered';
+
 const mail = {
   sendBestEffort(request: { to: unknown; subject: string; text: string; tag?: string }) {
     sentMail.push(request);
-    return Promise.resolve({ delivered: true as const, messageId: 'test-message-id' });
+
+    if (mailOutcome === 'delivered') {
+      return Promise.resolve({ delivered: true as const, messageId: 'test-message-id' });
+    }
+
+    // Mirrors the real MailService contract exactly: `sendBestEffort` reports
+    // failure, it never throws. A stub that threw would test a code path that
+    // cannot happen and hide the one that can.
+    return Promise.resolve({ delivered: false as const, reason: mailOutcome });
+  },
+} as never;
+
+/**
+ * The WhatsApp side of the same contract. Records instead of sending, and can
+ * be made to fail, because a receipt that cannot be delivered must not undo a
+ * purchase whichever channel it was going by.
+ */
+const sentWhatsApp: Array<{ to: string; message: { kind: string; [key: string]: unknown }; tag?: string }> = [];
+let whatsAppOutcome: 'delivered' | 'quota' | 'error' = 'delivered';
+let whatsAppEnabled = true;
+
+const whatsapp = {
+  enabled: () => whatsAppEnabled,
+  send(request: { to: string; message: { kind: string }; tag?: string }) {
+    sentWhatsApp.push(request as (typeof sentWhatsApp)[number]);
+    return Promise.resolve(
+      whatsAppOutcome === 'delivered'
+        ? { delivered: true as const, messageId: 'test-wamid' }
+        : { delivered: false as const, reason: whatsAppOutcome },
+    );
   },
 } as never;
 
@@ -62,7 +94,7 @@ const prisma = new PrismaService();
 const provider = new StubPaymentAdapter(config);
 const entitlements = new EntitlementService(prisma);
 const orders = new OrderService(prisma, provider, entitlements);
-const payments = new PaymentService(prisma, provider, entitlements, mail, config);
+const payments = new PaymentService(prisma, provider, entitlements, mail, whatsapp, config);
 
 /** Everything created here, so teardown deletes exactly this and nothing else. */
 const created = { userIds: [] as string[], productIds: [] as string[] };
@@ -122,15 +154,44 @@ afterAll(async () => {
 });
 
 /** A fresh checkout, ready to be paid. */
-async function startCheckout() {
+async function startCheckout(buyer = { userId, customerEmail: 'payment-spec@jsmf.test' as string | null }) {
   const result = await orders.checkout({
-    userId,
+    userId: buyer.userId,
     productId,
-    customerEmail: 'payment-spec@jsmf.test',
+    customerEmail: buyer.customerEmail,
   });
 
   if (result.kind !== 'PAYMENT_REQUIRED') throw new Error('expected a paid checkout');
   return result;
+}
+
+/**
+ * A buyer who signed up with a mobile number: no email anywhere, a verified
+ * number on the account. Created per test so the teardown list stays exact.
+ */
+async function createMobileBuyer(overrides: { phoneVerifiedAt?: Date | null } = {}) {
+  const user = await prisma.user.create({
+    data: {
+      email: null,
+      phone: `9199${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`,
+      phoneVerifiedAt: overrides.phoneVerifiedAt === undefined ? new Date() : overrides.phoneVerifiedAt,
+      name: 'Mobile Buyer',
+      status: UserStatus.ACTIVE,
+    },
+  });
+  created.userIds.push(user.id);
+  return user;
+}
+
+/** Pays an order the ordinary way: one webhook. */
+async function pay(checkout: Awaited<ReturnType<typeof startCheckout>>) {
+  const providerPaymentId = `pay_stub_${randomUUID().replace(/-/g, '').slice(0, 14)}`;
+  await deliver({
+    providerOrderId: checkout.providerOrderId,
+    amountMinor: PRICE,
+    providerPaymentId,
+  });
+  return providerPaymentId;
 }
 
 async function clearEntitlement() {
@@ -304,6 +365,185 @@ describe('payment settlement', () => {
     // The identifiers a support conversation needs are actually in the body.
     expect(sentMail[0].text).toContain(checkout.orderNumber);
     expect(sentMail[0].text).toContain(providerPaymentId);
+  });
+
+  /**
+   * The standing rule, asserted rather than assumed: **an email must never be
+   * the reason a completed action is reported as failed.**
+   *
+   * The buyer has paid by this point. If an exhausted mail quota could undo
+   * that, a full inbox would take money and withhold the thing it was for —
+   * and the webhook would keep retrying an operation that already worked.
+   * Both failure shapes are checked because they arrive by different paths:
+   * a quota is a refusal the provider reports, an error can be anything.
+   */
+  for (const outcome of ['quota', 'error'] as const) {
+    it(`completes the purchase when the confirmation email fails (${outcome})`, async () => {
+      await clearEntitlement();
+      sentMail.length = 0;
+      mailOutcome = outcome;
+
+      try {
+        const checkout = await startCheckout();
+        const providerPaymentId = `pay_stub_${randomUUID().replace(/-/g, '').slice(0, 14)}`;
+        const delivery = provider.simulateWebhook({
+          providerOrderId: checkout.providerOrderId,
+          amountMinor: PRICE,
+          providerPaymentId,
+        });
+
+        // Must not throw: the settlement is what grants access, and it has to
+        // survive the email that describes it failing.
+        await payments.handleWebhook(delivery.rawBody, delivery.headers);
+
+        // The send was attempted and refused...
+        expect(sentMail).toHaveLength(1);
+
+        // ...and everything that actually matters still happened.
+        const active = await prisma.entitlement.count({
+          where: { userId, productId, status: EntitlementStatus.ACTIVE },
+        });
+        expect(active).toBe(1);
+
+        const order = await prisma.order.findUnique({
+          where: { orderNumber: checkout.orderNumber },
+        });
+        expect(order?.status).toBe(OrderStatus.PAID);
+        expect(order?.paidAt).not.toBeNull();
+      } finally {
+        mailOutcome = 'delivered';
+      }
+    });
+  }
+});
+
+/**
+ * Where the receipt goes, for a buyer who has no email.
+ *
+ * The rule being protected is that **exactly one receipt goes out, by whichever
+ * channel the buyer can actually receive** — and that, as everywhere else in
+ * this file, failing to deliver it never costs the buyer the purchase.
+ */
+describe('purchase receipts', () => {
+  function reset() {
+    sentMail.length = 0;
+    sentWhatsApp.length = 0;
+    whatsAppOutcome = 'delivered';
+    whatsAppEnabled = true;
+  }
+
+  it('sends the receipt on WhatsApp when the buyer has no email', async () => {
+    reset();
+    const buyer = await createMobileBuyer();
+    const checkout = await startCheckout({ userId: buyer.id, customerEmail: null });
+
+    await pay(checkout);
+
+    expect(sentMail).toHaveLength(0);
+    expect(sentWhatsApp).toHaveLength(1);
+    expect(sentWhatsApp[0]).toMatchObject({
+      to: buyer.phone,
+      tag: 'purchase-confirmation',
+      message: {
+        kind: 'purchase-receipt',
+        // The first name, not the row's full name.
+        buyerName: 'Mobile',
+        items: 'Payment Spec Product',
+        totalFormatted: '₹499',
+        orderNumber: checkout.orderNumber,
+        // The same destination the email links to, and deliberately not a
+        // direct download: a signed download URL would still work for whoever
+        // the message was forwarded to.
+        // The storefront, not the API. `APP_PUBLIC_URL` ends in `/api` and
+        // produced links to a page that has never existed.
+        libraryUrl: `${process.env.STOREFRONT_URL ?? 'http://localhost:3001'}/library`,
+      },
+    });
+  });
+
+  it('sends only the email when the buyer has one, never both', async () => {
+    // Two receipts for one purchase is an annoyance that also costs money per
+    // WhatsApp message.
+    reset();
+    await clearEntitlement();
+    const checkout = await startCheckout();
+
+    await pay(checkout);
+
+    expect(sentMail).toHaveLength(1);
+    expect(sentWhatsApp).toHaveLength(0);
+  });
+
+  it('sends nothing to an unverified number', async () => {
+    // `orders.customer_phone` can hold a number typed at checkout. A receipt
+    // naming what someone bought must not go to a number a typo could make a
+    // stranger's.
+    reset();
+    const buyer = await createMobileBuyer({ phoneVerifiedAt: null });
+    const checkout = await startCheckout({ userId: buyer.id, customerEmail: null });
+
+    await pay(checkout);
+
+    expect(sentWhatsApp).toHaveLength(0);
+    expect(sentMail).toHaveLength(0);
+  });
+
+  it('sends nothing when WhatsApp is not configured', async () => {
+    reset();
+    whatsAppEnabled = false;
+    const buyer = await createMobileBuyer();
+    const checkout = await startCheckout({ userId: buyer.id, customerEmail: null });
+
+    await pay(checkout);
+
+    expect(sentWhatsApp).toHaveLength(0);
+  });
+
+  for (const outcome of ['quota', 'error'] as const) {
+    it(`completes the purchase when the WhatsApp receipt fails (${outcome})`, async () => {
+      reset();
+      whatsAppOutcome = outcome;
+
+      const buyer = await createMobileBuyer();
+      const checkout = await startCheckout({ userId: buyer.id, customerEmail: null });
+
+      // Must not throw, for the same reason the email test gives: the buyer
+      // has paid, and the webhook would otherwise retry forever.
+      await pay(checkout);
+
+      expect(sentWhatsApp).toHaveLength(1);
+
+      const active = await prisma.entitlement.count({
+        where: { userId: buyer.id, productId, status: EntitlementStatus.ACTIVE },
+      });
+      expect(active).toBe(1);
+
+      const order = await prisma.order.findUnique({ where: { orderNumber: checkout.orderNumber } });
+      expect(order?.status).toBe(OrderStatus.PAID);
+    });
+  }
+
+  it('sends exactly one WhatsApp receipt however many times settlement is attempted', async () => {
+    reset();
+    const buyer = await createMobileBuyer();
+    const checkout = await startCheckout({ userId: buyer.id, customerEmail: null });
+    const providerPaymentId = `pay_stub_${randomUUID().replace(/-/g, '').slice(0, 14)}`;
+    const delivery = provider.simulateWebhook({
+      providerOrderId: checkout.providerOrderId,
+      amountMinor: PRICE,
+      providerPaymentId,
+    });
+
+    await payments.handleWebhook(delivery.rawBody, delivery.headers);
+    await payments.verifyCheckout({
+      userId: buyer.id,
+      providerOrderId: checkout.providerOrderId,
+      providerPaymentId,
+      signature: provider.signCheckout(checkout.providerOrderId, providerPaymentId),
+    });
+    await payments.handleWebhook(delivery.rawBody, delivery.headers);
+
+    expect(sentWhatsApp).toHaveLength(1);
   });
 });
 

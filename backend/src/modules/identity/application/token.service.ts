@@ -7,7 +7,8 @@ import { JwtKeyProvider } from '../infrastructure/jwt-key-provider';
 export interface AccessTokenClaims {
   /** User id. */
   sub: string;
-  email: string;
+  /** Absent for an account with no email. Other JSMF apps must not assume it. */
+  email?: string;
   roles: string[];
   /** Guards against a refresh token ever being accepted as an access token. */
   type: 'access';
@@ -31,10 +32,10 @@ export class TokenService {
    * the token is refreshed — bounded by JWT_ACCESS_TTL (15 minutes by default),
    * which is the reason that TTL is short.
    */
-  async signAccessToken(user: { id: string; email: string; roles: string[] }): Promise<string> {
+  async signAccessToken(user: { id: string; email: string | null; roles: string[] }): Promise<string> {
     return this.jwt.signAsync(
       {
-        email: user.email,
+        ...(user.email ? { email: user.email } : {}),
         roles: user.roles,
         type: 'access',
       },

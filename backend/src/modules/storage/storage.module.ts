@@ -3,11 +3,15 @@ import { AppConfig } from '../../config/config.module';
 import { StorageService } from './application/storage.service';
 import { StorageProvider } from './domain/storage-provider.port';
 import { CloudinaryStorageAdapter } from './infrastructure/cloudinary-storage.adapter';
+import { GcsStorageAdapter } from './infrastructure/gcs-storage.adapter';
 import { LocalStorageAdapter } from './infrastructure/local-storage.adapter';
 import { LocalStorageController } from './http/local-storage.controller';
 
 /** Present only when Cloudinary credentials are configured; null otherwise. */
 const CLOUDINARY_ADAPTER = Symbol('CLOUDINARY_ADAPTER');
+
+/** Present only when GCS buckets are configured; null otherwise. */
+const GCS_ADAPTER = Symbol('GCS_ADAPTER');
 
 /**
  * Storage, assembled from configuration.
@@ -35,33 +39,43 @@ const CLOUDINARY_ADAPTER = Symbol('CLOUDINARY_ADAPTER');
     },
 
     {
+      provide: GCS_ADAPTER,
+      // Constructed whenever buckets are configured, not only when GCS is the
+      // active driver: after a migration to GCS the driver may move on again,
+      // and objects already written there must stay readable.
+      useFactory: (config: AppConfig): GcsStorageAdapter | null =>
+        config.get('GCS_PRIVATE_BUCKET') ? new GcsStorageAdapter(config) : null,
+      inject: [AppConfig],
+    },
+
+    {
       provide: StorageService,
       useFactory: (
         config: AppConfig,
         local: LocalStorageAdapter,
         cloudinaryAdapter: CloudinaryStorageAdapter | null,
+        gcsAdapter: GcsStorageAdapter | null,
       ): StorageService => {
-        const candidates: (StorageProvider | null)[] = [local, cloudinaryAdapter];
+        const candidates: (StorageProvider | null)[] = [local, cloudinaryAdapter, gcsAdapter];
         const available = candidates.filter(
           (adapter): adapter is StorageProvider => adapter !== null,
         );
 
+        const driver = config.get('STORAGE_DRIVER');
         const active =
-          config.get('STORAGE_DRIVER') === 'cloudinary' ? cloudinaryAdapter : local;
+          driver === 'cloudinary' ? cloudinaryAdapter : driver === 'gcs' ? gcsAdapter : local;
 
         if (!active) {
-          // Unreachable via env validation, which already demands Cloudinary
-          // credentials when that driver is selected. Kept because the failure
+          // Unreachable via env validation, which already demands each driver's
+          // configuration when that driver is selected. Kept because the failure
           // it guards — silently writing to the wrong provider — is worse than
           // a redundant check.
-          throw new Error(
-            'STORAGE_DRIVER=cloudinary but no Cloudinary adapter could be constructed',
-          );
+          throw new Error(`STORAGE_DRIVER=${driver} but no matching adapter could be constructed`);
         }
 
         return new StorageService(active, available);
       },
-      inject: [AppConfig, LocalStorageAdapter, CLOUDINARY_ADAPTER],
+      inject: [AppConfig, LocalStorageAdapter, CLOUDINARY_ADAPTER, GCS_ADAPTER],
     },
   ],
   exports: [StorageService],

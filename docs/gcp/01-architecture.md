@@ -42,7 +42,7 @@ This document outlines the end-to-end cloud architecture for deploying the JSMF 
 | **Container Images** | Artifact Registry | 1 Repository (Standard storage, few hundred MBs) | **< $0.10 / month** (First 0.5 GB free) |
 | **Database (Option 1 - Lowest Cost)** | Supabase / Neon / Render Postgres | Managed Serverless / Free Tier | **$0.00 / month** |
 | **Database (Option 2 - Native GCP)** | GCP Cloud SQL for PostgreSQL | `db-f1-micro` or `db-custom-1-3840` shared core, 10GB SSD, No HA (Single zone) | **~$7.00 - $9.00 / month** |
-| **Media / PDF Storage** | Cloudinary | Free tier plan (25 credits / month) | **$0.00** |
+| **Media / PDF Storage** | Google Cloud Storage | 2 buckets, asia-south1, standard class | **~$0.02 / GB / month** |
 | **Secrets Management** | Secret Manager | 6 secrets, minimal version accesses | **$0.00** (Free Tier: 6 active secrets free) |
 | **Redis Cache** | *Disabled for V1* | `REDIS_ENABLED=false` in NestJS backend | **$0.00** |
 | **Total Estimated Cost** | | | **$0.00 - $8.00 / month** |
@@ -56,5 +56,6 @@ This document outlines the end-to-end cloud architecture for deploying the JSMF 
 2. **Production**: Dedicated GCP Project (`jsmf-prod`) or scoped environment tags.
 
 ### External Integrations:
-- **Cloudinary**: Holds raw PDFs in `STORAGE_PRIVATE_BUCKET` (`jsmf/private`) and public thumbnails/previews in `STORAGE_PUBLIC_BUCKET` (`jsmf/public`).
+- **Google Cloud Storage**: Purchased PDFs in `GCS_PRIVATE_BUCKET` (public access prevention enforced, served only through V4 signed URLs) and cover images in `GCS_PUBLIC_BUCKET` (`allUsers:objectViewer`, served unsigned so they stay cacheable). Two buckets rather than prefixes because uniform bucket-level access makes visibility a property of the bucket — the private one has no public access to grant.
+- **Cloudinary**: Still configured and still read from. `STORAGE_DRIVER` governs writes only; every file row records the provider its bytes live on, so objects uploaded before the switch continue to be served from Cloudinary. Its credentials must stay set until those rows are migrated.
 - **Razorpay**: Handles checkout, order creation, and payment verification webhooks.

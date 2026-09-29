@@ -70,7 +70,12 @@ export class StubPaymentAdapter extends PaymentProvider {
       receipt: request.orderNumber,
       // Mirrors what the Razorpay adapter attaches, so the recovery path that
       // reads `jsmf_order_id` back off the provider is exercised here too.
-      notes: { ...request.notes, jsmf_order_id: request.orderId, email: request.customerEmail },
+      notes: {
+        ...request.notes,
+        jsmf_order_id: request.orderId,
+        // Razorpay rejects non-string note values, and a mobile-only buyer has no email.
+        ...(request.customerEmail ? { email: request.customerEmail } : {}),
+      },
     });
 
     this.logger.debug(`simulated order ${providerOrderId} for ${request.orderNumber}`);

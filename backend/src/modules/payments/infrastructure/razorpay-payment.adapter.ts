@@ -73,7 +73,12 @@ export class RazorpayPaymentAdapter extends PaymentProvider {
       // Our order number, so a Razorpay dashboard row can be traced back to a
       // JSMF order without a database lookup.
       receipt: request.orderNumber,
-      notes: { ...request.notes, jsmf_order_id: request.orderId, email: request.customerEmail },
+      notes: {
+        ...request.notes,
+        jsmf_order_id: request.orderId,
+        // Razorpay rejects non-string note values, and a mobile-only buyer has no email.
+        ...(request.customerEmail ? { email: request.customerEmail } : {}),
+      },
     });
 
     if (!body.id) {

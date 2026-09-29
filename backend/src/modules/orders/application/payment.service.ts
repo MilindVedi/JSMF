@@ -15,6 +15,7 @@ import {
 import { AppConfig } from '../../../config/config.module';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { MailService } from '../../../shared/mail/application/mail.service';
+import { WhatsAppService } from '../../../shared/whatsapp/application/whatsapp.service';
 import { purchaseConfirmation } from '../../../shared/mail/templates/mail-templates';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import {
@@ -29,9 +30,11 @@ export interface VerifyCheckoutRequest {
   signature: string;
 }
 
-/** What the confirmation email needs, captured while the order row is in hand. */
+/** What a receipt needs, captured while the order row is in hand. */
 interface PurchaseConfirmationContext {
-  email: string;
+  email: string | null;
+  /** The buyer's *verified* mobile number, when they have one. */
+  phone: string | null;
   name: string;
   items: Array<{ title: string }>;
   totalAmountMinor: bigint;
@@ -51,6 +54,21 @@ interface PurchaseConfirmationContext {
  * Whole amounts drop the ".00", because "₹199" is how a price is written and
  * "₹199.00" reads like an accounting system.
  */
+/**
+ * The items on one line, for a channel that has no room for a list.
+ *
+ * WhatsApp template parameters cannot contain newlines at all — Meta rejects
+ * the message rather than trimming it — so a bulleted list is not an option
+ * here even though the email uses one. Long orders are summarised rather than
+ * truncated mid-title, because "Pathology Revision Notes, Surgery Q… " reads
+ * like a broken message where "and 2 more" reads like a summary.
+ */
+function summariseItems(items: Array<{ title: string }>): string {
+  const titles = items.map((item) => item.title);
+  if (titles.length <= 2) return titles.join(' and ');
+  return `${titles.slice(0, 2).join(', ')} and ${titles.length - 2} more`;
+}
+
 function formatMoney(amountMinor: bigint, currency: string): string {
   const negative = amountMinor < 0n;
   const absolute = negative ? -amountMinor : amountMinor;
@@ -80,6 +98,7 @@ export class PaymentService {
     private readonly provider: PaymentProvider,
     private readonly entitlements: EntitlementService,
     private readonly mail: MailService,
+    private readonly whatsapp: WhatsAppService,
     private readonly config: AppConfig,
   ) {}
 
@@ -304,6 +323,12 @@ export class PaymentService {
           // later changes their email should not retroactively change where a
           // past purchase was confirmed to.
           email: payment.order.customerEmail,
+          // The account's verified number, not `order.customerPhone`. That
+          // column can hold a number typed into the checkout form, which
+          // nobody has proved they control — and a receipt naming what someone
+          // bought should not be sent to an unverified number, which a typo
+          // makes a stranger's.
+          phone: payment.order.user.phoneVerifiedAt ? payment.order.user.phone : null,
           name: payment.order.user.name,
           items: payment.order.items.map((item) => ({ title: item.productTitleSnapshot })),
           totalAmountMinor: payment.order.totalAmountMinor,
@@ -346,34 +371,106 @@ export class PaymentService {
    * purchase into an error the buyer cannot act on — one they have already paid
    * for — and would leave the webhook retrying an operation that has, in every
    * way that matters, already worked. The library is the source of truth for
-   * access; this email is a courtesy on top of it.
+   * access; the receipt is a courtesy on top of it.
+   *
+   * **One receipt, not two.** Email when there is an address, WhatsApp when
+   * there is only a verified number. Buyers with both are not messaged twice:
+   * a second copy of the same receipt is an annoyance that also costs money per
+   * message, and email is the better carrier for something worth keeping.
    */
   private async sendPurchaseConfirmation(context: PurchaseConfirmationContext): Promise<void> {
+    if (context.email) {
+      await this.emailReceipt(context, context.email);
+      return;
+    }
+
+    if (context.phone && this.whatsapp.enabled()) {
+      await this.whatsAppReceipt(context, context.phone);
+      return;
+    }
+
+    this.logger.log(
+      `Order ${context.orderNumber} paid by a buyer with no email` +
+        `${context.phone ? ' and WhatsApp not configured' : ' or verified mobile number'}; ` +
+        `no receipt sent. The purchase is complete and the entitlement is granted.`,
+    );
+  }
+
+  private async emailReceipt(context: PurchaseConfirmationContext, email: string): Promise<void> {
     const rendered = purchaseConfirmation({
       buyerName: firstName(context.name),
       items: context.items,
       totalFormatted: formatMoney(context.totalAmountMinor, context.currency),
       orderNumber: context.orderNumber,
       paymentId: context.paymentId,
-      libraryUrl: `${this.config.get('APP_PUBLIC_URL').replace(/\/$/, '')}/library`,
+      libraryUrl: this.libraryUrl(),
     });
 
     const outcome = await this.mail.sendBestEffort({
-      to: { email: context.email, name: context.name },
+      to: { email, name: context.name },
       subject: rendered.subject,
       text: rendered.text,
       html: rendered.html,
       tag: 'purchase-confirmation',
     });
 
-    if (!outcome.delivered) {
-      // Logged against the order number rather than left to the mail log alone,
-      // so "the buyer says they got nothing" is answerable from the order.
-      this.logger.warn(
-        `Purchase confirmation not delivered for ${context.orderNumber} (${outcome.reason}) — ` +
-          `the purchase itself is complete and the entitlement is granted`,
-      );
-    }
+    if (!outcome.delivered) this.receiptNotDelivered(context, 'email', outcome.reason);
+  }
+
+  /**
+   * The same receipt for a buyer who has only a mobile number.
+   *
+   * Deliberately shorter than the email. WhatsApp wording is fixed by the
+   * approved template and read on a phone, so it carries what the buyer needs
+   * to recognise the purchase — what, how much, which order — and leaves the
+   * payment id to the email, where it is a support reference rather than
+   * something to read. The template's button links to the library, exactly as
+   * the email does.
+   */
+  private async whatsAppReceipt(context: PurchaseConfirmationContext, phone: string): Promise<void> {
+    const outcome = await this.whatsapp.send({
+      to: phone,
+      message: {
+        kind: 'purchase-receipt',
+        buyerName: firstName(context.name),
+        items: summariseItems(context.items),
+        totalFormatted: formatMoney(context.totalAmountMinor, context.currency),
+        orderNumber: context.orderNumber,
+        // The same destination the email links to — the library, never a
+        // direct download. A download URL is signed and short-lived, and a
+        // forwarded message would hand it to whoever received it.
+        libraryUrl: this.libraryUrl(),
+      },
+      tag: 'purchase-confirmation',
+    });
+
+    if (!outcome.delivered) this.receiptNotDelivered(context, 'WhatsApp', outcome.reason);
+  }
+
+  /**
+   * Logged against the order number rather than left to the provider's own log,
+   * so "the buyer says they got nothing" is answerable from the order.
+   */
+  private receiptNotDelivered(
+    context: PurchaseConfirmationContext,
+    channel: string,
+    reason: string,
+  ): void {
+    this.logger.warn(
+      `Purchase receipt not delivered by ${channel} for ${context.orderNumber} (${reason}) — ` +
+        `the purchase itself is complete and the entitlement is granted`,
+    );
+  }
+
+  /**
+   * Where the buyer's files are, for both the email and the WhatsApp receipt.
+   *
+   * `STOREFRONT_URL`, not `APP_PUBLIC_URL` — the latter is this API's own base
+   * URL and ends in `/api`, so it produced links to `…/api/library`, a page
+   * that has never existed.
+   */
+  private libraryUrl(): string {
+    return `${this.config.get('STOREFRONT_URL').replace(/\/$/, '')}/library`;
   }
 
   /**

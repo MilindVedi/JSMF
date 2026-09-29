@@ -26,6 +26,8 @@ interface SessionState {
   login: (email: string, password: string) => Promise<AuthUser>;
   /** Stores a session produced by Google sign-in or an accepted invitation. */
   adopt: (session: AuthSession) => AuthUser;
+  /** Replaces the signed-in user's details after a change such as adding a number. */
+  updateUser: (user: AuthUser) => void;
   logout: () => Promise<void>;
   restore: () => Promise<void>;
 }
@@ -46,6 +48,10 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     set({ user: session.user, ready: true });
 
     return session.user;
+  },
+
+  updateUser(user: AuthUser) {
+    set({ user });
   },
 
   /**

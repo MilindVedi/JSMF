@@ -14,9 +14,35 @@ import { TokenService } from './token.service';
 
 export interface AuthenticatedUser {
   id: string;
-  email: string;
+  /** Null for an account created with a mobile number and no email yet. */
+  email: string | null;
+  /** E.164 digits, present only once verified. */
+  phone: string | null;
   name: string;
   roles: string[];
+}
+
+/**
+ * The one place a user row becomes the shape every client sees.
+ *
+ * Built in one function because this shape is assembled in half a dozen
+ * flows — password, Google, invitation, reset, mobile — and the day a field is
+ * added, six hand-written object literals are six chances to forget it.
+ */
+export function toAuthenticatedUser(user: {
+  id: string;
+  email: string | null;
+  phone: string | null;
+  name: string;
+  roles: { role: { key: string } }[];
+}): AuthenticatedUser {
+  return {
+    id: user.id,
+    email: user.email,
+    phone: user.phone,
+    name: user.name,
+    roles: user.roles.map((assignment) => assignment.role.key),
+  };
 }
 
 export interface SessionTokens {
@@ -92,12 +118,7 @@ export class AuthService implements OnModuleInit {
       include: { roles: { include: { role: true } } },
     });
 
-    const authenticated: AuthenticatedUser = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      roles: user.roles.map((assignment) => assignment.role.key),
-    };
+    const authenticated: AuthenticatedUser = toAuthenticatedUser(user);
 
     return { user: authenticated, tokens: await this.startSession(authenticated, context) };
   }
@@ -143,12 +164,7 @@ export class AuthService implements OnModuleInit {
       data: { lastLoginAt: new Date() },
     });
 
-    const authenticated: AuthenticatedUser = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      roles: user.roles.map((assignment) => assignment.role.key),
-    };
+    const authenticated: AuthenticatedUser = toAuthenticatedUser(user);
 
     return { user: authenticated, tokens: await this.startSession(authenticated, context) };
   }
@@ -218,12 +234,7 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    const user: AuthenticatedUser = {
-      id: stored.user.id,
-      email: stored.user.email,
-      name: stored.user.name,
-      roles: stored.user.roles.map((assignment) => assignment.role.key),
-    };
+    const user: AuthenticatedUser = toAuthenticatedUser(stored.user);
 
     // Same family: this is a continuation of the original login, not a new one.
     return this.issueTokens(user, stored.tokenFamilyId, context);
@@ -251,12 +262,7 @@ export class AuthService implements OnModuleInit {
 
     if (!user) return null;
 
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      roles: user.roles.map((assignment) => assignment.role.key),
-    };
+    return toAuthenticatedUser(user);
   }
 
   /**

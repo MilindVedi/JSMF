@@ -1,5 +1,7 @@
 "use client";
 
+import type { AuthUser } from "@/lib/api/types";
+
 import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -67,7 +69,7 @@ function ProductPageContent() {
 
     autoBuyTriggered.current = true;
     router.replace(`/p/${product.slug}`);
-    void buy(product.id, product.title, { email: user.email, name: user.name });
+    void buy(product.id, product.title, buyerOf(user));
   }, [searchParams, ready, user, product, ownershipChecked, owned, buy, router]);
 
   async function download() {
@@ -214,7 +216,7 @@ function ProductPageContent() {
               <Button
                 className="w-full"
                 disabled={busy}
-                onClick={() => buy(product.id, product.title, { email: user.email, name: user.name })}
+                onClick={() => buy(product.id, product.title, buyerOf(user))}
               >
                 {busy ? "Opening checkout…" : "Buy now"}
               </Button>
@@ -273,4 +275,9 @@ export default function ProductPage() {
       </Suspense>
     </div>
   );
+}
+
+/** What the payment form is prefilled with — the account's own details, never typed ones. */
+function buyerOf(user: AuthUser): { email?: string; name: string; phone?: string } {
+  return { email: user.email ?? undefined, name: user.name, phone: user.phone ?? undefined };
 }

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { AddMobileCard } from "@/components/store/add-mobile-card";
 import { storeApi, type Entitlement } from "@/lib/api/store";
 import { useSessionStore } from "@/store/session-store";
 
@@ -69,6 +70,8 @@ function LibraryContent() {
         <h1 className="text-3xl font-semibold tracking-tight">My Library</h1>
         <p className="mt-1 text-muted-foreground">Everything you have access to.</p>
       </div>
+
+      <AddMobileCard />
 
       {items === null ? (
         <div className="flex justify-center py-20">

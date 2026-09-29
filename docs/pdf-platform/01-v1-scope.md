@@ -80,27 +80,57 @@ These are designed for in the data model so they do not require a rewrite, but t
 - Analytics dashboards beyond the basic order list. The events are being *recorded* from day one so that the dashboards have history to show when they are built; that is the expensive part to retrofit, not the charts.
 - Any integration with the PYQ question-bank app. Same account, eventually the same library — but V1 ships independently.
 
-## Buyer accounts: Google only
+## Buyer accounts: email-and-password, or Google
 
-Buyers sign in with Google and nothing else. There is one screen
-(`/account/login`) rather than a sign-in and a sign-up, because
-**Continue with Google** resolves to whichever the person needs — the server
-looks for an account behind the Google identity and signs them in, or creates
-one and signs them in. `/account/signup` redirects there, preserving `next`,
-since that URL is already in the wild.
+Buyers may create an account either way. `/account/signup` and
+`/account/login` are the same screen with different copy, one extra field and a
+different submit; both also offer **Continue with Google**, which signs in an
+existing account and creates one that does not exist.
 
-This is a decision about **email volume**, not authentication. A password
-account needs a verification mail to prove the address and a reset mail when
-the password is forgotten, and on a plan that allows 100 sends a day those two
-flows would be most of the traffic. Google removes both: the address arrives
-already verified, and account recovery is Google's problem rather than an
-inbox we have to pay for.
+`POST /auth/register` is gated behind `PASSWORD_SIGNUP_ENABLED` (default
+`true`) and answers 404 when off. It is gated rather than deleted because
+hiding the form while leaving the route open would still let anyone create an
+account through the API or the Swagger page.
 
-`POST /auth/register` is therefore gated behind `PASSWORD_SIGNUP_ENABLED`
-(default `false`) and answers 404. Hiding the form while leaving the route open
-would still let anyone create — via the API or the Swagger page — exactly the
-kind of account V1 has no forgot-password flow to recover. The service beneath
-is untouched, so re-enabling it is a config change.
+**Signup is two steps and the address is verified.** `POST /auth/signup/start`
+sends a six-digit code and **creates nothing**; `POST /auth/signup/verify`
+exchanges the code for the account and a session. The name and the password
+hash ride along in the verification code's `metadata` rather than in a
+half-built user row, so an address that never verifies leaves nothing behind —
+no unverified accounts accumulating, and no "email already taken" from a row
+nobody proved they owned.
+
+**Forgot password works the same way.** `POST /auth/password/forgot` sends a
+code, `POST /auth/password/reset` sets the new password — and revokes every
+live session, because a reset is often a response to someone else holding the
+account and leaving their refresh tokens alive would make it cosmetic.
+
+### When the code cannot be sent
+
+This is the case the flow is actually designed around, because on a plan of 100
+sends a day it will happen. Delivery lives behind a **channel port**
+(`VerificationChannel`), and a failure is answered with what else the person
+can do rather than a dead end:
+
+```
+503 { message, reason: 'quota' | 'error', attempted: 'email', alternatives: [] }
+```
+
+`alternatives` is derived from the channels actually registered and configured
+— never hardcoded. Adding an SMS channel is one class plus one line in
+`VerificationDeliveryService`, and from that moment every screen that sends a
+code starts offering "continue with your mobile number" without any of them
+changing. There is a test asserting exactly that, because it is the kind of
+claim that quietly stops being true.
+
+`reason` separates the two failures because they deserve different advice: a
+spent quota will not resolve by retrying in a minute, so the UI does not offer
+a retry for it. Until SMS exists, the honest fallback offered is Google, which
+needs no code at all.
+
+**Delivery never silently switches channel.** The buyer gave an email address
+and asked for email; a code arriving on a phone they did not nominate would be
+a surprise, and the number is usually not even known at that point.
 
 Admins are unaffected. They are invited by an existing admin, set a password
 through the invitation flow, and sign in at `/admin/login`, which keeps its own
@@ -108,16 +138,22 @@ email-and-password form.
 
 ## Transactional email
 
-V1 sends exactly **two** kinds of email. Everything else on the long list of
-things a store *could* email about is deferred, and Google-only signup is what
-makes that affordable.
+V1 sends **four** kinds of email. Everything else on the long list of things a
+store *could* email about is still deferred.
+
+The two rules that decide the "on failure" column: mail that **is** the feature
+fails the request (an invitation nobody receives is a broken invitation; a code
+nobody receives is a signup that cannot continue), and mail that merely
+**accompanies** something already done never does (the money is taken, the
+entitlement granted). Implemented as `MailService.send` versus
+`sendBestEffort`.
 
 | Email | Send? | On failure |
 | :--- | :--- | :--- |
 | **Admin invitation** | Yes | **Fails the request.** An invitation nobody receives is not a partial success, it is a broken invitation. Volume is negligible and entirely controlled — an admin decides who gets one. |
-| **Purchase confirmation** | Yes | **Purchase still succeeds.** The entitlement is granted and the money kept; only the confirmation is missing. The library, not the email, is the source of truth for access. |
-| Registration / email verification | No | Not needed — Google verifies the address. |
-| Forgot password | No | Not needed — buyers have no password. |
+| **Purchase confirmation** | Yes | **Purchase still succeeds.** The entitlement is granted and the money kept; only the confirmation is missing. The library, not the message, is the source of truth for access. |
+| **Signup verification code** | Yes | **Signup is blocked, with a way out.** No account exists yet, so there is nothing to half-create. The response carries `alternatives` and `otherRoutes`, and the screen offers Google — and, where mobile sign-in is on, a mobile number — rather than a dead end. |
+| **Password reset code** | Yes | **Reset is blocked, with a way out.** Same shape. This is the worst case in the system — the person cannot sign in *and* cannot be reached — which is exactly why the fallback is explicit rather than a generic error. |
 | Password changed, payment failed, refund issued | No | Deferred. Each is best-effort when built. |
 
 The purchase confirmation is sent from `settle()` **after the transaction
@@ -131,11 +167,19 @@ and it is a confirmation rather than a GST invoice: tax is carried as zero
 today, and calling it a receipt would make it a document with legal
 requirements it does not meet.
 
+**A buyer with no email gets the same confirmation on WhatsApp**, to the
+verified number on their account — one message, never both channels. Mobile
+accounts have no email at all, so without this the only buyers who could not be
+told their purchase went through would be the ones who had no other way to
+check. See [identity/04 §4](../identity/04-whatsapp-and-mobile-sign-in.md#4-purchase-receipts).
+
 The rule that outlives this list: **an email must never be the reason a
 completed action is reported as failed.** It is implemented as the split
 between `MailService.send` (throws — for mail that *is* the feature) and
 `MailService.sendBestEffort` (never throws — for mail that merely accompanies
-something already done and undoable).
+something already done and undoable). `WhatsAppService.send` follows the second
+shape for the same reason, and the integration tests assert it for both
+channels.
 
 A user-facing failure says "we could not send that right now" and never the
 provider's wording. "Resend daily limit exceeded" describes our billing

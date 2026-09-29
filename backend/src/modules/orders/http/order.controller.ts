@@ -39,7 +39,9 @@ export class OrderController {
       // Taken from the authenticated account, not the request body — an
       // invoice address the caller can set freely is a phishing vector.
       customerEmail: user.email,
-      customerPhone: dto.customerPhone,
+      // A verified number on the account wins over one typed at checkout, for
+      // the same reason the email does.
+      customerPhone: user.phone ?? dto.customerPhone,
     });
   }
 

@@ -19,7 +19,8 @@ import { PaymentProvider } from '../../payments/domain/payment-provider.port';
 export interface CheckoutRequest {
   userId: string;
   productId: string;
-  customerEmail: string;
+  /** Null for a buyer who signed up with a mobile number and has no email. */
+  customerEmail: string | null;
   customerPhone?: string | null;
 }
 

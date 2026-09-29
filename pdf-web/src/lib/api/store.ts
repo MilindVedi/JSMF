@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type {
+  AuthSession,
   Order,
   Paginated,
   ProductDetail,
@@ -99,4 +100,12 @@ export const storeApi = {
       `/products/${productId}/download`,
     ),
 
+  /**
+   * Anonymous by definition — there is no session to authenticate with until
+   * this call succeeds. The server answers 404 rather than 403 when
+   * `PASSWORD_SIGNUP_ENABLED` is off, so a UI that offers this while the
+   * server has it disabled fails as "not found" rather than "forbidden".
+   */
+  register: (input: { email: string; name: string; password: string }) =>
+    api.postAnonymous<AuthSession>("/auth/register", input),
 };

@@ -91,7 +91,7 @@ Every architecture involves trade-offs between **infrastructure cost**, **operat
   - **Boot-time invariant:** the app refuses to start if the ceiling is below the per-caller limit. Inverted, the ceiling would silently become the real limit and put every user on a shared network back into one allowance, while both settings still appeared to work.
   - **Sensitive endpoints** keep tighter per-route decorators in code, because they are security decisions sized to a specific operation rather than capacity knobs: Login 10/min, Refresh 30/min, checkout 20/min, payment verification 30/min, admin invitations 10/hour.
   - **Revenue webhooks:** `@SkipThrottle()` on the Razorpay endpoint, so a burst of genuine payment captures is never dropped. Safe because the HMAC signature already makes unauthenticated flooding pointless.
-* **Not a live control:** `POST /auth/register` carries a 5/min decorator but is **disabled** in V1 (`PASSWORD_SIGNUP_ENABLED=false`, returns `404`) — buyers sign in with Google only. It should not be counted as an active defense.
+* **`POST /auth/register`** carries a 5/min decorator and is **enabled** (`PASSWORD_SIGNUP_ENABLED` defaults to `true`), so it is a live control again. It is the tightest limit in the app because registration is what bulk account creation targets, and because the route creates a row and starts a session on every success.
 
 ---
 

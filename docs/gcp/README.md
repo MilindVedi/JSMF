@@ -8,7 +8,7 @@ This directory contains the documentation and step-by-step guides for deploying 
 
 1. **[01-architecture.md](file:///docs/gcp/01-architecture.md)**
    - High-level GCP architecture diagram.
-   - Component breakdown (Next.js, NestJS, Cloud SQL, Secret Manager, Cloudinary, Razorpay).
+   - Component breakdown (Next.js, NestJS, Neon Postgres, Secret Manager, Cloud Storage, Razorpay).
    - Environment separation (Development/Staging vs Production).
 
 2. **[02-deployment-guide.md](file:///docs/gcp/02-deployment-guide.md)**
@@ -40,3 +40,13 @@ This directory contains the documentation and step-by-step guides for deploying 
    - Deep-dive into active security layers (Zero-Trust IAM, RS256 cryptography, token family tracking).
    - Known architectural trade-offs in V1 (Frontend public exposure, in-memory rate limiting drift).
    - Cloud Armor, WAF, Redis Throttling, and Cloudflare Turnstile upgrade roadmap.
+
+8. **[08-pending-actions.md](file:///docs/gcp/08-pending-actions.md)** — **read this before deploying.**
+   - The gap between what this repository says and what is currently live: built and documented, not yet applied.
+   - Ordered by consequence, each with the exact command that closes it.
+   - Also records decisions already investigated and settled, so they are not re-litigated.
+
+### Related, outside this folder
+
+- **[pdf-platform/05 — Storage](file:///docs/pdf-platform/05-storage.md)** — the storage port, the four-bucket topology (one pair per environment), the credential model, and the provider-migration procedure. GCS setup commands live in Phase 3.5 of the deployment guide; the reasoning lives there.
+- **[identity/01 — Architecture](file:///docs/identity/01-architecture.md)** — auth endpoints, the one-time-code primitive, and the delivery-channel port that lets a failed email offer another route in.

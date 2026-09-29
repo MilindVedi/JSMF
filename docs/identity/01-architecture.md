@@ -20,7 +20,11 @@ The identity module is implemented in `backend/src/modules/identity/` and verifi
 
 | Endpoint | Auth | Purpose |
 |---|---|---|
-| `POST /api/auth/register` | public | Create an account (assigned `STUDENT`) and start a session |
+| `POST /api/auth/register` | public | Create an account without verification (assigned `STUDENT`) and start a session |
+| `POST /api/auth/signup/start` | public | Send a signup code. Creates nothing. 503 + `alternatives` if undeliverable |
+| `POST /api/auth/signup/verify` | public | Exchange the code for the account and a session |
+| `POST /api/auth/password/forgot` | public | Send a reset code. Identical response for an unknown address |
+| `POST /api/auth/password/reset` | public | Set a new password, revoke every session, sign in |
 | `POST /api/auth/login` | public | Exchange credentials for an access + refresh pair |
 | `POST /api/auth/refresh` | public | Rotate a refresh token — single-use, replay revokes the family |
 | `POST /api/auth/logout` | public | Revoke the session the presented refresh token belongs to |
@@ -53,6 +57,26 @@ Invitations avoid all three: the endpoint is authenticated, the link goes straig
 **The bootstrap problem** is handled by `prisma/seed.ts`, which creates a default admin **only when no admin exists at all**. It disables itself as soon as a real admin is registered, so the default credentials cannot linger as a permanent shared password — which is exactly what this flow replaced.
 
 Invitations expire in 48 hours, are single-use, and can be revoked from `/admin/team` before they are accepted.
+
+## One-time codes and how they are delivered
+
+Two concerns, deliberately separated. `VerificationCodeService` owns what a code *is* — single use, attempt limited, superseded on reissue, compared against a hash. `VerificationChannel` owns how it *reaches someone*, which is the part that fails.
+
+Separating them is what lets a failed send be answered with "try another way" rather than "signup is broken": the code is already issued and still valid, so another channel could carry the same one.
+
+**Three channels: email (Resend), WhatsApp (Meta Cloud API), SMS (MSG91).** Each declares the kind of address it delivers to — `email` or `phone` — and `VerificationDeliveryService` holds them in preference order (WhatsApp before SMS within `phone`). Each was added as one class and one line in the registry; no flow changed.
+
+A failed send reports two different kinds of "instead": **`alternatives`** (another channel to the *same* destination — "send by SMS instead") and **`otherRoutes`** (an address kind the person could switch to — "continue with your mobile number"). Both are derived from which channels are switched on, so buyers are offered a route only where one could actually send.
+
+A phone channel counts as available only when both its transport and `PHONE_SIGNIN_ENABLED` are on, since the mobile flow is the only way to use one. Details: [03 — SMS and MSG91](./03-sms-and-msg91.md) (including why Firebase Auth was rejected) and [04 — WhatsApp and mobile sign-in](./04-whatsapp-and-mobile-sign-in.md).
+
+Three rules worth keeping:
+
+- **Never silently fall back to another channel.** The person nominated an email address; a code arriving by SMS would be a surprise, and the number usually is not known at that point. Report the options, let them choose.
+- **`quota` and `error` stay distinct all the way to the UI.** An exhausted allowance does not resolve by retrying in a minute, so offering "try again" for it is a lie. `reason` is what lets the screen offer a retry for one and not the other.
+- **Never leak the provider.** "Resend daily limit exceeded" describes JSMF's billing arrangement, not the user's problem. The classification travels; the vendor's wording stays in the log and the `email_deliveries` row.
+
+A completed password reset revokes **every** live refresh token (`PASSWORD_CHANGED`). A reset is frequently a response to someone else holding the account, and leaving their sessions alive would make it cosmetic.
 
 ## Google sign-in
 

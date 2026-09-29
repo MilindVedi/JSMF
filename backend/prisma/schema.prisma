@@ -32,9 +32,18 @@ enum UserStatus {
 model User {
   id                    String           @id @default(uuid(7)) @db.Uuid
   // citext: "Milind@x.com" and "milind@x.com" must never become two accounts.
-  email                 String           @unique @db.Citext
+  // Nullable: an account created with a mobile number has no email until one
+  // is added. Postgres allows any number of NULLs under a unique index, so
+  // uniqueness still holds for every address that does exist.
+  email                 String?          @unique @db.Citext
   emailVerifiedAt       DateTime?        @map("email_verified_at") @db.Timestamptz(6)
+  /// E.164 digits without the `+` (`919876543210`), always written through
+  /// `normalisePhoneNumber` — one spelling per person, or unique means nothing.
   phone                 String?          @unique @db.VarChar(20)
+  /// Set only when a one-time code sent to `phone` came back. Every path that
+  /// writes `phone` today verifies it, but the invariant is recorded here
+  /// rather than implied, so a future admin edit cannot quietly break it.
+  phoneVerifiedAt       DateTime?        @map("phone_verified_at") @db.Timestamptz(6)
   name                  String           @db.VarChar(120)
   // No avatarUrl column: an avatar is a file we host, addressed the same way
   // as every other stored file (provider + object key), never a raw URL —
@@ -107,6 +116,10 @@ enum RefreshTokenRevokedReason {
   REUSE_DETECTED
   LOGOUT
   ADMIN_REVOKED
+  /// The account's password was reset or changed. Every live session is
+  /// revoked, because a reset is often a response to someone else holding the
+  /// account — leaving their refresh tokens alive would make it cosmetic.
+  PASSWORD_CHANGED
 }
 
 /// Refresh tokens rotate: each one is single-use, and exchanging it issues a
@@ -186,9 +199,17 @@ enum VerificationPurpose {
   /// Hands a completed OAuth session back to a browser without putting tokens
   /// in a URL. Never emailed.
   OAUTH_HANDOFF
-  /// Not used yet — present so adding these flows needs no migration.
   EMAIL_VERIFICATION
   PASSWORD_RESET
+  /// A code sent to a mobile number to sign in, or to begin signing up — the
+  /// same code serves both, so nobody learns whether a number has an account
+  /// without controlling the phone.
+  PHONE_SIGN_IN
+  /// Issued after PHONE_SIGN_IN succeeds for a number with no account: lets
+  /// the person choose a name without being sent a second code.
+  PHONE_REGISTRATION
+  /// Adding a verified mobile number to an account that is already signed in.
+  PHONE_LINK
 }
 
 /// A single-use, expiring secret.
@@ -586,7 +607,9 @@ model Order {
   currency            String      @default("INR") @db.Char(3)
   /// Snapshots: a user changing their email must not rewrite the contact
   /// details on a past invoice.
-  customerEmail       String      @map("customer_email") @db.VarChar(255)
+  // Nullable: a buyer who signed up with a mobile number may have no email.
+  // The confirmation email is skipped for them rather than the purchase refused.
+  customerEmail       String?     @map("customer_email") @db.VarChar(255)
   customerPhone       String?     @map("customer_phone") @db.VarChar(20)
   couponId            String?     @map("coupon_id") @db.Uuid
   notes               Json        @default("{}")

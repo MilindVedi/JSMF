@@ -12,6 +12,8 @@ Identity is platform-wide, not a feature of any one product. It happens to have 
 |---|---|
 | [01 — Architecture](./01-architecture.md) | Why identity is centralized, the specific choices that make it genuinely so (RS256, bearer tokens, refresh-token families with reuse detection, Argon2id), and what is built and verified today. |
 | [02 — Data Model](./02-data-model.md) | The `users`, `roles`, `user_roles`, `refresh_tokens`, `oauth_accounts` and `verification_codes` tables, and the reasoning behind the ones that are not obvious. |
+| [04 — WhatsApp and mobile sign-in](./04-whatsapp-and-mobile-sign-in.md) | Signing in and up with a mobile number, codes over Meta's WhatsApp Cloud API, accounts without email, adding a number to an email account, cost controls, and how to switch it on. Built, currently off. |
+| [03 — SMS and MSG91](./03-sms-and-msg91.md) | The second delivery channel for one-time codes: why MSG91 rather than Firebase Auth, what India's DLT regime forces on the design, phone-number normalisation, and what is deliberately not built yet. |
 
 ## Status
 
@@ -22,6 +24,9 @@ Since then, three further pieces are built and verified:
 - **[Admin accounts by invitation](./01-architecture.md#admin-accounts-are-created-by-invitation)** — an existing admin invites by email; there is no public way to request access. Verified in a real browser: 10 assertions covering an invalid link, a valid link, accepting it, the new admin reaching the admin panel, and a consumed link being refused on reuse.
 - **[Google sign-in](./01-architecture.md#google-sign-in)** — platform-wide, for buyers and invited admins alike, with an allowlisted redirect so every JSMF application can use the same flow. Off until Google credentials are configured.
 - **[Email](./01-architecture.md#email)** — a `MailProvider` port in `shared/mail/` with `log` and `smtp` adapters, reusable by any module.
+- **Buyer signup with email verification** — signing up sends a one-time code; no account is created until it comes back. Password reset works the same way and revokes every live session on success.
+- **[SMS as a second code channel](./03-sms-and-msg91.md)** — an `SmsProvider` port in `shared/sms/` with `log` and `msg91` adapters, plugged into identity through the existing `VerificationChannel` port. Off (`SMS_DRIVER=none`) until an MSG91 account and a DLT-approved template exist.
+- **[Mobile sign-in over WhatsApp](./04-whatsapp-and-mobile-sign-in.md)** — one flow for sign-in and sign-up, passwordless, accounts need no email, and purchase receipts go by WhatsApp for buyers who have only a number. Verified end to end in a real browser. **Switched off** (`PHONE_SIGNIN_ENABLED=false`) until the Meta setup is done.
 
 ## How other JSMF applications use it
 

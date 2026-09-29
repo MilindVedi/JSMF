@@ -8,6 +8,8 @@ import { PrismaModule } from './shared/prisma/prisma.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuditModule } from './shared/audit/audit.service';
 import { MailModule } from './shared/mail/mail.module';
+import { SmsModule } from './shared/sms/sms.module';
+import { WhatsAppModule } from './shared/whatsapp/whatsapp.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { EntitlementsModule } from './modules/entitlements/entitlements.module';
 import { IdentityModule } from './modules/identity/identity.module';
@@ -67,6 +69,8 @@ import { RolesGuard } from './common/guards/roles.guard';
     }),
     AuditModule,
     MailModule,
+    SmsModule,
+    WhatsAppModule,
     IdentityModule,
     StorageModule,
     PaymentsModule,

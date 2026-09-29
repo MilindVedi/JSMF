@@ -7,7 +7,7 @@ export interface CreateOrderRequest {
   amountMinor: bigint;
   /** ISO-4217, e.g. `INR`. */
   currency: string;
-  customerEmail: string;
+  customerEmail: string | null;
   notes?: Record<string, string>;
 }
 

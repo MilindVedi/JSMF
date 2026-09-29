@@ -7,9 +7,10 @@ These tables are owned by the `identity` module (`backend/src/modules/identity/`
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid PK | |
-| `email` | citext | **UNIQUE NOT NULL.** `citext` so `Milind@x.com` and `milind@x.com` cannot become two accounts. |
+| `email` | citext NULL | **UNIQUE where not null.** `citext` so `Milind@x.com` and `milind@x.com` cannot become two accounts. Nullable since mobile sign-in: an account created with a phone number has no email ([04](./04-whatsapp-and-mobile-sign-in.md#3-accounts-without-email)). Postgres allows any number of NULLs under a unique index, so every real address is still unique. |
 | `email_verified_at` | timestamptz NULL | |
-| `phone` | varchar(20) NULL | UNIQUE where not null. India-first: useful for Razorpay prefill and WhatsApp delivery later. |
+| `phone` | varchar(20) NULL | UNIQUE where not null. E.164 digits without `+` (`919876543210`), always written through `normalisePhoneNumber` — one spelling per person, or unique means nothing. The sign-in identifier for mobile accounts. |
+| `phone_verified_at` | timestamptz NULL | Set only when a code sent to `phone` came back. Mirrors `email_verified_at`, and records the invariant rather than leaving it implied. |
 | `name` | varchar(120) NOT NULL | |
 | `avatar_storage_provider`, `avatar_object_key` | enum / text, both NULL | An avatar is a file we host, addressed the same way as every other stored file — never a raw URL column. Both null together when no avatar is set. Two plain columns rather than a `product_assets`-style row: an avatar is single, unversioned, and owned 1:1 by a user, so that table's extra machinery (kind, version, is_current) would be unused weight here. |
 | `password_hash` | text NULL | Nullable — an OAuth-only account has no password. Argon2id. |
@@ -69,15 +70,15 @@ Two unique constraints: `(provider, provider_user_id)` stops one Google account 
 
 ## `verification_codes` — one-time secrets
 
-One table for every "prove you received this" flow: admin invitations, the OAuth handoff, and the password-reset and email-verification flows to come. They differ only in meaning, so they differ only by `purpose`.
+One table for every "prove you received this" flow: admin invitations, the OAuth handoff, email verification, password reset, and mobile sign-in. They differ only in meaning, so they differ only by `purpose`.
 
 | Column | Notes |
 |---|---|
-| `purpose` | `ADMIN_INVITATION` · `OAUTH_HANDOFF` · `EMAIL_VERIFICATION` · `PASSWORD_RESET`. The last two are unused today and exist so adding those flows needs no migration. |
-| `subject` | What the code is about — an email for an invitation, a user id for a handoff. **Not a foreign key**: an invited address has no account yet, which is the entire point. |
+| `purpose` | `ADMIN_INVITATION` · `OAUTH_HANDOFF` · `EMAIL_VERIFICATION` · `PASSWORD_RESET` · `PHONE_SIGN_IN` · `PHONE_REGISTRATION` · `PHONE_LINK`. |
+| `subject` | What the code is about — an email for an invitation, a user id for a handoff, the E.164 number for mobile sign-in, `<userId>:<number>` for adding a number (so two accounts trying one number cannot consume each other's codes). **Not a foreign key**: an invited address has no account yet, which is the entire point. |
 | `code_hash` | Hashed through the same `PasswordHasher` port as passwords. The plaintext exists only in the moment it is issued. |
 | `sent_to_email` | Where it was delivered, or null when it is not emailed at all (`OAUTH_HANDOFF`). |
-| `metadata` | Flow-specific payload — the invitee's name, who invited them. |
+| `metadata` | Flow-specific payload — the invitee's name, who invited them. For phone codes, the `channel` it went by, and `undelivered: true` when the send failed (so it does not count against the resend cooldown). |
 | `attempts` / `max_attempts` | A six-digit code is one-in-a-million per guess, which is nothing if guesses are unlimited. |
 | `consumed_at` | Single use. Consumption is a conditional update, so two requests racing with the same code produce exactly one success. |
 

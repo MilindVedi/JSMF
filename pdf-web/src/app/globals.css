@@ -70,6 +70,8 @@
      pure red/green, since these colors are seen hundreds of times per session. */
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-error: var(--error);
   --color-error-foreground: var(--error-foreground);
   --color-flag: var(--flag);
@@ -155,6 +157,10 @@
      Correct answers use the brand teal (soft mint bg, teal indicator). */
   --success: oklch(0.55 0.13 165);
   --success-foreground: oklch(0.3800 0.0950 198);
+  /* Amber, deliberately not the destructive red: a code that could not be sent
+     yet is a delay with a way around it, not a failure the person caused. */
+  --warning: oklch(0.72 0.14 70);
+  --warning-foreground: oklch(0.42 0.0850 75);
   --error: oklch(0.9250 0.0450 35);
   --error-foreground: oklch(0.4400 0.1300 35);
   --flag: oklch(0.9300 0.0350 90);
@@ -227,6 +233,8 @@
 
   --success: oklch(0.7 0.13 165);
   --success-foreground: oklch(0.8200 0.0850 190);
+  --warning: oklch(0.80 0.13 75);
+  --warning-foreground: oklch(0.88 0.0700 80);
   --error: oklch(0.3300 0.0850 30);
   --error-foreground: oklch(0.8200 0.0750 30);
   --flag: oklch(0.3300 0.0550 90);

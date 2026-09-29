@@ -7,6 +7,7 @@ import { GoogleOAuthClient, type GoogleIdentity } from '../infrastructure/google
 import { AdminInvitationService } from './admin-invitation.service';
 import {
   AuthService,
+  toAuthenticatedUser,
   type AuthenticatedUser,
   type RequestContext,
   type SessionTokens,
@@ -387,16 +388,5 @@ export class OAuthService {
   }
 }
 
-function toAuthenticated(user: {
-  id: string;
-  email: string;
-  name: string;
-  roles: { role: { key: string } }[];
-}): AuthenticatedUser {
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    roles: user.roles.map((assignment) => assignment.role.key),
-  };
-}
+/** Kept as a local name for readability at the call sites; the shape lives in one place. */
+const toAuthenticated = toAuthenticatedUser;

@@ -31,7 +31,7 @@ interface RazorpayOptions {
   currency: string;
   name: string;
   description?: string;
-  prefill?: { email?: string; name?: string };
+  prefill?: { email?: string; name?: string; contact?: string };
   theme?: { color?: string };
   handler: (response: RazorpayResponse) => void;
   modal?: { ondismiss?: () => void };
@@ -83,7 +83,11 @@ export function useCheckout(options: { onSettled?: () => void } = {}) {
   const [busy, setBusy] = useState(false);
 
   const buy = useCallback(
-    async (productId: string, productTitle: string, buyer?: { email?: string; name?: string }) => {
+    async (
+      productId: string,
+      productTitle: string,
+      buyer?: { email?: string; name?: string; phone?: string },
+    ) => {
       setBusy(true);
 
       try {
@@ -131,7 +135,13 @@ export function useCheckout(options: { onSettled?: () => void } = {}) {
           currency: result.currency,
           name: "JSMF",
           description: productTitle,
-          prefill: { email: buyer?.email, name: buyer?.name },
+          // A mobile-only buyer has no email; prefilling their verified number
+          // instead spares them typing it into Razorpay's form.
+          prefill: {
+            email: buyer?.email,
+            name: buyer?.name,
+            contact: buyer?.phone ? `+${buyer.phone}` : undefined,
+          },
           handler: (response) => {
             // Confirms the payment promptly for the UI. The webhook is the
             // real authority and will settle this order even if the tab is

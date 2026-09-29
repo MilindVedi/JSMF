@@ -8,6 +8,7 @@ import { adminInvitation } from '../../../shared/mail/templates/mail-templates';
 import { PasswordHasher } from '../domain/password-hasher.port';
 import {
   AuthService,
+  toAuthenticatedUser,
   type AuthenticatedUser,
   type RequestContext,
   type SessionTokens,
@@ -174,7 +175,7 @@ export class AdminInvitationService {
   }
 
   async listAdmins(): Promise<
-    { id: string; email: string; name: string; createdAt: Date; lastLoginAt: Date | null }[]
+    { id: string; email: string | null; name: string; createdAt: Date; lastLoginAt: Date | null }[]
   > {
     const admins = await this.prisma.user.findMany({
       where: { roles: { some: { role: { key: 'ADMIN' } } } },
@@ -286,12 +287,7 @@ export class AdminInvitationService {
 
     this.logger.warn(`ADMIN role granted to ${user.email} via invitation`);
 
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      roles: user.roles.map((assignment) => assignment.role.key),
-    };
+    return toAuthenticatedUser(user);
   }
 }
 

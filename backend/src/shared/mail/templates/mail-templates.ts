@@ -170,6 +170,107 @@ export function purchaseConfirmation(input: {
   return { subject: 'Your JSMF purchase is confirmed', text, html };
 }
 
+/** The code itself, rendered so it can be read off a phone and retyped. */
+function codeBlock(code: string): string {
+  return `<p style="margin:0 0 24px;padding:16px;background:#fafafa;border-radius:12px;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:30px;font-weight:700;letter-spacing:.32em;text-indent:.32em;color:#18181b;">${escapeHtml(code)}</p>`;
+}
+
+/**
+ * The code that proves a new buyer owns the address they signed up with.
+ *
+ * No link, only a code. A link would have to carry a token in a URL, which
+ * leaks through browser history, referrer headers and any chat app it is
+ * pasted into — and the whole point here is that possession of the *inbox* is
+ * what is being proven. Six digits retyped from the message proves exactly
+ * that and nothing travels anywhere it should not.
+ *
+ * The account does not exist yet when this is sent, which is deliberate: an
+ * address that never verifies leaves nothing behind to clean up.
+ */
+export function signupVerificationCode(input: {
+  name: string | null;
+  code: string;
+  expiresInMinutes: number;
+}): RenderedMail {
+  const { name, code, expiresInMinutes } = input;
+  const greeting = name ? `Hi ${name},` : 'Hi,';
+
+  const text = [
+    greeting,
+    ``,
+    `Your JSMF verification code is:`,
+    ``,
+    `  ${code}`,
+    ``,
+    `Enter it on the signup page to finish creating your account.`,
+    `The code expires in ${expiresInMinutes} minutes and can be used once.`,
+    ``,
+    `If you did not try to create a JSMF account, you can ignore this email —`,
+    `nothing has been created and no account exists at this address.`,
+    ``,
+    `—`,
+    `JSMF`,
+  ].join('\n');
+
+  const html = layout(
+    'Confirm your email address',
+    `
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">${escapeHtml(greeting)}</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Enter this code on the signup page to finish creating your account.</p>
+    ${codeBlock(code)}
+    <p style="margin:0 0 20px;font-size:13px;line-height:1.55;color:#71717a;">The code expires in ${expiresInMinutes} minutes and can be used once.</p>
+    <p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">If you did not try to create a JSMF account, you can ignore this email — nothing has been created, and no account exists at this address.</p>
+    `,
+  );
+
+  return { subject: `${code} is your JSMF verification code`, text, html };
+}
+
+/**
+ * The code that lets someone set a new password.
+ *
+ * Says plainly that nothing has changed yet, because the alarming case is
+ * receiving this without having asked: the reassurance that the password is
+ * still the old one is the part that stops a recipient panicking, and the
+ * instruction to ignore it is genuinely sufficient — an unused code expires on
+ * its own.
+ */
+export function passwordResetCode(input: {
+  code: string;
+  expiresInMinutes: number;
+}): RenderedMail {
+  const { code, expiresInMinutes } = input;
+
+  const text = [
+    `Someone asked to reset the password for this JSMF account.`,
+    ``,
+    `Your reset code is:`,
+    ``,
+    `  ${code}`,
+    ``,
+    `Enter it on the password reset page to choose a new password.`,
+    `The code expires in ${expiresInMinutes} minutes and can be used once.`,
+    ``,
+    `If this was not you, ignore this email. Your password has not been changed`,
+    `and nothing happens until the code above is used.`,
+    ``,
+    `—`,
+    `JSMF`,
+  ].join('\n');
+
+  const html = layout(
+    'Reset your password',
+    `
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Someone asked to reset the password for this JSMF account. Enter this code to choose a new one.</p>
+    ${codeBlock(code)}
+    <p style="margin:0 0 20px;font-size:13px;line-height:1.55;color:#71717a;">The code expires in ${expiresInMinutes} minutes and can be used once.</p>
+    <p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">If this was not you, ignore this email. <strong>Your password has not been changed</strong>, and nothing happens until the code above is used.</p>
+    `,
+  );
+
+  return { subject: `${code} is your JSMF password reset code`, text, html };
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')

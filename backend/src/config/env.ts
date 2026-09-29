@@ -66,7 +66,7 @@ const schema = z
     /// moving PRIMARY_FILE storage elsewhere).
     MAX_UPLOAD_SIZE_MB: z.coerce.number().int().positive().max(512).default(10),
 
-    STORAGE_DRIVER: z.enum(['local', 'cloudinary']).default('local'),
+    STORAGE_DRIVER: z.enum(['local', 'cloudinary', 'gcs']).default('local'),
     STORAGE_LOCAL_ROOT: z.string().default('.storage'),
     STORAGE_SIGNING_SECRET: z.string().min(16),
     STORAGE_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
@@ -77,6 +77,21 @@ const schema = z
     CLOUDINARY_CLOUD_NAME: z.string().optional(),
     CLOUDINARY_API_KEY: z.string().optional(),
     CLOUDINARY_API_SECRET: z.string().optional(),
+
+    /// Real GCS bucket names, deliberately *not* reusing STORAGE_*_BUCKET.
+    ///
+    /// Those two are Cloudinary folder prefixes (`jsmf/private`), and every
+    /// Cloudinary object already stored records one of them in its `bucket`
+    /// column. The Cloudinary adapter decides whether an object is private by
+    /// comparing that column against the current STORAGE_PRIVATE_BUCKET — so
+    /// repointing those variables at GCS bucket names would make every
+    /// already-sold PDF look public to the adapter still serving it. Separate
+    /// variables keep the old objects readable exactly as they were.
+    GCS_PRIVATE_BUCKET: z.string().optional(),
+    GCS_PUBLIC_BUCKET: z.string().optional(),
+    /// Optional: inferred from Application Default Credentials when unset,
+    /// which is the normal case on Cloud Run.
+    GCS_PROJECT_ID: z.string().optional(),
 
     /// V1 runs without Redis on purpose — it is a paid service that nothing in
     /// V1 needs, and leaving it out is a deliberate cost decision rather than an
@@ -116,10 +131,81 @@ const schema = z
     MAIL_DAILY_QUOTA: z.coerce.number().int().positive().default(100),
     MAIL_MONTHLY_QUOTA: z.coerce.number().int().positive().default(3000),
 
+    /// SMS_DRIVER=none is the default and is a valid production setting, unlike
+    /// MAIL_DRIVER=log: SMS is genuinely optional. It costs money per message
+    /// and, in India, needs a DLT template approved by the regulator before the
+    /// first one sends — so a deployment can legitimately run without it.
+    ///
+    /// What the setting controls is not just the transport but whether buyers
+    /// are *offered* a mobile route at all: `SmsService.enabled()` reads this,
+    /// and the "your email failed, use your mobile number instead" alternative
+    /// appears only when it is on. Turning it on before MSG91 works would offer
+    /// a dead end, which is worse than offering nothing.
+    SMS_DRIVER: z.enum(['none', 'log', 'msg91']).default('none'),
+    /// Assumed when a number is typed without a country code. India today; a
+    /// variable rather than a constant so the first market outside it is
+    /// configuration rather than a code change.
+    SMS_DEFAULT_COUNTRY_CODE: z.string().regex(/^\d{1,4}$/).default('91'),
+    MSG91_AUTH_KEY: z.string().optional(),
+    /// The DLT-approved template MSG91 sends. The wording lives with the
+    /// regulator, not in this repository — we supply only the blanks, which the
+    /// template must name OTP and EXPIRY.
+    MSG91_OTP_TEMPLATE_ID: z.string().optional(),
+    /// The six-character approved sender header ("JSMFIN"). Optional: MSG91
+    /// falls back to the template's own sender when it is absent.
+    MSG91_SENDER_ID: z.string().optional(),
+
+    /// WhatsApp over Meta's Cloud API. `none` is valid in production; `log`
+    /// prints codes and is refused there, like SMS_DRIVER=log.
+    WHATSAPP_DRIVER: z.enum(['none', 'log', 'meta']).default('none'),
+    /// A System User token from Meta Business Settings — not a temporary
+    /// 24-hour token from the API setup page, which silently expires.
+    WHATSAPP_ACCESS_TOKEN: z.string().optional(),
+    /// The *Phone number ID* from WhatsApp → API Setup, not the phone number.
+    WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+    WHATSAPP_GRAPH_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v23.0'),
+    /// An approved AUTHENTICATION-category template with a copy-code button,
+    /// whose "code expires in" is set to 15 minutes to match the backend.
+    WHATSAPP_OTP_TEMPLATE_NAME: z.string().optional(),
+    WHATSAPP_OTP_TEMPLATE_LANGUAGE: z.string().default('en'),
+    /// An approved UTILITY-category template for purchase receipts, sent to
+    /// buyers who have a verified mobile number and no email. Optional and
+    /// separate from the OTP template: Meta prices and approves by category, so
+    /// one cannot stand in for the other. Without it, those buyers simply get
+    /// no receipt — the purchase itself is unaffected.
+    WHATSAPP_RECEIPT_TEMPLATE_NAME: z.string().optional(),
+    WHATSAPP_RECEIPT_TEMPLATE_LANGUAGE: z.string().default('en'),
+
+    /// Whether buyers can sign in or sign up with a mobile number at all.
+    /// Off by default and independent of the transports: WhatsApp can be fully
+    /// configured and tested while the storefront still shows no mobile option.
+    /// When on, it needs at least one phone channel (WhatsApp or SMS) to be
+    /// configured, or there would be a button that can never send a code.
+    PHONE_SIGNIN_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    /// Every phone code costs money, so resends are limited per number as well
+    /// as per IP. Tunable here rather than in code.
+    PHONE_CODE_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().min(0).default(60),
+    PHONE_CODE_MAX_PER_HOUR: z.coerce.number().int().positive().default(5),
+
     /// Base URL of the admin front-end, used to build invitation links that are
     /// emailed to invitees. Not inferred from the request: an invitation link is
     /// built server-side and must not be steerable by a Host header.
     ADMIN_APP_URL: z.string().url().default('http://localhost:3001'),
+
+    /// Base URL of the **buyer-facing storefront** — where a customer's library
+    /// lives. Used for the "your files are ready" links in purchase receipts,
+    /// by email and by WhatsApp alike.
+    ///
+    /// Deliberately not `APP_PUBLIC_URL`, which is this *API's* own base URL and
+    /// ends in `/api`. Using that produced a receipt link to
+    /// `…/api/library` — a page that does not exist — which is what this
+    /// variable was added to fix. Deliberately not `ADMIN_APP_URL` either: the
+    /// two happen to be one deployment today, and sending buyers to a URL named
+    /// after the admin panel would quietly break the day they are not.
+    STOREFRONT_URL: z.string().url().default('http://localhost:3001'),
 
     /// The rate limit a single caller gets per minute — counted against their
     /// account when signed in, and only against their IP address when not.
@@ -187,18 +273,27 @@ const schema = z
           .filter((entry) => entry.length > 0),
       ),
 
-    /// Buyer signup with an email and a password. Off in V1, which is a
-    /// decision about email volume rather than about authentication: a password
-    /// account needs a verification mail to prove the address and a reset mail
-    /// when the password is forgotten, and those two flows would be most of the
-    /// sending volume on a plan that allows 100 a day. Google sign-in removes
-    /// both — the address arrives verified and recovery is Google's problem.
+    /// Buyer signup with an email and a password, alongside Google sign-in.
     ///
-    /// Admin accounts are unaffected: they are created by invitation and set a
-    /// password through that flow, which this flag does not gate.
+    /// On: buyers may choose either. It was briefly off, when V1 was Google-only
+    /// to hold email volume down — a password account normally needs a
+    /// verification mail to prove the address and a reset mail when the password
+    /// is forgotten, and on a plan allowing 100 sends a day those two flows
+    /// would have been most of the volume.
+    ///
+    /// Neither is sent today, which is why turning this back on costs no email
+    /// at all: `register` creates the account and starts the session directly,
+    /// so a signup cannot be blocked or failed by the mail quota. The absence of
+    /// a reset mail has a real consequence, though — **there is no
+    /// forgot-password flow**, so a buyer who forgets their password cannot
+    /// recover the account without an admin. Building that flow is what should
+    /// bring the first of those two emails back.
+    ///
+    /// Admin accounts are unaffected either way: they are created by invitation
+    /// and set a password through that flow, which this flag does not gate.
     PASSWORD_SIGNUP_ENABLED: z
       .enum(['true', 'false'])
-      .default('false')
+      .default('true')
       .transform((value) => value === 'true'),
 
     /// Google sign-in. Off until credentials exist, so the platform runs
@@ -285,6 +380,36 @@ const schema = z
   // system runs on stubs until real accounts exist — but the moment a driver is
   // switched on, its configuration is mandatory rather than silently absent.
   .superRefine((env, ctx) => {
+    if (env.STORAGE_DRIVER === 'gcs') {
+      for (const key of ['GCS_PRIVATE_BUCKET', 'GCS_PUBLIC_BUCKET'] as const) {
+        if (!env[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required when STORAGE_DRIVER=gcs`,
+          });
+        }
+      }
+
+      if (
+        env.GCS_PRIVATE_BUCKET &&
+        env.GCS_PRIVATE_BUCKET === env.GCS_PUBLIC_BUCKET
+      ) {
+        // The separation *is* the access control: the private bucket is the one
+        // with no public access to grant. One bucket serving both would mean a
+        // purchased PDF and a cover image are equally reachable, and the only
+        // thing standing between a buyer and every file would be nobody
+        // guessing a URL.
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['GCS_PUBLIC_BUCKET'],
+          message:
+            'GCS_PUBLIC_BUCKET must differ from GCS_PRIVATE_BUCKET — visibility is enforced by ' +
+            'bucket, so sharing one would make purchased files publicly readable',
+        });
+      }
+    }
+
     if (env.STORAGE_DRIVER === 'cloudinary') {
       for (const key of [
         'CLOUDINARY_CLOUD_NAME',
@@ -334,6 +459,44 @@ const schema = z
           });
         }
       }
+    }
+
+    if (env.SMS_DRIVER === 'msg91') {
+      for (const key of ['MSG91_AUTH_KEY', 'MSG91_OTP_TEMPLATE_ID'] as const) {
+        if (!env[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required when SMS_DRIVER=msg91`,
+          });
+        }
+      }
+    }
+
+    if (env.WHATSAPP_DRIVER === 'meta') {
+      for (const key of [
+        'WHATSAPP_ACCESS_TOKEN',
+        'WHATSAPP_PHONE_NUMBER_ID',
+        'WHATSAPP_OTP_TEMPLATE_NAME',
+      ] as const) {
+        if (!env[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required when WHATSAPP_DRIVER=meta`,
+          });
+        }
+      }
+    }
+
+    if (env.PHONE_SIGNIN_ENABLED && env.WHATSAPP_DRIVER === 'none' && env.SMS_DRIVER === 'none') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PHONE_SIGNIN_ENABLED'],
+        message:
+          'PHONE_SIGNIN_ENABLED=true needs WHATSAPP_DRIVER or SMS_DRIVER to be configured — ' +
+          'otherwise the storefront offers mobile sign-in that can never send a code',
+      });
     }
 
     if (env.GOOGLE_OAUTH_ENABLED) {
@@ -422,6 +585,27 @@ const schema = z
           path: ['MAIL_DRIVER'],
           message:
             'MAIL_DRIVER=log only writes emails to the application log and must not be used in production',
+        });
+      }
+      if (env.SMS_DRIVER === 'log') {
+        // Note this refuses `log` but allows `none`. A one-time code printed to
+        // a log file is a live credential in plaintext, which is a security
+        // problem; running without SMS at all is merely a product decision.
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['SMS_DRIVER'],
+          message:
+            'SMS_DRIVER=log writes one-time codes to the application log and must not be used in ' +
+            'production — use msg91, or none to disable SMS entirely',
+        });
+      }
+      if (env.WHATSAPP_DRIVER === 'log') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['WHATSAPP_DRIVER'],
+          message:
+            'WHATSAPP_DRIVER=log writes one-time codes to the application log and must not be ' +
+            'used in production — use meta, or none',
         });
       }
     }

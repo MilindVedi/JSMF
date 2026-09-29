@@ -2,7 +2,7 @@
   "name": "jsmf-root",
   "private": true,
   "scripts": {
-    "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build",
+    "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --renew-anon-volumes",
     "docker:prod": "docker compose up -d --build"
   }
 }

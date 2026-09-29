@@ -14,6 +14,12 @@
 # engine, @node-rs/argon2) would be shadowed by whatever the host's
 # `node_modules` contains — which on Windows is either absent or built for the
 # wrong OS entirely, and the container would crash on startup.
+#
+# The catch: Docker keeps an anonymous volume when it *recreates* a container,
+# so a rebuilt image's node_modules — new dependencies, a regenerated Prisma
+# client after a schema change — stays hidden behind the old one. That is why
+# `npm run docker:dev` passes `--renew-anon-volumes`: always start it that way,
+# not with a bare `docker compose up`, which also skips this overlay file.
 services:
   api:
     build:
@@ -21,6 +27,10 @@ services:
       dockerfile: Dockerfile.dev
     environment:
       NODE_ENV: development
+      # Application Default Credentials for STORAGE_DRIVER=gcs. Points at the
+      # file inside the read-only gcloud config mount below; harmless when that
+      # file does not exist and the driver is not gcs.
+      GOOGLE_APPLICATION_CREDENTIALS: /gcp/gcloud/application_default_credentials.json
     # `nest start --watch` compiles with `tsc --watch`, not chokidar, so its
     # file watching is controlled by tsconfig `watchOptions`, not
     # CHOKIDAR_USEPOLLING. tsconfig.docker.json turns on polling, which is what
@@ -33,6 +43,27 @@ services:
       - ./backend/tsconfig.build.json:/app/tsconfig.build.json
       - ./backend/tsconfig.docker.json:/app/tsconfig.docker.json
       - ./backend/nest-cli.json:/app/nest-cli.json
+      # The host's gcloud config, read-only, so the GCS adapter has credentials.
+      #
+      # What those credentials are is the important part. Log in with
+      # impersonation, so the container acts as `jsmf-local-dev` — a service
+      # account holding Storage Object Admin on the two *dev* buckets and
+      # nothing else:
+      #
+      #   gcloud auth application-default login       #     --impersonate-service-account=jsmf-local-dev@production-509708.iam.gserviceaccount.com
+      #
+      # Without `--impersonate-service-account` this mounts your personal
+      # credentials instead, which on this project are Owner — handing a local
+      # container full control of production to let it write two test buckets.
+      # The flag is the whole point of the mount being safe.
+      #
+      # No key file, because the org policy `disableServiceAccountKeyCreation`
+      # blocks downloadable keys — correctly: impersonated credentials expire
+      # on their own, a leaked key does not.
+      #
+      # Set GCLOUD_CONFIG_DIR in a root `.env` — on Windows %APPDATA%\gcloud,
+      # on macOS/Linux ~/.config/gcloud.
+      - ${GCLOUD_CONFIG_DIR:-./.gcloud-not-configured}:/gcp/gcloud:ro
       - /app/node_modules
 
   pdf-web:

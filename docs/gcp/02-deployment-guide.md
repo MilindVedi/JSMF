@@ -139,7 +139,7 @@ gcloud sql databases create jsmf_db --instance=jsmf-postgres
    - **Region**: `AWS Asia Pacific 1 (Singapore)` (or closest available region)
    - **Services**:
      - 🟢 **Postgres database**: **TOGGLE ON (Enabled)**
-     - ⚪ **Object storage**: **TOGGLE OFF (Disabled)** *(we use Cloudinary for PDFs/images)*
+     - ⚪ **Object storage**: **TOGGLE OFF (Disabled)** *(Cloud Storage buckets are created directly in Phase 3.5)*
      - ⚪ **Functions**: **TOGGLE OFF (Disabled)**
      - ⚪ **AI gateway**: **TOGGLE OFF (Disabled)**
      - ⚪ **Neon Auth**: **TOGGLE OFF (Disabled)** *(NestJS handles RS256 JWT auth)*
@@ -147,6 +147,136 @@ gcloud sql databases create jsmf_db --instance=jsmf-postgres
 4. On the dashboard, copy the **Connection string** (select **Pooled connection** or direct connection):
    `postgresql://username:password@ep-xyz.region.aws.neon.tech/neondb?sslmode=require`
    *(Save this string to use as your `DATABASE_URL` in Secret Manager in Phase 4).*
+
+---
+
+## Phase 3.5: Object Storage (Google Cloud Storage)
+
+JSMF stores purchased PDFs and cover images in GCS. Two buckets, because with
+uniform bucket-level access visibility is a property of the bucket: the private
+one has no public access to grant, so no bug in the application can publish a
+paid file.
+
+```powershell
+# Purchased files. --public-access-prevention is the important flag: it makes
+# "accidentally public" impossible rather than merely unlikely.
+gcloud storage buckets create gs://jsmf-private-509708 --location=$REGION `
+  --uniform-bucket-level-access --public-access-prevention
+
+# Cover images, served straight from storage with no signing.
+gcloud storage buckets create gs://jsmf-public-509708 --location=$REGION `
+  --uniform-bucket-level-access
+gcloud storage buckets add-iam-policy-binding gs://jsmf-public-509708 `
+  --member=allUsers --role=roles/storage.objectViewer
+```
+
+Bucket names are globally unique across all of GCS, so these include the
+project number. Keep them in the same region as Cloud Run — cross-region reads
+are slower and are billed as network egress.
+
+### Grant the service account
+
+```powershell
+$SA = "569375141363-compute@developer.gserviceaccount.com"
+
+gcloud storage buckets add-iam-policy-binding gs://jsmf-private-509708 `
+  --member="serviceAccount:$SA" --role=roles/storage.objectAdmin
+gcloud storage buckets add-iam-policy-binding gs://jsmf-public-509708 `
+  --member="serviceAccount:$SA" --role=roles/storage.objectAdmin
+
+# The one that gets missed. A V4 signed URL must be signed, and Cloud Run has
+# no private key — the SDK signs through the IAM signBlob API instead, which
+# requires the service account to be able to impersonate ITSELF.
+gcloud iam service-accounts add-iam-policy-binding $SA `
+  --member="serviceAccount:$SA" --role=roles/iam.serviceAccountTokenCreator
+```
+
+Without that last grant, uploads, deletes and cover images all work. The only
+thing that fails is a paid download — at the moment a customer tries to open
+something they have already bought.
+
+**No key file, and no storage credential in Secret Manager.** The adapter uses
+Application Default Credentials, so on Cloud Run the attached service account
+is the credential. A JSON key would be a long-lived secret to store and rotate
+for no benefit.
+
+### Local development uses a separate, scoped identity
+
+Local development writes to the **dev** buckets, as a service account that can
+reach nothing else:
+
+```powershell
+gcloud iam service-accounts create jsmf-local-dev `
+  --display-name="JSMF local development — dev buckets only"
+
+gcloud storage buckets add-iam-policy-binding gs://jsmf-dev-private-509708 `
+  --member="serviceAccount:jsmf-local-dev@$PROJECT_ID.iam.gserviceaccount.com" `
+  --role=roles/storage.objectAdmin
+gcloud storage buckets add-iam-policy-binding gs://jsmf-dev-public-509708 `
+  --member="serviceAccount:jsmf-local-dev@$PROJECT_ID.iam.gserviceaccount.com" `
+  --role=roles/storage.objectAdmin
+
+# Let yourself act as it. No key is downloaded — the org policy
+# disableServiceAccountKeyCreation blocks that, and impersonated credentials
+# expire on their own where a key file would not.
+gcloud iam service-accounts add-iam-policy-binding `
+  jsmf-local-dev@$PROJECT_ID.iam.gserviceaccount.com `
+  --member="user:<you>@gmail.com" --role=roles/iam.serviceAccountTokenCreator
+```
+
+Then, once per machine:
+
+```bash
+gcloud auth application-default login   --impersonate-service-account=jsmf-local-dev@production-509708.iam.gserviceaccount.com
+```
+
+**It has no project-level role of any kind.** Confirmed by trying, as that
+identity: writing to the production bucket → 403; reading it → denied; listing
+Secret Manager → denied; listing Cloud Run services → denied. The worst a
+compromised laptop can do through these credentials is disturb test files in a
+dev bucket.
+
+Dropping `--impersonate-service-account` would mount your own credentials into
+the container instead, which on this project are Owner. That flag is the
+difference between least privilege and the opposite of it.
+
+---
+
+### Point the backend at it
+
+```powershell
+gcloud run services update jsmf-backend --region=$REGION `
+  --update-env-vars=STORAGE_DRIVER=gcs,GCS_PRIVATE_BUCKET=jsmf-private-509708,GCS_PUBLIC_BUCKET=jsmf-public-509708,GCS_PROJECT_ID=$PROJECT_ID
+```
+
+**Leave the Cloudinary variables set.** `STORAGE_DRIVER` controls *writes only*
+— every file row records the provider its bytes actually live on, and reads go
+to that provider. Files already on Cloudinary keep being served from Cloudinary
+after the switch; removing its credentials would turn every one of them into a
+503. The boot log states this plainly:
+
+```
+StorageService  writes → GCS; can read from [LOCAL, CLOUDINARY, GCS]
+```
+
+### Verify
+
+```powershell
+# Private objects must not be readable without a signature.
+gcloud storage cp test.txt gs://jsmf-private-509708/verify/test.txt
+curl -s -o /dev/null -w "%{http_code}`n" https://storage.googleapis.com/jsmf-private-509708/verify/test.txt   # expect 403
+
+# Public objects must be.
+gcloud storage cp test.txt gs://jsmf-public-509708/verify/test.txt
+curl -s -o /dev/null -w "%{http_code}`n" https://storage.googleapis.com/jsmf-public-509708/verify/test.txt    # expect 200
+
+gcloud storage rm gs://jsmf-private-509708/verify/test.txt gs://jsmf-public-509708/verify/test.txt
+```
+
+Then upload a product through the admin panel and download it as a buyer. That
+is the only test that exercises signing the way production does — signing
+behaves differently with a key file than with Cloud Run's metadata credentials,
+so a local success does not prove a deployed one.
 
 ---
 
