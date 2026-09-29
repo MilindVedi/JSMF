@@ -92,6 +92,55 @@ export class VerificationCodeService {
   }
 
   /**
+   * Checks a code without consuming it — the code stays valid for a later
+   * `consume`. Used by the password-reset flow so the UI can validate the
+   * code on the "enter code" screen before showing the password fields.
+   *
+   * A wrong guess still counts against the attempt limit, exactly as
+   * `consume` does.
+   */
+  async verify(input: {
+    purpose: VerificationPurpose;
+    subject: string;
+    code: string;
+  }): Promise<void> {
+    const rejected = (): never => {
+      throw new BadRequestException('That code is invalid or has expired.');
+    };
+
+    const record = await this.prisma.verificationCode.findFirst({
+      where: {
+        purpose: input.purpose,
+        subject: input.subject,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!record) return rejected();
+
+    if (record.attempts >= record.maxAttempts) {
+      await this.prisma.verificationCode.update({
+        where: { id: record.id },
+        data: { consumedAt: new Date() },
+      });
+      this.logger.warn(
+        `Verification code for ${input.purpose}/${input.subject} exhausted its attempts`,
+      );
+      return rejected();
+    }
+
+    if (!(await this.hasher.verify(record.codeHash, input.code))) {
+      await this.prisma.verificationCode.update({
+        where: { id: record.id },
+        data: { attempts: { increment: 1 } },
+      });
+      return rejected();
+    }
+  }
+
+  /**
    * Verifies and consumes a code, or throws.
    *
    * Every failure mode returns the same message on purpose. Distinguishing

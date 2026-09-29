@@ -3,6 +3,7 @@ import { AppConfig } from '../../config/config.module';
 import { MailService } from './application/mail.service';
 import { MailProvider } from './domain/mail-provider.port';
 import { LogMailAdapter } from './infrastructure/log-mail.adapter';
+import { Msg91MailAdapter } from './infrastructure/msg91-mail.adapter';
 import { ResendMailAdapter } from './infrastructure/resend-mail.adapter';
 import { SmtpMailAdapter } from './infrastructure/smtp-mail.adapter';
 
@@ -28,6 +29,8 @@ import { SmtpMailAdapter } from './infrastructure/smtp-mail.adapter';
         switch (config.get('MAIL_DRIVER')) {
           case 'resend':
             return new ResendMailAdapter(config);
+          case 'msg91':
+            return new Msg91MailAdapter(config);
           case 'smtp':
             return new SmtpMailAdapter(config);
           default:

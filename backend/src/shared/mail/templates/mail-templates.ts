@@ -12,6 +12,8 @@
  * well-known spam-scoring signal when missing.
  */
 
+import { emailSignature, emailSignatureText } from './email-signature';
+
 export interface RenderedMail {
   subject: string;
   text: string;
@@ -28,6 +30,8 @@ function layout(heading: string, bodyHtml: string): string {
         <p style="margin:0 0 4px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#71717a;">JSMF</p>
         <h1 style="margin:0 0 16px;font-size:20px;font-weight:600;">${heading}</h1>
         ${bodyHtml}
+        <hr style="border:none;border-top:1px solid #e4e4e7;margin:28px 0 0;" />
+        ${emailSignature()}
       </td></tr>
     </table>
   </body>
@@ -61,6 +65,8 @@ export function adminInvitation(input: {
     `An administrator can publish and withdraw content, see every customer's`,
     `orders, and issue refunds. If you were not expecting this invitation,`,
     `ignore this email and tell ${invitedByName}.`,
+    ``,
+    emailSignatureText(),
   ].join('\n');
 
   const html = layout(
@@ -75,7 +81,7 @@ export function adminInvitation(input: {
     `,
   );
 
-  return { subject: `${invitedByName} invited you to administer JSMF`, text, html };
+  return { subject: `JSMF - ${invitedByName} invited you to become an administrator`, text, html };
 }
 
 /**
@@ -128,9 +134,7 @@ export function purchaseConfirmation(input: {
     ``,
     `You can access ${titles.length === 1 ? 'it' : 'them'} anytime from your JSMF account.`,
     ``,
-    `—`,
-    `JSMF`,
-    `by Dr. Angad Rai`,
+    emailSignatureText(),
   ].join('\n');
 
   const itemsHtml = titles
@@ -167,7 +171,7 @@ export function purchaseConfirmation(input: {
     `,
   );
 
-  return { subject: 'Your JSMF purchase is confirmed', text, html };
+  return { subject: 'JSMF - Your purchase is confirmed', text, html };
 }
 
 /** The code itself, rendered so it can be read off a phone and retyped. */
@@ -208,8 +212,7 @@ export function signupVerificationCode(input: {
     `If you did not try to create a JSMF account, you can ignore this email —`,
     `nothing has been created and no account exists at this address.`,
     ``,
-    `—`,
-    `JSMF`,
+    emailSignatureText(),
   ].join('\n');
 
   const html = layout(
@@ -223,7 +226,7 @@ export function signupVerificationCode(input: {
     `,
   );
 
-  return { subject: `${code} is your JSMF verification code`, text, html };
+  return { subject: `JSMF - ${code} is your verification code`, text, html };
 }
 
 /**
@@ -254,8 +257,7 @@ export function passwordResetCode(input: {
     `If this was not you, ignore this email. Your password has not been changed`,
     `and nothing happens until the code above is used.`,
     ``,
-    `—`,
-    `JSMF`,
+    emailSignatureText(),
   ].join('\n');
 
   const html = layout(
@@ -268,7 +270,7 @@ export function passwordResetCode(input: {
     `,
   );
 
-  return { subject: `${code} is your JSMF password reset code`, text, html };
+  return { subject: `JSMF - ${code} is your password reset code`, text, html };
 }
 
 function escapeHtml(value: string): string {

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { ArrowRight, BookOpen, ExternalLink, Instagram, Library, LogIn, Menu, Play, Search, Stethoscope, Youtube } from "lucide-react";
+import { ArrowRight, BookOpen, ExternalLink, Instagram, Library, LogIn, Menu, Play, Search, Youtube } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import cardiology from "@/assets/resource-cardiology.jpg";
@@ -24,7 +24,7 @@ export function SiteHeader() {
     <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 lg:px-8">
       <div className="flex items-center gap-8">
         <Link to="/" className="flex items-center gap-2 font-display text-base font-semibold text-brand-deep" aria-label="JSMF Resources home">
-          <span className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground"><Stethoscope size={16}/></span>
+          <img src="/jab-studies-circle-only.png" alt="JSMF logo" width={32} height={32} className="size-8 rounded-full object-cover" />
           JSMF <span className="hidden font-normal text-muted-foreground sm:inline">Resources</span>
         </Link>
         <nav className="hidden items-center gap-2 md:flex" aria-label="Main navigation">

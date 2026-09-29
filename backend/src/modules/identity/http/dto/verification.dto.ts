@@ -49,6 +49,13 @@ export class ForgotPasswordDto {
   email!: string;
 }
 
+export class VerifyResetCodeDto extends CodeField {
+  @ApiProperty({ example: 'student@example.com' })
+  @IsEmail({}, { message: 'Enter a valid email address' })
+  @MaxLength(255)
+  email!: string;
+}
+
 export class ResetPasswordDto extends CodeField {
   @ApiProperty({ example: 'student@example.com' })
   @IsEmail({}, { message: 'Enter a valid email address' })

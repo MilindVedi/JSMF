@@ -106,6 +106,8 @@ This document provides a reference for all environment variables, flags, and sec
 | `OAUTH_STATE_SECRET` | String (min 16 chars) | `<Random_Secret>` | GCP Secret: `OAUTH_STATE_SECRET` | Cryptographic key used to sign and verify OAuth state parameter. |
 | `MAIL_DRIVER` | Enum | `resend` | Cloud Run Env Var | HTTPS API, not an SMTP socket — Cloud Run blocks outbound SMTP ports. `log` is **refused in production** by env validation. |
 | `RESEND_API_KEY` | String | `re_...` | GCP Secret: `RESEND_API_KEY` | Required when `MAIL_DRIVER=resend`. Create at https://resend.com/api-keys. |
+| `MSG91_EMAIL_TEMPLATE_ID` | String | `jsmf_passthrough` | Cloud Run Env Var | Only when `MAIL_DRIVER=msg91` (with `MSG91_AUTH_KEY`). One MSG91 email template: subject `{{subject}}`, body `{{body}}`. |
+| `MSG91_EMAIL_DOMAIN` | String | `jsmf.me` | Cloud Run Env Var | Optional. Domain verified in MSG91 → Email → Domains; defaults to the `MAIL_FROM` domain. |
 | `MAIL_FROM` | String | `JSMF <no-reply@jsmf.me>` | Cloud Run Env Var | Verified domain in Resend (https://resend.com/domains). |
 | `SMS_DRIVER` | Enum | `none` | Cloud Run Env Var | `none` is a **valid production value** — SMS is optional. `log` is refused in production (a one-time code in a log file is a plaintext credential). Set to `msg91` only once the DLT template is approved: it is also what decides whether buyers are *offered* a mobile route at all. |
 | `SMS_DEFAULT_COUNTRY_CODE` | Digits | `91` | Cloud Run Env Var | Assumed when a number is typed without a country code. |

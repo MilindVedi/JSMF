@@ -176,6 +176,9 @@ export const accountApi = {
   forgotPassword: (input: { email: string }) =>
     api.postAnonymous<CodeIssued>("/auth/password/forgot", input),
 
+  verifyResetCode: (input: { email: string; code: string }) =>
+    api.postAnonymous<{ valid: true }>("/auth/password/verify-code", input),
+
   resetPassword: (input: { email: string; code: string; password: string }) =>
     api.postAnonymous<AuthSession>("/auth/password/reset", input),
 };

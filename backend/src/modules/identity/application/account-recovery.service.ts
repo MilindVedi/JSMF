@@ -219,6 +219,19 @@ export class AccountRecoveryService {
   }
 
   /**
+   * Checks the code without consuming it — so the UI can validate on the
+   * "enter code" screen before showing password fields.
+   */
+  async verifyResetCode(input: { email: string; code: string }): Promise<void> {
+    const email = input.email.trim().toLowerCase();
+    await this.codes.verify({
+      purpose: VerificationPurpose.PASSWORD_RESET,
+      subject: email,
+      code: input.code,
+    });
+  }
+
+  /**
    * Sets the new password and **signs every existing session out**.
    *
    * That last part is the security-relevant half. Someone resetting a password

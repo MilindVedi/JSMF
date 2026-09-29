@@ -157,7 +157,7 @@ export class MailService {
         );
       } else {
         this.logger.error(
-          `Email delivery failed${request.tag ? ` (${request.tag})` : ''}: ${detail}`,
+          `Email delivery failed via ${this.provider.name}${request.tag ? ` (${request.tag})` : ''}: ${detail}`,
         );
       }
 
@@ -201,7 +201,7 @@ export class MailService {
       const { sentToday, dailyQuota, sentThisMonth, monthlyQuota } = await this.usage();
 
       const line =
-        `Email sent${tag ? ` (${tag})` : ''} — ` +
+        `Email sent via ${this.provider.name}${tag ? ` (${tag})` : ''} — ` +
         `${sentToday}/${dailyQuota} today, ${sentThisMonth}/${monthlyQuota} this month`;
 
       // Warn rather than log once most of the allowance is gone, so the ceiling

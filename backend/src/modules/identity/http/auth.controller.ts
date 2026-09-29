@@ -33,6 +33,7 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   StartSignupDto,
+  VerifyResetCodeDto,
 } from './dto/verification.dto';
 
 @ApiTags('auth')
@@ -171,6 +172,17 @@ export class AuthController {
     @Req() request: Request,
   ): Promise<CodeIssued> {
     return undeliverableAsHttp(() => this.recovery.startPasswordReset(dto, contextOf(request)));
+  }
+
+  /** Checks the reset code without consuming it — the code stays valid. */
+  @Public()
+  @Post('password/verify-code')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Check a password-reset code without consuming it' })
+  async verifyResetCode(@Body() dto: VerifyResetCodeDto): Promise<{ valid: true }> {
+    await this.recovery.verifyResetCode(dto);
+    return { valid: true };
   }
 
   /** Sets the new password, revokes every existing session, and signs in. */

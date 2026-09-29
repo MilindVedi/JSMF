@@ -10,7 +10,6 @@ import {
   LogOut,
   Menu,
   Shield,
-  Stethoscope,
   UserPlus,
   X,
 } from "lucide-react";
@@ -64,9 +63,14 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
               className="flex shrink-0 items-center gap-2 font-display text-base font-semibold text-brand-ink"
               aria-label={`${brand.productName} home`}
             >
-              <span className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground">
-                <Stethoscope className="size-4" />
-              </span>
+              {/* eslint-disable-next-line @next/next/no-img-element -- build-time constant from public/ */}
+              <img
+                src="/jab-studies-circle-only.png"
+                alt="JSMF logo"
+                width={32}
+                height={32}
+                className="size-8 rounded-full object-cover"
+              />
               JSMF
               <span className="hidden font-normal text-muted-foreground sm:inline">Resources</span>
             </Link>

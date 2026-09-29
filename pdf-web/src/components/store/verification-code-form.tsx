@@ -72,6 +72,16 @@ export function VerificationCodeForm({
           We sent a 6-digit code {channel === "email" ? "" : `on ${CHANNEL_LABEL[channel]} `}to{" "}
           <span className="font-semibold text-foreground">{destination}</span>. It expires in{" "}
           {expiresInMinutes} minutes.
+          {/* Only for email: a WhatsApp or SMS code has no spam folder to
+              miss, and the advice would just be noise there. This is the
+              single most common reason someone lands on this screen and
+              says nothing arrived. */}
+          {channel === "email" && (
+            <span className="mt-1 block text-xs text-muted-foreground/80">
+              Not in your inbox? Check spam or promotions — it can land there
+              the first time.
+            </span>
+          )}
         </p>
       </div>
 

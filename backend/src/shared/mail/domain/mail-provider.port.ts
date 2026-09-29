@@ -37,7 +37,7 @@ export interface SendMailResult {
   provider: MailProviderName;
 }
 
-export type MailProviderName = 'log' | 'smtp' | 'resend';
+export type MailProviderName = 'log' | 'smtp' | 'resend' | 'msg91';
 
 /**
  * A delivery that failed for an ordinary reason: bad credentials, an

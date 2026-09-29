@@ -40,11 +40,27 @@ const signupSchema = z.object({
 type LoginValues = z.infer<typeof loginSchema>;
 type SignupValues = z.infer<typeof signupSchema>;
 
-const BENEFITS = [
-  "Access every resource you have bought",
-  "Return to your in-progress purchase",
-  "One account across your library",
-];
+const LOGIN_CONTENT = {
+  eyebrow: "Secure access",
+  title: "Your study desk, exactly as you left it.",
+  description: "Keep purchased resources, focused revision, and your next milestone together.",
+  benefits: [
+    "Access every resource you have bought",
+    "Return to your in-progress purchase",
+    "One account across your library",
+  ],
+};
+
+const SIGNUP_CONTENT = {
+  eyebrow: "Start your preparation",
+  title: "Your entire study desk, in one place.",
+  description: "Create an account to keep your notes, formula sheets, and revision milestones organized.",
+  benefits: [
+    "Instant access to high-yield study resources",
+    "Study seamlessly across all your devices",
+    "One secure account for your entire library",
+  ],
+};
 
 function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const signup = mode === "signup";
@@ -200,26 +216,31 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
   return (
     <section className="auth-stage">
-      <div className="auth-aside">
-        <span className="eyebrow">
-          <ShieldCheck className="size-3.5" />
-          Secure access
-        </span>
-        <h1 className="font-display text-4xl font-semibold leading-tight text-brand-ink md:text-5xl">
-          Your study desk, exactly as you left it.
-        </h1>
-        <p className="max-w-md text-base leading-relaxed text-muted-foreground">
-          Keep purchased resources, focused revision, and your next milestone together.
-        </p>
-        <div className="space-y-3 text-sm text-foreground">
-          {BENEFITS.map((benefit) => (
-            <p key={benefit} className="flex items-center gap-2">
-              <CheckCircle2 className="size-4.5 shrink-0 text-success" />
-              {benefit}
+      {(() => {
+        const content = signup ? SIGNUP_CONTENT : LOGIN_CONTENT;
+        return (
+          <div className="auth-aside">
+            <span className="eyebrow">
+              <ShieldCheck className="size-3.5" />
+              {content.eyebrow}
+            </span>
+            <h1 className="font-display text-4xl font-semibold leading-tight text-brand-ink md:text-5xl">
+              {content.title}
+            </h1>
+            <p className="max-w-md text-base leading-relaxed text-muted-foreground">
+              {content.description}
             </p>
-          ))}
-        </div>
-      </div>
+            <div className="space-y-3 text-sm text-foreground">
+              {content.benefits.map((benefit) => (
+                <p key={benefit} className="flex items-center gap-2">
+                  <CheckCircle2 className="size-4.5 shrink-0 text-success" />
+                  {benefit}
+                </p>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="auth-card">
         <div>

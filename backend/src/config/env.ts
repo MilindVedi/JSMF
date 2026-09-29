@@ -114,7 +114,7 @@ const schema = z
     /// them, so flows that depend on email — admin invitations today, password
     /// reset and receipts later — work end to end before any mail account
     /// exists. Refused in production by the check below.
-    MAIL_DRIVER: z.enum(['log', 'smtp', 'resend']).default('log'),
+    MAIL_DRIVER: z.enum(['log', 'smtp', 'resend', 'msg91']).default('log'),
     /// The envelope sender. Must be an address the mail account is allowed to
     /// send as — for Resend, a domain verified in the dashboard — or providers
     /// will reject or spam-folder the message.
@@ -124,6 +124,14 @@ const schema = z
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
     RESEND_API_KEY: z.string().optional(),
+    /// MAIL_DRIVER=msg91 reuses MSG91_AUTH_KEY (the same MSG91 account as SMS)
+    /// and sends through one pass-through template whose subject is
+    /// `{{subject}}` and body is `{{body}}` — the wording stays in this
+    /// repository, so every driver sends identical emails.
+    MSG91_EMAIL_TEMPLATE_ID: z.string().optional(),
+    /// The domain verified under MSG91 → Email → Domains. Defaults to the
+    /// domain of MAIL_FROM; set only when the two differ.
+    MSG91_EMAIL_DOMAIN: z.string().optional(),
     /// What the mail plan actually allows. No provider reports this — Resend's
     /// API returns only a per-second request rate limit — so the numbers have
     /// to be told to us, and they are what the delivery-count log lines are
@@ -447,6 +455,18 @@ const schema = z
         path: ['RESEND_API_KEY'],
         message: 'RESEND_API_KEY is required when MAIL_DRIVER=resend',
       });
+    }
+
+    if (env.MAIL_DRIVER === 'msg91') {
+      for (const key of ['MSG91_AUTH_KEY', 'MSG91_EMAIL_TEMPLATE_ID'] as const) {
+        if (!env[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required when MAIL_DRIVER=msg91`,
+          });
+        }
+      }
     }
 
     if (env.MAIL_DRIVER === 'smtp') {

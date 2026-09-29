@@ -15,15 +15,39 @@ function GoogleCta({ signup }: { signup: boolean }) {
 }
 
 function Aside({ signup }: { signup: boolean }) {
-  return <div className="auth-aside">
-    <span className="eyebrow"><ShieldCheck size={14}/> Secure access</span>
-    <h1 className="font-display text-4xl font-semibold leading-tight text-brand-deep md:text-5xl">Your study desk, exactly as you left it.</h1>
-    <p className="max-w-md text-base leading-relaxed text-muted-foreground">Keep purchased resources, focused revision, and your next milestone together.</p>
-    <div className="space-y-3 text-sm text-foreground">
-      {['Access every resource you have bought', 'Return to your in-progress purchase', 'One account across your library'].map(item => <p key={item} className="flex items-center gap-2"><CheckCircle2 size={17} className="text-success"/>{item}</p>)}
+  const content = signup
+    ? {
+        eyebrow: "Start your preparation",
+        title: "Your entire study desk, in one place.",
+        description: "Create an account to keep your notes, formula sheets, and revision milestones organized.",
+        benefits: [
+          "Instant access to high-yield study resources",
+          "Study seamlessly across all your devices",
+          "One secure account for your entire library",
+        ],
+      }
+    : {
+        eyebrow: "Secure access",
+        title: "Your study desk, exactly as you left it.",
+        description: "Keep purchased resources, focused revision, and your next milestone together.",
+        benefits: [
+          "Access every resource you have bought",
+          "Return to your in-progress purchase",
+          "One account across your library",
+        ],
+      };
+
+  return (
+    <div className="auth-aside">
+      <span className="eyebrow"><ShieldCheck size={14}/> {content.eyebrow}</span>
+      <h1 className="font-display text-4xl font-semibold leading-tight text-brand-deep md:text-5xl">{content.title}</h1>
+      <p className="max-w-md text-base leading-relaxed text-muted-foreground">{content.description}</p>
+      <div className="space-y-3 text-sm text-foreground">
+        {content.benefits.map(item => <p key={item} className="flex items-center gap-2"><CheckCircle2 size={17} className="text-success"/>{item}</p>)}
+      </div>
+      {signup && <div className="flex max-w-md items-center gap-3 rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground"><span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent text-primary"><GoogleMark/></span><p><span className="font-semibold text-foreground">Most aspirants join with Google.</span> It takes one tap and your library is ready instantly.</p></div>}
     </div>
-    {signup && <div className="flex max-w-md items-center gap-3 rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground"><span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent text-primary"><GoogleMark/></span><p><span className="font-semibold text-foreground">Most aspirants join with Google.</span> It takes one tap and your library is ready instantly.</p></div>}
-  </div>;
+  );
 }
 
 export function AuthPage({ mode }: { mode: "login" | "signup" }) {
