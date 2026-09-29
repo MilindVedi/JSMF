@@ -236,6 +236,30 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
           </p>
         </div>
 
+        {/* Google leads: no password to create or remember, and it is what
+            most buyers already use elsewhere. Email stays fully available
+            below it — never hidden — for anyone who would rather not use
+            Google, or does not have an account. Not shown on the code step:
+            that screen has one job. */}
+        {!awaitingCode && (
+          <div className="mt-7">
+            <GoogleButton
+              label={signup ? "Sign up with Google" : "Continue with Google"}
+              onClick={() => googleAuth.start({ next: requestedNext ?? undefined })}
+              className="h-12 text-[15px]"
+            />
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              The fastest way in — no password to create or remember.
+            </p>
+
+            <div className="mt-6 flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="h-px flex-1 bg-border" />
+              or continue with email
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          </div>
+        )}
+
         {/* The code step replaces the details form rather than appearing below
             it: the details are already submitted, and leaving them editable
             would invite changing the address the code was just sent to. */}
@@ -354,18 +378,6 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
             retrying={busy}
           />
         )}
-
-        <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="h-px flex-1 bg-border" />
-          or
-          <span className="h-px flex-1 bg-border" />
-        </div>
-
-        <GoogleButton
-          label={signup ? "Sign up with Google" : "Continue with Google"}
-          onClick={() => googleAuth.start({ next: requestedNext ?? undefined })}
-          className="h-11 rounded-full"
-        />
 
         {/* Rendered only when the server reports mobile sign-in as on, so
             switching it on is a server setting and never a redeploy. */}

@@ -10,9 +10,17 @@ Ordered by consequence.
 
 ---
 
-## 🟠 1. SMS / WhatsApp Delivery Configuration
+## 🟠 1. SMS / WhatsApp Delivery Configuration — deferred by choice
 
-### 1a. WhatsApp Mobile Sign-in (Recommended)
+Both require an external registration step (Meta Business verification, MSG91
+DLT) that has to happen outside this repo. Confirmed 2026-09-29: deliberately
+deferred, not blocked on a missing decision — the storefront leads with
+Google and offers email as always, and no client shows a mobile option while
+these are off (`GET /auth/methods` reports `phone.enabled: false`, every
+`/auth/phone/*` route answers 404). Nothing here needs doing until that
+registration work resumes.
+
+### 1a. WhatsApp Mobile Sign-in
 `PHONE_SIGNIN_ENABLED=false`. Code and tests are built.
 Steps in [identity/04 §8](../identity/04-whatsapp-and-mobile-sign-in.md#8-turning-it-on):
 Business account → WhatsApp number → System User token → Authentication template (copy-code button, 15-minute expiry) → **Utility template for purchase receipts** → payment method. Then:
@@ -23,21 +31,22 @@ gcloud run services update jsmf-backend --region=asia-south1 `
   --update-secrets=WHATSAPP_ACCESS_TOKEN=WHATSAPP_ACCESS_TOKEN:latest
 ```
 
-### 1c. Purchase receipt links point at the API, not the storefront
+### 1c. Purchase receipt links point at the API, not the storefront — ✅ FIXED ON PROD
 
-Independent of WhatsApp, and it affects **email receipts that already go out**.
-The "view your library" link was built from `APP_PUBLIC_URL`, which is this
-API's own base URL ending in `/api` — so every purchase confirmation has linked
-to `…/api/library`, a page that does not exist. Fixed in code by a new
-`STOREFRONT_URL`, which defaults to localhost and so must be set on Cloud Run:
+Independent of WhatsApp, and it affected **email receipts that already go
+out**. The "view your library" link was built from `APP_PUBLIC_URL`, which is
+this API's own base URL ending in `/api` — so every purchase confirmation
+linked to `…/api/library`, a page that does not exist. Fixed in code by a new
+`STOREFRONT_URL`, and **`STOREFRONT_URL=https://store.jsmf.me` is already set
+on `jsmf-backend`** (confirmed 2026-09-29 by reading the live Cloud Run
+revision) — nothing further to do here. Kept as a record of what the bug was
+and the reasoning, not as an open action:
 
 ```powershell
+# Already applied. Shown for reference only.
 gcloud run services update jsmf-backend --region=asia-south1 `
   --update-env-vars=STOREFRONT_URL=https://store.jsmf.me
 ```
-
-Worth doing **before** the WhatsApp work: it fixes a live bug in the email
-receipts customers are getting today.
 
 ---
 
@@ -53,44 +62,7 @@ gcloud run services update jsmf-backend --region=asia-south1 `
   --update-secrets=MSG91_AUTH_KEY=MSG91_AUTH_KEY:latest
 ```
 
----
 
-## 🟡 2. Admin App Invitation URL
-Set `ADMIN_APP_URL` on the backend so admin invitation email links point to production:
-
-```powershell
-gcloud run services update jsmf-backend --region=asia-south1 `
-  --update-env-vars=ADMIN_APP_URL=https://store.jsmf.me
-```
-
----
-
-## 🟡 3. Schema changes awaiting review
-
-**`20260929120000_phone_accounts`** — mobile accounts:
-
-```sql
-ALTER TYPE "VerificationPurpose" ADD VALUE 'PHONE_SIGN_IN';
-ALTER TYPE "VerificationPurpose" ADD VALUE 'PHONE_REGISTRATION';
-ALTER TYPE "VerificationPurpose" ADD VALUE 'PHONE_LINK';
-ALTER TABLE "users" ALTER COLUMN "email" DROP NOT NULL;
-ALTER TABLE "users" ADD COLUMN "phone_verified_at" TIMESTAMPTZ(6);
-ALTER TABLE "orders" ALTER COLUMN "customer_email" DROP NOT NULL;
-```
-
-**`20260927234307_password_changed_revoke_reason`** — one additive enum value:
-
-```sql
-ALTER TYPE "RefreshTokenRevokedReason" ADD VALUE 'PASSWORD_CHANGED';
-```
-
----
-
-## 🟡 4. Backend `max-instances` is 2, not 3
-
-The intent was 3. Update if higher concurrency is required.
-
----
 
 ## Not pending, recorded to prevent re-litigation
 

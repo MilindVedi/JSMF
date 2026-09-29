@@ -80,12 +80,19 @@ These are designed for in the data model so they do not require a rewrite, but t
 - Analytics dashboards beyond the basic order list. The events are being *recorded* from day one so that the dashboards have history to show when they are built; that is the expensive part to retrofit, not the charts.
 - Any integration with the PYQ question-bank app. Same account, eventually the same library — but V1 ships independently.
 
-## Buyer accounts: email-and-password, or Google
+## Buyer accounts: Google-first, email-and-password always available
 
-Buyers may create an account either way. `/account/signup` and
-`/account/login` are the same screen with different copy, one extra field and a
-different submit; both also offer **Continue with Google**, which signs in an
-existing account and creates one that does not exist.
+**Google is the lead action** on both `/account/login` and `/account/signup` —
+the larger button, positioned first, above a divider — because it needs no
+password to create or remember and most buyers already have one. Email stays
+fully available directly below it, never hidden behind an extra click: not
+everyone has or wants to use a Google account, and de-prioritising it in the
+layout is not the same as making it hard to find.
+
+`/account/signup` and `/account/login` are the same screen with different
+copy, one extra field and a different submit. **Continue with Google** signs
+in an existing account and creates one that does not exist, whichever screen
+it is clicked from.
 
 `POST /auth/register` is gated behind `PASSWORD_SIGNUP_ENABLED` (default
 `true`) and answers 404 when off. It is gated rather than deleted because
@@ -113,7 +120,7 @@ sends a day it will happen. Delivery lives behind a **channel port**
 can do rather than a dead end:
 
 ```
-503 { message, reason: 'quota' | 'error', attempted: 'email', alternatives: [] }
+503 { message, reason: 'quota' | 'error', attempted: 'email', alternatives: [], otherRoutes: [] }
 ```
 
 `alternatives` is derived from the channels actually registered and configured
@@ -125,8 +132,14 @@ claim that quietly stops being true.
 
 `reason` separates the two failures because they deserve different advice: a
 spent quota will not resolve by retrying in a minute, so the UI does not offer
-a retry for it. Until SMS exists, the honest fallback offered is Google, which
-needs no code at all.
+a retry for it. The honest fallback offered today is Google, which needs no
+code at all — `otherRoutes` can also carry `phone`, and the code already
+handles that case end to end (email OTP, WhatsApp OTP, SMS fallback), but the
+mobile flow is deliberately kept switched off (`PHONE_SIGNIN_ENABLED=false`)
+until MSG91's DLT template and Meta's WhatsApp Business verification are both
+done — see [identity/04](../identity/04-whatsapp-and-mobile-sign-in.md). Until
+then, no client ever sees a mobile option: `GET /auth/methods` reports it
+disabled and every `/auth/phone/*` route answers 404.
 
 **Delivery never silently switches channel.** The buyer gave an email address
 and asked for email; a code arriving on a phone they did not nominate would be

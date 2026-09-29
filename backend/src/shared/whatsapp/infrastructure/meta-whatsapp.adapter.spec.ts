@@ -203,7 +203,7 @@ describe('template parameters', () => {
 /**
  * The button carries only what follows the domain, because Meta fixes a
  * template button's domain at approval time. The corollary worth remembering:
- * the approved template's domain and `APP_PUBLIC_URL` are set in two different
+ * the approved template's domain and `STOREFRONT_URL` are set in two different
  * places, and a mismatch misroutes buyers with no error anywhere.
  */
 describe('library button', () => {

@@ -197,7 +197,7 @@ function receiptParameters(message: Extract<WhatsAppMessage, { kind: 'purchase-r
  * Meta validates and fixes a button's domain when the template is approved, so
  * only the tail is variable — the template is configured as
  * `https://store.jsmf.me/{{1}}` and this supplies `library`. That also means
- * **the approved template's domain must match `APP_PUBLIC_URL`**: they are set
+ * **the approved template's domain must match `STOREFRONT_URL`**: they are set
  * in two different places, and a mismatch sends buyers to the wrong site with
  * no error anywhere. Worth checking once, when the template is created.
  *
