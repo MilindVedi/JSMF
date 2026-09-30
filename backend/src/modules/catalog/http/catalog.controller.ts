@@ -55,6 +55,26 @@ export class CatalogController {
     };
   }
 
+  @Get('featured')
+  @ApiOperation({
+    summary: 'The featured strip on the landing page',
+    description:
+      'Published products an admin has arranged, in that order. How many come back is how ' +
+      'many were arranged — there is no separate count setting, and no fallback to "the ' +
+      'newest few": an empty list means an admin has featured nothing, and the landing page ' +
+      'omits the section entirely rather than filling it with an arbitrary selection.',
+  })
+  async featured() {
+    const items = await this.products.findFeatured();
+
+    return Promise.all(
+      items.map(async ({ assets, ...product }) => ({
+        ...product,
+        coverUrl: await this.coverUrl(assets[0]),
+      })),
+    );
+  }
+
   @Get('products/:slug')
   @ApiOperation({ summary: 'A product page, by its permanent slug' })
   async detail(@Param('slug') slug: string) {

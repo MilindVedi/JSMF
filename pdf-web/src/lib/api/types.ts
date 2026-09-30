@@ -105,6 +105,12 @@ export interface Product {
   compareAtAmountMinor: string | null;
   currency: string;
   language: string;
+  /**
+   * Position in the storefront's featured strip, or null when not featured.
+   * The number itself is an implementation detail — the list arrives in order,
+   * so nothing should sort by this client-side.
+   */
+  featuredOrder: number | null;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;

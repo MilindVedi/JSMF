@@ -28,6 +28,17 @@ import { SLUG_PATTERN, slugify, uniqueSlug } from '../domain/slug';
  */
 export const ACTIVE = { deletedAt: null } as const;
 
+/**
+ * What the admin's featured screen needs of each product. Shared by the read
+ * and by the write's response, because that screen re-renders directly from
+ * whichever it last received — if the two shapes differ, saving silently
+ * produces a different render than loading.
+ */
+const FEATURED_ADMIN_INCLUDE = {
+  assets: { where: { isCurrent: true }, select: { id: true, kind: true } },
+  taxonomyTerms: { include: { term: { include: { taxonomy: true } } } },
+} satisfies Prisma.ProductInclude;
+
 export interface CreateProductInput {
   type?: ProductType;
   title: string;
@@ -458,6 +469,137 @@ export class ProductService {
     ]);
 
     return { items, total, page, pageSize };
+  }
+
+  /**
+   * The storefront's featured strip, in the order an admin arranged it.
+   *
+   * Unpublishing a featured product removes it from here without touching its
+   * position, so re-publishing restores it to the same slot. The alternative —
+   * clearing the position on unpublish — would silently destroy the admin's
+   * arrangement as a side effect of an unrelated action.
+   */
+  async findFeatured() {
+    return this.prisma.product.findMany({
+      where: {
+        ...ACTIVE,
+        status: ProductStatus.PUBLISHED,
+        featuredOrder: { not: null },
+      },
+      orderBy: { featuredOrder: 'asc' },
+      include: {
+        assets: {
+          where: { isCurrent: true, kind: AssetKind.COVER_IMAGE },
+          select: { id: true, kind: true, storageProvider: true, bucket: true, objectKey: true },
+        },
+        taxonomyTerms: {
+          where: { term: { deletedAt: null } },
+          include: { term: { include: { taxonomy: true } } },
+        },
+        links: {
+          where: { kind: LinkKind.YOUTUBE, deletedAt: null },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+  }
+
+  /**
+   * The same list for the admin screen, which needs the ones that are featured
+   * but not currently visible — an unpublished product keeps its slot, and an
+   * admin who cannot see it there has no way to understand why the storefront
+   * shows fewer resources than the screen does.
+   */
+  async findFeaturedForAdmin() {
+    return this.prisma.product.findMany({
+      where: { ...ACTIVE, featuredOrder: { not: null } },
+      orderBy: { featuredOrder: 'asc' },
+      include: FEATURED_ADMIN_INCLUDE,
+    });
+  }
+
+  /**
+   * Replaces the featured list wholesale: these products, in this order,
+   * nothing else.
+   *
+   * Taking the whole list rather than "add this one" / "move that one up"
+   * means the admin screen sends what it shows, so the two cannot disagree —
+   * and two admins saving at once produce one of their two arrangements rather
+   * than an interleaving of both.
+   *
+   * Positions are renumbered 0..n-1 on every save instead of preserving the
+   * numbers sent. Gaps and duplicates then cannot accumulate, and no caller
+   * has to think about what the numbers mean.
+   */
+  async setFeatured(productIds: string[], actor: Actor) {
+    const unique = [...new Set(productIds)];
+
+    if (unique.length !== productIds.length) {
+      throw new BadRequestException('A product can only be featured once.');
+    }
+
+    if (unique.length > 0) {
+      // Archived or non-existent ids are refused rather than skipped: silently
+      // dropping one would leave the admin looking at a list they did not save.
+      const found = await this.prisma.product.count({
+        where: { id: { in: unique }, ...ACTIVE },
+      });
+
+      if (found !== unique.length) {
+        throw new BadRequestException('One or more of those products no longer exists.');
+      }
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.product.findMany({
+        where: { ...ACTIVE, featuredOrder: { not: null } },
+        orderBy: { featuredOrder: 'asc' },
+        select: { id: true, title: true, featuredOrder: true },
+      });
+
+      // Clear first, then set. Without the clear, a product dropped from the
+      // list would keep the position it had and stay on the storefront.
+      await tx.product.updateMany({
+        where: { featuredOrder: { not: null } },
+        data: { featuredOrder: null },
+      });
+
+      for (const [position, id] of unique.entries()) {
+        await tx.product.update({
+          where: { id },
+          data: { featuredOrder: position, updatedById: actor.id },
+        });
+      }
+
+      // Returned to the caller, so this is the full admin shape rather than
+      // the trimmed one the audit snapshot uses: the admin screen re-renders
+      // straight from this response, and a projection missing `status` would
+      // leave it rendering a product whose status is undefined.
+      const after = await tx.product.findMany({
+        where: { ...ACTIVE, featuredOrder: { not: null } },
+        orderBy: { featuredOrder: 'asc' },
+        include: FEATURED_ADMIN_INCLUDE,
+      });
+
+      await this.audit.record(
+        {
+          actorUserId: actor.id,
+          action: 'product.featured_set',
+          entityType: 'product_featured',
+          before,
+          after: after.map((product) => ({
+            id: product.id,
+            title: product.title,
+            featuredOrder: product.featuredOrder,
+          })),
+          ip: actor.ip,
+        },
+        tx,
+      );
+
+      return after;
+    });
   }
 
   async findPublicBySlug(slug: string) {

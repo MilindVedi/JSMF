@@ -357,6 +357,17 @@ model Product {
   /// Escape hatch for type-specific fields (a video's duration). Never used for
   /// anything filtered or queried — those become taxonomy terms or real columns.
   metadata             Json          @default("{}")
+  /// Position in the storefront's "Featured resources" strip, or NULL for the
+  /// vast majority of products, which are not featured. Nullable rather than a
+  /// `featured` boolean plus a separate position: two columns would allow the
+  /// meaningless state "featured, no position", and the admin screen would
+  /// then have to decide what that means. One column cannot be inconsistent.
+  ///
+  /// There is no "how many to show" setting anywhere: the count is however
+  /// many products carry a position. What the admin arranges is exactly what
+  /// the storefront renders, which is the only version of this that cannot
+  /// drift.
+  featuredOrder        Int?          @map("featured_order")
   publishedAt          DateTime?     @map("published_at") @db.Timestamptz(6)
   createdById          String?       @map("created_by") @db.Uuid
   updatedById          String?       @map("updated_by") @db.Uuid
@@ -381,6 +392,7 @@ model Product {
   @@index([status, publishedAt(sort: Desc)])
   @@index([type])
   @@index([authorUserId])
+  @@index([featuredOrder])
   @@map("products")
 }
 

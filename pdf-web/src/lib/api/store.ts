@@ -60,6 +60,13 @@ export const storeApi = {
     return api.get<Paginated<StorefrontProduct>>(`/catalog/products${suffix}`);
   },
 
+  /**
+   * The landing page's featured strip, already in the order an admin arranged.
+   * How many come back is how many were arranged; an empty array means the
+   * section is omitted rather than filled with a fallback selection.
+   */
+  featured: () => api.get<StorefrontProduct[]>("/catalog/featured"),
+
   filters: () => api.get<Taxonomy[]>("/catalog/taxonomies"),
 
   product: (slug: string) => api.get<ProductDetail>(`/catalog/products/${slug}`),

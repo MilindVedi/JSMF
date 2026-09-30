@@ -82,6 +82,17 @@ Decisions worth recording:
 
 Uploads are buffered in memory and bounded by `MAX_UPLOAD_SIZE_MB` (default 64). The upload happens before the database transaction opens, since object storage is not transactional and holding a transaction open across a large file transfer would lock rows for its duration; if the transaction then fails, the orphaned object is removed.
 
+### Featured resources
+
+The landing page's Featured resources strip is **curated by an admin**, not derived. It was previously the newest five published products; it is now whatever an admin arranged at `/admin/featured`, in that order, served by `GET /catalog/featured`.
+
+- **The list is the setting.** There is no "how many to show" number anywhere — the count is however many products the admin put in the list. A separate count that could disagree with the list would need a rule for what happens when it does, and every such rule surprises someone.
+- **No fallback when nothing is featured.** The landing page omits the section entirely rather than standing in with "the newest few". A section presented as a selection should be one, and a silent fallback would make the admin screen a suggestion rather than a control.
+- **Saving replaces the whole list** (`PUT /admin/featured` with the complete ordered array) rather than offering add/remove/move operations. The admin screen sends what it shows, so the two cannot drift apart, and two admins saving at once produce one of their two arrangements instead of an interleaving of both. Positions are renumbered from zero on every save, so gaps and duplicates cannot accumulate.
+- **Unpublishing a featured product hides it without giving up its slot.** `featured_order` is untouched, so re-publishing restores it to the same position. Clearing the position on unpublish would silently destroy the admin's arrangement as a side effect of an unrelated action. The admin screen still lists those products — with a warning — because an admin who cannot see them has no way to explain why the storefront shows fewer resources than the screen does.
+- **Its own controller** (`admin/featured`) rather than two more routes on `admin/products`, since `admin/products/featured` would sit under that controller's `:id` route and work only by being declared above it — a correctness property invisible at the call site and quietly broken by reordering methods.
+- **The first position is a layout decision, not just an ordering one:** the landing page renders it as a wide card in the hero and the rest in a grid beneath, so the admin screen marks it "Main card".
+
 Verified end to end against the running API: **69 assertions**, including that the database itself rejects a second current asset for the same (product, kind) — the partial unique index, tested by trying to violate it directly in SQL rather than trusting the application to be the only writer. A further **19 assertions** cover soft delete specifically: a term's slug becomes reusable the moment it is soft-deleted, restoring is refused if a newer term has since taken that slug, a soft-deleted link is still visible to the admin (so it can be restored) but hidden from the public product page, and — checked directly in Postgres — the original row is never actually removed by any of this.
 
 ## Storage and download access

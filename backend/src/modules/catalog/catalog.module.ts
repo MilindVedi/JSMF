@@ -4,6 +4,7 @@ import { StorageModule } from '../storage/storage.module';
 import { ProductAssetService } from './application/product-asset.service';
 import { ProductService } from './application/product.service';
 import { TaxonomyService } from './application/taxonomy.service';
+import { AdminFeaturedController } from './http/admin-featured.controller';
 import { AdminProductController } from './http/admin-product.controller';
 import { AdminTaxonomyController } from './http/admin-taxonomy.controller';
 import { CatalogController } from './http/catalog.controller';
@@ -19,7 +20,12 @@ import { CatalogController } from './http/catalog.controller';
  */
 @Module({
   imports: [PrismaModule, StorageModule],
-  controllers: [AdminProductController, AdminTaxonomyController, CatalogController],
+  controllers: [
+    AdminFeaturedController,
+    AdminProductController,
+    AdminTaxonomyController,
+    CatalogController,
+  ],
   providers: [ProductService, ProductAssetService, TaxonomyService],
   exports: [ProductService, ProductAssetService, TaxonomyService],
 })

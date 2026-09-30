@@ -10,7 +10,13 @@ import { formatMoney } from "@/lib/money";
  * Always links to `/p/{slug}` — the permanent, shareable address a YouTube
  * description points at, which is why it is not nested under `/browse`.
  */
-export function ResourceCard({ product }: { product: StorefrontProduct }) {
+export function ResourceCard({
+  product,
+  layout = "vertical",
+}: {
+  product: StorefrontProduct;
+  layout?: "vertical" | "horizontal";
+}) {
   // Only ever present on the storefront listing (see the type), and only
   // non-empty when a YOUTUBE link exists — never the buyer-only case of
   // "an OTHER link but no video", which the card correctly says nothing about.
@@ -21,6 +27,80 @@ export function ResourceCard({ product }: { product: StorefrontProduct }) {
   // admin's own ordering, so a product tagged only by subject still renders a
   // sensible line and a new taxonomy needs no change here.
   const [firstTerm, secondTerm] = product.taxonomyTerms.slice(0, 2);
+
+  if (layout === "horizontal") {
+    return (
+      <Link
+        href={`/p/${product.slug}`}
+        className="group flex items-center gap-4 overflow-hidden rounded-2xl border border-border bg-card p-3 sm:p-4 transition-all hover:-translate-y-1 hover:border-primary/25 hover:shadow-editorial"
+      >
+        <div className="relative aspect-[4/3] w-24 shrink-0 overflow-hidden rounded-xl bg-muted sm:w-32">
+          {product.coverUrl ? (
+            <img
+              src={product.coverUrl}
+              alt=""
+              loading="lazy"
+              className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            />
+          ) : (
+            <div className="flex size-full items-center justify-center">
+              <FileText className="size-8 text-muted-foreground/40" />
+            </div>
+          )}
+
+          {hasVideo && (
+            <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-overlay px-1.5 py-0.5 text-[8px] font-bold text-overlay-foreground sm:px-2 sm:py-1 sm:text-[10px]">
+              <Play className="size-2 sm:size-2.5" fill="currentColor" />
+              Video
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-1 flex-col justify-center py-1 pr-2">
+          {firstTerm && (
+            <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[8px] font-bold uppercase text-primary sm:text-[10px]">
+              <span>{firstTerm.term.name}</span>
+              {secondTerm && (
+                <>
+                  <span className="text-border">•</span>
+                  <span className="text-muted-foreground">{secondTerm.term.name}</span>
+                </>
+              )}
+            </div>
+          )}
+
+          <h3 className="font-display text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-primary sm:text-base">
+            {product.title}
+          </h3>
+
+          {product.subtitle && (
+            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+              {product.subtitle}
+            </p>
+          )}
+
+          <div className="mt-3 flex items-baseline gap-2">
+            {product.accessType === "FREE" ? (
+              <span className="font-display text-sm font-semibold text-brand-ink sm:text-base">
+                Free
+              </span>
+            ) : (
+              <>
+                <span className="font-display text-sm font-semibold text-brand-ink sm:text-base">
+                  {formatMoney(product.priceAmountMinor, product.currency)}
+                </span>
+                {product.compareAtAmountMinor && (
+                  <span className="text-[10px] text-muted-foreground line-through sm:text-xs">
+                    {formatMoney(product.compareAtAmountMinor, product.currency)}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </Link>
+    );
+  }
 
   return (
     <Link
@@ -42,7 +122,7 @@ export function ResourceCard({ product }: { product: StorefrontProduct }) {
             src={product.coverUrl}
             alt=""
             loading="lazy"
-            className="size-full object-contain transition-transform duration-500 group-hover:scale-[1.03]"
+            className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
           />
         ) : (
           <div className="flex size-full items-center justify-center">

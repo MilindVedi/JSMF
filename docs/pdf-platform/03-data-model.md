@@ -45,6 +45,7 @@ There is no `pdfs` table. See [Architecture](./02-architecture.md#content-model-
 | `author_user_id` | uuid FK→users NULL | Who published it. Present from day one so "multiple doctors publishing" is additive. |
 | `language` | varchar(10) DEFAULT `'en'` | |
 | `metadata` | jsonb NOT NULL DEFAULT `'{}'` | Escape hatch for type-specific fields (a video's duration) that do not deserve a column on every product. Never used for anything queried or filtered — those become taxonomy terms or real columns. |
+| `featured_order` | int NULL | Position in the landing page's Featured resources strip; NULL for everything not featured. One nullable column rather than a `featured` boolean plus a separate position, because two columns would permit "featured, no position" — a state with no meaning that every reader would then have to handle. There is no "how many to show" setting anywhere: the count *is* how many rows carry a position. See [Architecture](./02-architecture.md#featured-resources). |
 | `published_at` | timestamptz NULL | Set on first publish, not on every edit. |
 | `created_by`, `updated_by` | uuid FK→users | |
 | `created_at`, `updated_at`, `deleted_at` | timestamptz | |
@@ -54,7 +55,7 @@ There is no `pdfs` table. See [Architecture](./02-architecture.md#content-model-
 - `CHECK ((access_type = 'FREE' AND price_amount_minor = 0) OR (access_type = 'PAID' AND price_amount_minor > 0))` — makes a free-but-priced or paid-but-zero product impossible at the database level rather than depending on the admin form.
 - `CHECK (compare_at_amount_minor IS NULL OR compare_at_amount_minor > price_amount_minor)`
 
-**Indexes** — `(status, published_at DESC)` for the storefront listing; `(type)`; unique on `slug`; `(author_user_id)`.
+**Indexes** — `(status, published_at DESC)` for the storefront listing; `(type)`; unique on `slug`; `(author_user_id)`; `(featured_order)` for the landing page's featured strip.
 
 ### `product_assets` — every file a product owns, public or private
 

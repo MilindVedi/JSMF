@@ -85,6 +85,14 @@ export const adminApi = {
   restoreLink: (productId: string, linkId: string) =>
     api.post<ProductLink>(`/admin/products/${productId}/links/${linkId}/restore`),
 
+  /** Includes featured products that are currently unpublished — they keep
+   *  their slot but do not show on the storefront. */
+  listFeatured: () => api.get<ProductListItem[]>("/admin/featured"),
+
+  /** Replaces the whole list: these products, in this order, nothing else. */
+  setFeatured: (productIds: string[]) =>
+    api.put<ProductListItem[]>("/admin/featured", { productIds }),
+
   listTaxonomies: () => api.get<Taxonomy[]>("/admin/taxonomies"),
 
   createTaxonomy: (input: {

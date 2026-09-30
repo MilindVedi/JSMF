@@ -10,9 +10,6 @@ import { storeButton } from "@/components/store/store-button";
 import { storeApi, type StorefrontProduct } from "@/lib/api/store";
 import { author, brand, socials } from "@/lib/site-content";
 
-/** Enough to read as a selection, few enough that two resources still look deliberate. */
-const FEATURED_LIMIT = 3;
-
 /**
  * The public landing page.
  *
@@ -20,16 +17,22 @@ const FEATURED_LIMIT = 3;
  * plus nineteen subject filters reads as an empty shop; a doctor, a clear
  * statement of who this is for, and one or two resources presented as chosen
  * reads as a deliberate start. So the featured strip is omitted entirely when
- * there is nothing published, rather than rendering an "Nothing here yet" box
+ * there is nothing featured, rather than rendering an "Nothing here yet" box
  * on the first screen a visitor ever sees.
+ *
+ * What appears here is arranged by an admin in /admin/featured — not the
+ * newest few products. There is deliberately no fallback to "show the latest"
+ * when nothing is featured: a section presented as a selection should be one,
+ * and silently standing in for an empty arrangement would make the admin
+ * screen a suggestion rather than a control.
  */
 export default function LandingPage() {
   const [featured, setFeatured] = useState<StorefrontProduct[] | null>(null);
 
   useEffect(() => {
     storeApi
-      .browse({ page: 1 })
-      .then((result) => setFeatured(result.items.slice(0, FEATURED_LIMIT)))
+      .featured()
+      .then(setFeatured)
       // A failed fetch must not take the page down: the hero and the author
       // section are the point, and they need no data at all.
       .catch(() => setFeatured([]));
@@ -38,14 +41,15 @@ export default function LandingPage() {
   return (
     <>
       <section className="border-b border-border bg-card">
-        <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 py-14 lg:grid-cols-12 lg:px-8 lg:py-20">
-          <div className="lg:col-span-7">
+        <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 pt-14 pb-8 lg:grid-cols-12 lg:items-stretch lg:px-8 lg:pt-20 lg:pb-10">
+          <div className="flex h-full flex-col justify-between lg:col-span-7 lg:pb-4">
+            <div>
             <span className="eyebrow">
               <Sparkles className="size-3.5" />
               NEET-PG · FMGE · INI-CET
             </span>
 
-            <h1 className="mt-6 max-w-3xl font-display text-4xl font-semibold leading-[1.08] text-brand-ink sm:text-5xl md:text-6xl">
+            <h1 className="mt-6 max-w-3xl font-display text-5xl font-semibold leading-[1.08] text-brand-deep md:text-6xl">
               {brand.headline}
             </h1>
 
@@ -68,6 +72,19 @@ export default function LandingPage() {
                 Watch on YouTube
               </a>
             </div>
+            </div>
+
+            {featured && featured.length > 0 && (
+              <div className="mt-12 sm:mt-16">
+                <div className="mb-6 flex items-center gap-4">
+                  <span className="eyebrow shrink-0">FEATURED RESOURCES</span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                <div className="pr-0 sm:pr-8 lg:pr-12">
+                  <ResourceCard key={featured[0].id} product={featured[0]} layout="horizontal" />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* The credential card is absolutely positioned against this wrapper
@@ -94,31 +111,25 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
+
         </div>
-      </section>
 
-      {featured && featured.length > 0 && (
-        <section className="mx-auto max-w-7xl px-5 py-20 lg:px-8">
-          <div className="mb-9 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <span className="eyebrow">Curated collection</span>
-              <h2 className="mt-4 font-display text-3xl font-semibold text-brand-ink">
-                {featured.length === 1 ? "Featured resource" : "Featured resources"}
-              </h2>
+        {featured && featured.length > 1 && (
+          <div className="mx-auto max-w-7xl px-5 pb-14 lg:px-8 lg:pb-20">
+            <div className="grid gap-6 md:grid-cols-2">
+              {featured.slice(1).map((product) => (
+                <ResourceCard key={product.id} product={product} layout="horizontal" />
+              ))}
             </div>
-            <Link href="/browse" className={storeButton({ variant: "ghost" })}>
-              View all
-              <ArrowRight className="size-4" />
-            </Link>
+            <div className="mt-10 flex justify-center">
+              <Link href="/browse" className={storeButton({ variant: "ghost" })}>
+                View all resources
+                <ArrowRight className="size-4" />
+              </Link>
+            </div>
           </div>
-
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {featured.map((product) => (
-              <ResourceCard key={product.id} product={product} />
-            ))}
-          </div>
-        </section>
-      )}
+        )}
+      </section>
 
       <section className="bg-brand-deep py-20 text-brand-on-deep">
         <div className="mx-auto max-w-4xl px-5 text-center">

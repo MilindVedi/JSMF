@@ -220,3 +220,21 @@ export class ProductLinkDto {
   @IsInt()
   sortOrder?: number;
 }
+
+/**
+ * The complete featured list, in display order. A whole-list replace rather
+ * than add/remove/move operations: the admin screen sends what it shows, so
+ * the two cannot drift apart, and concurrent saves resolve to one arrangement
+ * instead of an interleaving of both.
+ */
+export class SetFeaturedDto {
+  @ApiProperty({
+    type: [String],
+    description:
+      'Product ids in the order they should appear. The length is the number shown — ' +
+      'an empty array removes the featured section from the landing page.',
+  })
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  productIds!: string[];
+}
