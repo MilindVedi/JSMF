@@ -29,6 +29,24 @@ import { SLUG_PATTERN, slugify, uniqueSlug } from '../domain/slug';
 export const ACTIVE = { deletedAt: null } as const;
 
 /**
+ * The product types this catalogue — the PDF storefront and its admin — is
+ * about. A LIVE_SESSION is a product too (so it can be ordered and paid for),
+ * but it is sold on the main website and managed from its own admin screen;
+ * listed here it would appear in Browse with a Download button and no file.
+ */
+const CATALOG_TYPES: ProductType[] = [
+  ProductType.PDF,
+  ProductType.VIDEO,
+  ProductType.COURSE,
+  ProductType.BUNDLE,
+];
+
+/** `type` filter for a catalogue read: the one asked for, if it is a catalogue type. */
+function catalogType(requested?: ProductType): Prisma.EnumProductTypeFilter {
+  return { in: CATALOG_TYPES.filter((type) => !requested || type === requested) };
+}
+
+/**
  * What the admin's featured screen needs of each product. Shared by the read
  * and by the write's response, because that screen re-renders directly from
  * whichever it last received — if the two shapes differ, saving silently
@@ -55,6 +73,13 @@ export interface CreateProductInput {
 }
 
 export type UpdateProductInput = Partial<CreateProductInput>;
+
+/**
+ * Extra writes to make in the same transaction as a product create/update —
+ * how a product type with its own detail table (a live session) keeps the two
+ * rows atomic without this service knowing what that table is.
+ */
+export type WithinProductWrite = (tx: Prisma.TransactionClient, product: Product) => Promise<void>;
 
 export interface AdminProductQuery {
   status?: ProductStatus;
@@ -104,7 +129,11 @@ export class ProductService {
 
   // --- writes -------------------------------------------------------------
 
-  async create(input: CreateProductInput, actor: Actor): Promise<Product> {
+  async create(
+    input: CreateProductInput,
+    actor: Actor,
+    within?: WithinProductWrite,
+  ): Promise<Product> {
     const pricing = this.resolvePricing(input.accessType, input);
     const slug = await this.resolveSlug(input.slug ?? input.title);
 
@@ -140,11 +169,18 @@ export class ProductService {
         tx,
       );
 
+      await within?.(tx, product);
+
       return product;
     });
   }
 
-  async update(id: string, input: UpdateProductInput, actor: Actor): Promise<Product> {
+  async update(
+    id: string,
+    input: UpdateProductInput,
+    actor: Actor,
+    within?: WithinProductWrite,
+  ): Promise<Product> {
     const before = await this.getOrThrow(id);
 
     const accessType = input.accessType ?? before.accessType;
@@ -195,6 +231,8 @@ export class ProductService {
         tx,
       );
 
+      await within?.(tx, product);
+
       return product;
     });
   }
@@ -208,10 +246,16 @@ export class ProductService {
   async publish(id: string, actor: Actor): Promise<Product> {
     const before = await this.getOrThrow(id);
 
-    const primaryFile = await this.prisma.productAsset.findFirst({
-      where: { productId: id, kind: AssetKind.PRIMARY_FILE, isCurrent: true },
-      select: { id: true },
-    });
+    // A live session is sold, not downloaded: there is no file to require.
+    // Its own details (date, platform) are written in the same transaction as
+    // the product, so a session product cannot exist without them.
+    const primaryFile =
+      before.type === ProductType.LIVE_SESSION
+        ? true
+        : await this.prisma.productAsset.findFirst({
+            where: { productId: id, kind: AssetKind.PRIMARY_FILE, isCurrent: true },
+            select: { id: true },
+          });
 
     if (!primaryFile) {
       throw new ConflictException(
@@ -397,7 +441,7 @@ export class ProductService {
     const where: Prisma.ProductWhereInput = {
       ...(query.includeArchived ? {} : ACTIVE),
       status: query.status,
-      type: query.type,
+      type: catalogType(query.type),
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' } } : {}),
     };
 
@@ -424,7 +468,7 @@ export class ProductService {
     const where: Prisma.ProductWhereInput = {
       ...ACTIVE,
       status: ProductStatus.PUBLISHED,
-      type: query.type,
+      type: catalogType(query.type),
       accessType: query.accessType,
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' } } : {}),
       // One nested `every`-style condition per term rather than `in`, because
@@ -484,6 +528,7 @@ export class ProductService {
       where: {
         ...ACTIVE,
         status: ProductStatus.PUBLISHED,
+        type: catalogType(),
         featuredOrder: { not: null },
       },
       orderBy: { featuredOrder: 'asc' },
@@ -543,7 +588,7 @@ export class ProductService {
       // Archived or non-existent ids are refused rather than skipped: silently
       // dropping one would leave the admin looking at a list they did not save.
       const found = await this.prisma.product.count({
-        where: { id: { in: unique }, ...ACTIVE },
+        where: { id: { in: unique }, type: catalogType(), ...ACTIVE },
       });
 
       if (found !== unique.length) {
@@ -604,7 +649,7 @@ export class ProductService {
 
   async findPublicBySlug(slug: string) {
     const product = await this.prisma.product.findFirst({
-      where: { slug, status: ProductStatus.PUBLISHED, ...ACTIVE },
+      where: { slug, status: ProductStatus.PUBLISHED, type: catalogType(), ...ACTIVE },
       include: {
         // Only the metadata a storefront needs. Object keys for private assets
         // are deliberately not selected: a buyer gets a signed URL from the

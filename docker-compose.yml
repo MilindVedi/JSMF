@@ -86,6 +86,19 @@ services:
     ports:
       - "3001:3001"
 
+  # The main website (jsmf.me): live sessions. Same backend, same accounts.
+  main-web:
+    build:
+      context: ./main-web
+    container_name: jsmf-main-web
+    restart: unless-stopped
+    environment:
+      BACKEND_API_URL: http://api:4000
+    depends_on:
+      - api
+    ports:
+      - "3002:3002"
+
   # Simulates Google Cloud Scheduler locally for development parity.
   # Hits the reconciliation endpoint every 5 minutes (300s).
   cron:
@@ -96,11 +109,13 @@ services:
       - api
     entrypoint: >
       /bin/sh -c "
-      echo 'Cron started. Will ping API every 5 minutes...';
+      echo 'Cron started. Will ping API every 5 minutes (payments + session reminders)...';
       while true; do
         sleep 300;
         echo 'Pinging reconciliation endpoint...';
         curl -sS -X POST http://api:4000/api/internal/reconcile-payments || echo 'Ping failed';
+        echo 'Pinging session reminders...';
+        curl -sS -X POST http://api:4000/api/internal/session-reminders || echo 'Ping failed';
       done
       "
 

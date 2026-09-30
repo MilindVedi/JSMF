@@ -11,6 +11,7 @@ import {
   PaymentStatus,
   Prisma,
   ProductStatus,
+  ProductType,
 } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
@@ -22,7 +23,21 @@ export interface CheckoutRequest {
   /** Null for a buyer who signed up with a mobile number and has no email. */
   customerEmail: string | null;
   customerPhone?: string | null;
+  /**
+   * Which product types this checkout may sell. Defaults to the storefront's
+   * catalogue. A live session is excluded unless its own module asks for it,
+   * because that module is what checks seats and the start time first — the
+   * generic `/orders` route selling one would skip both.
+   */
+  allowedTypes?: ProductType[];
 }
+
+const STOREFRONT_TYPES: ProductType[] = [
+  ProductType.PDF,
+  ProductType.VIDEO,
+  ProductType.COURSE,
+  ProductType.BUNDLE,
+];
 
 export type CheckoutResult =
   | {
@@ -66,6 +81,7 @@ export class OrderService {
         id: request.productId,
         status: ProductStatus.PUBLISHED,
         deletedAt: null,
+        type: { in: request.allowedTypes ?? STOREFRONT_TYPES },
       },
     });
 

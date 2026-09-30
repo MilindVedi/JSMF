@@ -57,22 +57,23 @@ model User {
   createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  roles             UserRole[]
-  refreshTokens     RefreshToken[]
-  oauthAccounts     OAuthAccount[]
-  verificationCodes VerificationCode[]
-  authoredProducts  Product[]            @relation("ProductAuthor")
-  createdProducts   Product[]            @relation("ProductCreatedBy")
-  updatedProducts   Product[]            @relation("ProductUpdatedBy")
-  uploadedAssets    ProductAsset[]
-  orders            Order[]
-  entitlements      Entitlement[]
-  grantedRoles      UserRole[]           @relation("RoleGrantedBy")
-  initiatedRefunds  Refund[]
-  accessEvents      ContentAccessEvent[]
-  auditLogs         AuditLog[]
-  publisherProfile  PublisherProfile?
-  couponRedemptions CouponRedemption[]
+  roles                UserRole[]
+  refreshTokens        RefreshToken[]
+  oauthAccounts        OAuthAccount[]
+  verificationCodes    VerificationCode[]
+  authoredProducts     Product[]             @relation("ProductAuthor")
+  createdProducts      Product[]             @relation("ProductCreatedBy")
+  updatedProducts      Product[]             @relation("ProductUpdatedBy")
+  uploadedAssets       ProductAsset[]
+  orders               Order[]
+  entitlements         Entitlement[]
+  grantedRoles         UserRole[]            @relation("RoleGrantedBy")
+  initiatedRefunds     Refund[]
+  accessEvents         ContentAccessEvent[]
+  auditLogs            AuditLog[]
+  publisherProfile     PublisherProfile?
+  couponRedemptions    CouponRedemption[]
+  sessionRegistrations SessionRegistration[]
 
   @@map("users")
 }
@@ -311,6 +312,11 @@ enum ProductType {
   VIDEO
   COURSE
   BUNDLE
+  /// A paid live session sold on the main website (jsmf.me). A product like
+  /// any other, so orders, Razorpay, refunds, receipts and the audit trail
+  /// need no second implementation; everything only a session has lives in
+  /// `live_sessions`. Never listed in the PDF storefront.
+  LIVE_SESSION
 }
 
 enum ProductStatus {
@@ -388,6 +394,7 @@ model Product {
   accessEvents  ContentAccessEvent[]
   bundleItems   ProductBundleItem[]   @relation("BundleParent")
   inBundles     ProductBundleItem[]   @relation("BundleChild")
+  liveSession   LiveSession?
 
   @@index([status, publishedAt(sort: Desc)])
   @@index([type])
@@ -630,13 +637,14 @@ model Order {
   paidAt              DateTime?   @map("paid_at") @db.Timestamptz(6)
   cancelledAt         DateTime?   @map("cancelled_at") @db.Timestamptz(6)
 
-  user         User              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  coupon       Coupon?           @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  items        OrderItem[]
-  payments     Payment[]
-  refunds      Refund[]
-  entitlements Entitlement[]
-  redemption   CouponRedemption?
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  coupon               Coupon?               @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items                OrderItem[]
+  payments             Payment[]
+  refunds              Refund[]
+  entitlements         Entitlement[]
+  redemption           CouponRedemption?
+  sessionRegistrations SessionRegistration[]
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
@@ -972,4 +980,93 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([actorUserId, createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Live sessions (main website, jsmf.me)
+//
+// A session is a `products` row of type LIVE_SESSION plus one `live_sessions`
+// row holding what only a session has. Being a product is what lets it be
+// ordered, paid for through Razorpay, refunded and audited with no new code in
+// those modules. "Is this person registered" is deliberately NOT stored here:
+// it is an ACTIVE entitlement on the session product, exactly as "owns this
+// PDF" is. So a refund frees the seat by itself, and there is no second
+// "registered" flag that could disagree with the payment record.
+//
+// A bonus PDF (the revision planner) is attached with the existing
+// `product_bundle_items` table — session → PDF — and granted on payment with
+// source BUNDLE, which puts it in the buyer's store library.
+// ---------------------------------------------------------------------------
+
+model LiveSession {
+  /// Shares the product's id: one session per product, and the product is the
+  /// thing orders point at.
+  productId       String   @id @map("product_id") @db.Uuid
+  startsAt        DateTime @map("starts_at") @db.Timestamptz(6)
+  durationMinutes Int      @map("duration_minutes")
+  /// "Live on Zoom · Link sent on mail". Display text, not a URL.
+  platformLabel   String   @map("platform_label") @db.VarChar(160)
+  /// NULL = unlimited. Seats taken are counted from entitlements, never stored,
+  /// so this is the only number here that can go stale — and only by an admin
+  /// changing it.
+  capacity        Int?
+  /// The joining link. Private: sent only to people holding a seat, never in a
+  /// public response. Nullable because it is often created days after the
+  /// session is announced.
+  joinUrl         String?  @map("join_url")
+  recordingUrl    String?  @map("recording_url")
+  /// "What you'll learn" bullets, in display order. An array rather than a
+  /// child table: they are never queried, filtered or referenced, and always
+  /// edited as one list.
+  highlights      String[] @default([])
+  /// "Every attendee gets Dr. Angad's high-yield revision planner (PDF) free."
+  perkText        String?  @map("perk_text") @db.VarChar(300)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  /// Restrict: a session that has been sold must keep its product forever,
+  /// the same rule every other product follows (archive, never delete).
+  product       Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  registrations SessionRegistration[]
+
+  @@index([startsAt])
+  @@map("live_sessions")
+}
+
+/// What a person told us when they signed up for a session, and what we have
+/// sent them. Not the seat itself — see the comment above LiveSession.
+///
+/// Written when checkout starts, so a registration can exist for someone who
+/// then abandons the payment. Every reader therefore joins an ACTIVE
+/// entitlement to decide who is actually attending.
+model SessionRegistration {
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  liveSessionId      String    @map("live_session_id") @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  /// Digits only, with country code (919876543210). Typed by the attendee and
+  /// not verified — used for the session only, never as a login identifier.
+  whatsappNumber     String    @map("whatsapp_number") @db.VarChar(20)
+  /// "NEET-PG", "INI-CET"… and "Final year", "Intern"… Free text in the
+  /// database, validated against a list in the API: the options will change,
+  /// and a changed option should not need a migration.
+  exam               String    @db.VarChar(40)
+  stage              String    @db.VarChar(40)
+  /// The most recent order started for this registration, for support.
+  orderId            String?   @map("order_id") @db.Uuid
+  confirmationSentAt DateTime? @map("confirmation_sent_at") @db.Timestamptz(6)
+  reminderSentAt     DateTime? @map("reminder_sent_at") @db.Timestamptz(6)
+  /// Reserved for attendance tracking (from the platform's report, later).
+  attendedAt         DateTime? @map("attended_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  liveSession LiveSession @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
+  /// Restrict, like orders: a person who registered is part of a session's
+  /// record, and removing an account is a deliberate process, not a cascade.
+  user        User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order       Order?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([liveSessionId, userId])
+  @@index([userId])
+  @@map("session_registrations")
 }

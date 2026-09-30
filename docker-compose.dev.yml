@@ -1,4 +1,5 @@
-# Dev-mode override: bind-mounts source into the API and web containers and
+# Dev-mode override: bind-mounts source into the API and web containers (pdf-web,
+# main-web) and
 # runs their watch-mode dev servers, so an edit on the host is reflected
 # without rebuilding or restarting anything.
 #
@@ -88,5 +89,26 @@ services:
       - ./pdf-web/tsconfig.json:/app/tsconfig.json
       - ./pdf-web/postcss.config.mjs:/app/postcss.config.mjs
       - ./pdf-web/components.json:/app/components.json
+      - /app/node_modules
+      - /app/.next
+
+  main-web:
+    build:
+      context: ./main-web
+      dockerfile: Dockerfile.dev
+    env_file:
+      - ./main-web/.env.local
+    environment:
+      # Same reason as pdf-web above: webpack + polling so edits on a Windows
+      # host reach the container.
+      WATCHPACK_POLLING: "true"
+      BACKEND_API_URL: http://api:4000
+    command: ["npx", "next", "dev", "-p", "3002", "--webpack"]
+    volumes:
+      - ./main-web/src:/app/src
+      - ./main-web/public:/app/public
+      - ./main-web/next.config.ts:/app/next.config.ts
+      - ./main-web/tsconfig.json:/app/tsconfig.json
+      - ./main-web/postcss.config.mjs:/app/postcss.config.mjs
       - /app/node_modules
       - /app/.next

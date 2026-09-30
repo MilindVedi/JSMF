@@ -4,6 +4,7 @@ import {
   EntitlementSource,
   EntitlementStatus,
   Prisma,
+  ProductType,
 } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 
@@ -152,7 +153,14 @@ export class EntitlementService {
   /** The buyer's library. */
   async listForUser(userId: string) {
     return this.prisma.entitlement.findMany({
-      where: { userId, status: EntitlementStatus.ACTIVE },
+      // A seat at a live session is an entitlement too, but it is not a file:
+      // listed here it would show a Download button with nothing behind it.
+      // The planner that comes with the session is a PDF, so it still appears.
+      where: {
+        userId,
+        status: EntitlementStatus.ACTIVE,
+        product: { type: { not: ProductType.LIVE_SESSION } },
+      },
       orderBy: { grantedAt: 'desc' },
       include: {
         product: {

@@ -135,3 +135,70 @@ export const adminOrderApi = {
   refund: (id: string, reason?: string) =>
     api.post<{ orderId: string; status: OrderStatus }>(`/admin/orders/${id}/refund`, { reason }),
 };
+
+/** A live session as the admin API returns it. Money is paise, as a string. */
+export interface AdminSession {
+  id: string;
+  slug: string;
+  title: string;
+  tagline: string | null;
+  description: string | null;
+  status: "DRAFT" | "PUBLISHED" | "UNPUBLISHED" | "ARCHIVED";
+  startsAt: string;
+  durationMinutes: number;
+  platformLabel: string;
+  capacity: number | null;
+  seatsTaken: number;
+  joinUrl: string | null;
+  recordingUrl: string | null;
+  highlights: string[];
+  perkText: string | null;
+  priceAmountMinor: string;
+  compareAtAmountMinor: string | null;
+  currency: string;
+  included: Array<{ id: string; title: string; slug: string; status: string }>;
+  updatedAt: string;
+}
+
+export interface SessionInput {
+  title?: string;
+  tagline?: string;
+  description?: string;
+  startsAt?: string;
+  durationMinutes?: number;
+  platformLabel?: string;
+  capacity?: number | null;
+  priceAmountMinor?: string;
+  compareAtAmountMinor?: string | null;
+  joinUrl?: string | null;
+  recordingUrl?: string | null;
+  highlights?: string[];
+  perkText?: string | null;
+  includedProductIds?: string[];
+}
+
+export interface SessionRegistrationRow {
+  id: string;
+  user: { id: string; name: string; email: string | null };
+  whatsappNumber: string;
+  exam: string;
+  stage: string;
+  paid: boolean;
+  order: { orderNumber: string; status: string } | null;
+  confirmationSentAt: string | null;
+  reminderSentAt: string | null;
+  createdAt: string;
+}
+
+/** Live sessions sold on the main website (jsmf.me). */
+export const adminSessionApi = {
+  list: () => api.get<AdminSession[]>("/admin/sessions"),
+  get: (id: string) => api.get<AdminSession>(`/admin/sessions/${id}`),
+  create: (input: SessionInput) => api.post<AdminSession>("/admin/sessions", input),
+  update: (id: string, input: SessionInput) => api.patch<AdminSession>(`/admin/sessions/${id}`, input),
+  publish: (id: string) => api.post<AdminSession>(`/admin/sessions/${id}/publish`),
+  unpublish: (id: string) => api.post<AdminSession>(`/admin/sessions/${id}/unpublish`),
+  archive: (id: string) => api.delete<void>(`/admin/sessions/${id}`),
+  registrations: (id: string) =>
+    api.get<SessionRegistrationRow[]>(`/admin/sessions/${id}/registrations`),
+};

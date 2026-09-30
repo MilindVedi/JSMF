@@ -281,3 +281,163 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+function button(href: string, label: string): string {
+  return `<p style="margin:0 0 24px;text-align:center;">
+      <a href="${escapeHtml(href)}" style="display:inline-block;padding:12px 24px;background:#18181b;color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:500;">${escapeHtml(label)}</a>
+    </p>`;
+}
+
+function detailTable(rows: Array<[string, string]>): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
+      ${rows
+        .map(
+          ([label, value]) => `<tr>
+        <td style="padding:4px 0;font-size:13px;color:#71717a;vertical-align:top;">${escapeHtml(label)}</td>
+        <td style="padding:4px 0;font-size:13px;color:#3f3f46;text-align:right;">${escapeHtml(value)}</td>
+      </tr>`,
+        )
+        .join('')}
+    </table>`;
+}
+
+/**
+ * Sent once when a live-session payment clears. It is the buyer's only
+ * confirmation — the generic purchase receipt is skipped for sessions — so it
+ * carries the receipt facts (amount, order and payment ids) as well as when
+ * and where.
+ *
+ * The joining link is included when it already exists. Often it does not yet:
+ * sessions are announced before the meeting is created, and the reminder
+ * before the start is what reliably carries it.
+ */
+export function liveSessionConfirmation(input: {
+  attendeeName: string;
+  sessionTitle: string;
+  whenLabel: string;
+  platformLabel: string;
+  joinUrl: string | null;
+  totalFormatted: string;
+  orderNumber: string;
+  paymentId: string;
+  /** Titles of the PDFs included with the session, now in the buyer's library. */
+  includedTitles: string[];
+  libraryUrl: string;
+}): RenderedMail {
+  const {
+    attendeeName,
+    sessionTitle,
+    whenLabel,
+    platformLabel,
+    joinUrl,
+    totalFormatted,
+    orderNumber,
+    paymentId,
+    includedTitles,
+    libraryUrl,
+  } = input;
+
+  const linkLine = joinUrl
+    ? `Join here: ${joinUrl}`
+    : `We will email you the joining link before the session starts.`;
+
+  const included = includedTitles.length
+    ? [``, `Included with your seat, now in your JSMF library:`, ...includedTitles.map((t) => `  ${t}`), libraryUrl]
+    : [];
+
+  const text = [
+    `Hi ${attendeeName},`,
+    ``,
+    `Your seat is confirmed.`,
+    ``,
+    `  ${sessionTitle}`,
+    `  ${whenLabel}`,
+    `  ${platformLabel}`,
+    ``,
+    linkLine,
+    ...included,
+    ``,
+    `Amount paid: ${totalFormatted}`,
+    `Order ID: ${orderNumber}`,
+    `Payment ID: ${paymentId}`,
+    ``,
+    emailSignatureText(),
+  ].join('\n');
+
+  const html = layout(
+    'Your seat is confirmed',
+    `
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Hi ${escapeHtml(attendeeName)},</p>
+    <div style="margin:0 0 20px;padding:16px;background:#fafafa;border-radius:8px;">
+      <p style="margin:0 0 10px;font-size:15px;line-height:1.45;font-weight:600;">${escapeHtml(sessionTitle)}</p>
+      ${detailTable([
+        ['When', whenLabel],
+        ['Where', platformLabel],
+      ])}
+    </div>
+    ${
+      joinUrl
+        ? button(joinUrl, 'Join the session')
+        : `<p style="margin:0 0 20px;font-size:15px;line-height:1.55;">We will email you the joining link before the session starts.</p>`
+    }
+    ${
+      includedTitles.length
+        ? `<p style="margin:0 0 8px;font-size:15px;line-height:1.55;">Included with your seat, and already in your JSMF library:</p>
+    ${includedTitles.map((t) => `<p style="margin:0 0 6px;font-size:15px;font-weight:600;">${escapeHtml(t)}</p>`).join('')}
+    <p style="margin:12px 0 24px;"><a href="${escapeHtml(libraryUrl)}" style="color:#18181b;font-size:14px;">Open my library</a></p>`
+        : ''
+    }
+    <div style="margin:0 0 8px;">
+      ${detailTable([
+        ['Amount paid', totalFormatted],
+        ['Order ID', orderNumber],
+        ['Payment ID', paymentId],
+      ])}
+    </div>
+    `,
+  );
+
+  return { subject: `JSMF - Your seat is confirmed: ${sessionTitle}`, text, html };
+}
+
+/** Sent shortly before a session starts, to everyone holding a seat. */
+export function liveSessionReminder(input: {
+  attendeeName: string;
+  sessionTitle: string;
+  whenLabel: string;
+  platformLabel: string;
+  joinUrl: string;
+}): RenderedMail {
+  const { attendeeName, sessionTitle, whenLabel, platformLabel, joinUrl } = input;
+
+  const text = [
+    `Hi ${attendeeName},`,
+    ``,
+    `${sessionTitle} starts soon.`,
+    ``,
+    `  ${whenLabel}`,
+    `  ${platformLabel}`,
+    ``,
+    `Join here: ${joinUrl}`,
+    ``,
+    emailSignatureText(),
+  ].join('\n');
+
+  const html = layout(
+    'Your session starts soon',
+    `
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Hi ${escapeHtml(attendeeName)},</p>
+    <div style="margin:0 0 20px;padding:16px;background:#fafafa;border-radius:8px;">
+      <p style="margin:0 0 10px;font-size:15px;line-height:1.45;font-weight:600;">${escapeHtml(sessionTitle)}</p>
+      ${detailTable([
+        ['When', whenLabel],
+        ['Where', platformLabel],
+      ])}
+    </div>
+    ${button(joinUrl, 'Join the session')}
+    <p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">If the button does not work, paste this into your browser:<br><span style="word-break:break-all;color:#3f3f46;">${escapeHtml(joinUrl)}</span></p>
+    `,
+  );
+
+  return { subject: `JSMF - Starting soon: ${sessionTitle}`, text, html };
+}

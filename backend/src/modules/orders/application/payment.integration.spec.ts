@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import { StubPaymentAdapter } from '../../payments/infrastructure/stub-payment.adapter';
+import { OrderEvents } from './order-events';
 import { OrderService } from './order.service';
 import { PaymentService } from './payment.service';
 
@@ -94,7 +95,7 @@ const prisma = new PrismaService();
 const provider = new StubPaymentAdapter(config);
 const entitlements = new EntitlementService(prisma);
 const orders = new OrderService(prisma, provider, entitlements);
-const payments = new PaymentService(prisma, provider, entitlements, mail, whatsapp, config);
+const payments = new PaymentService(prisma, provider, entitlements, mail, whatsapp, config, new OrderEvents());
 
 /** Everything created here, so teardown deletes exactly this and nothing else. */
 const created = { userIds: [] as string[], productIds: [] as string[] };

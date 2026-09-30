@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { FileText, FolderTree, Loader2, LogOut, ReceiptText, Sparkles, Users } from "lucide-react";
+import { CalendarDays, FileText, FolderTree, Loader2, LogOut, ReceiptText, Sparkles, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isAdmin, useSessionStore } from "@/store/session-store";
@@ -11,6 +11,7 @@ import { isAdmin, useSessionStore } from "@/store/session-store";
 const NAV = [
   { href: "/admin/products", label: "Products", icon: FileText },
   { href: "/admin/featured", label: "Featured", icon: Sparkles },
+  { href: "/admin/sessions", label: "Sessions", icon: CalendarDays },
   { href: "/admin/taxonomy", label: "Categories", icon: FolderTree },
   { href: "/admin/orders", label: "Orders", icon: ReceiptText },
   { href: "/admin/team", label: "Team", icon: Users },

@@ -215,6 +215,11 @@ const schema = z
     /// after the admin panel would quietly break the day they are not.
     STOREFRONT_URL: z.string().url().default('http://localhost:3001'),
 
+    /// How long before a live session starts its reminder email goes out. The
+    /// sweep runs on the same 5-minute clock as payment reconciliation, so the
+    /// real send time is up to five minutes after this point.
+    SESSION_REMINDER_LEAD_MINUTES: z.coerce.number().int().min(5).max(24 * 60).default(60),
+
     /// The rate limit a single caller gets per minute — counted against their
     /// account when signed in, and only against their IP address when not.
     ///

@@ -18,6 +18,7 @@ import { MailService } from '../../../shared/mail/application/mail.service';
 import { WhatsAppService } from '../../../shared/whatsapp/application/whatsapp.service';
 import { purchaseConfirmation } from '../../../shared/mail/templates/mail-templates';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
+import { OrderEvents, type OrderPaidEvent } from './order-events';
 import {
   PaymentProvider,
   type PaymentWebhookEvent,
@@ -100,6 +101,7 @@ export class PaymentService {
     private readonly mail: MailService,
     private readonly whatsapp: WhatsAppService,
     private readonly config: AppConfig,
+    private readonly events: OrderEvents,
   ) {}
 
   /**
@@ -276,11 +278,31 @@ export class PaymentService {
     // call that actually moves the order into PAID has anything new to
     // announce; the rest are no-ops and must stay silent.
     let confirmation: PurchaseConfirmationContext | null = null;
+    let paidEvent: OrderPaidEvent | null = null;
 
     await this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.findFirst({
         where: { providerOrderId: input.providerOrderId },
-        include: { order: { include: { items: true, user: true } } },
+        include: {
+          order: {
+            include: {
+              user: true,
+              items: {
+                include: {
+                  product: {
+                    select: {
+                      bundleItems: {
+                        where: { child: { deletedAt: null } },
+                        select: { childProductId: true },
+                        orderBy: { sortOrder: 'asc' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       });
 
       if (!payment) {
@@ -336,6 +358,22 @@ export class PaymentService {
           orderNumber: payment.order.orderNumber,
           paymentId: input.providerPaymentId,
         };
+
+        paidEvent = {
+          orderId: payment.orderId,
+          orderNumber: payment.order.orderNumber,
+          userId: payment.order.userId,
+          customerEmail: payment.order.customerEmail,
+          customerName: payment.order.user.name,
+          items: payment.order.items.map((item) => ({
+            productId: item.productId,
+            productType: item.productTypeSnapshot,
+            title: item.productTitleSnapshot,
+          })),
+          totalAmountMinor: payment.order.totalAmountMinor,
+          currency: payment.order.currency,
+          paymentId: input.providerPaymentId,
+        };
       }
 
       for (const item of payment.order.items) {
@@ -348,6 +386,24 @@ export class PaymentService {
           },
           tx,
         );
+
+        // Products included with this one — a live session's free revision
+        // planner. Carrying `sourceOrderId` is what makes a refund take them
+        // back along with the session (revokeForOrder), and granting is
+        // idempotent, so a buyer who already owns the planner keeps the copy
+        // they bought and this adds nothing.
+        for (const included of item.product.bundleItems) {
+          await this.entitlements.grant(
+            {
+              userId: payment.order.userId,
+              productId: included.childProductId,
+              source: EntitlementSource.BUNDLE,
+              sourceOrderId: payment.orderId,
+              sourceProductId: item.productId,
+            },
+            tx,
+          );
+        }
       }
     });
 
@@ -357,8 +413,9 @@ export class PaymentService {
     // connection, and this makes an HTTP call to the mail provider. It is also
     // the only correct order — the email says the purchase succeeded, so it
     // must not go out until that is durably true.
-    if (confirmation) {
-      await this.sendPurchaseConfirmation(confirmation);
+    if (confirmation && paidEvent) {
+      const { confirmationHandled } = await this.events.paid(paidEvent);
+      if (!confirmationHandled) await this.sendPurchaseConfirmation(confirmation);
     }
   }
 

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../shared/prisma/prisma.module';
 import { EntitlementsModule } from '../entitlements/entitlements.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { OrderEvents } from './application/order-events';
 import { OrderService } from './application/order.service';
 import { PaymentService } from './application/payment.service';
 import { PaymentReconciliationService } from './application/reconciliation.service';
@@ -26,7 +27,7 @@ import { WebhookController } from './http/webhook.controller';
     AdminOrderController,
     ReconciliationController,
   ],
-  providers: [OrderService, PaymentService, PaymentReconciliationService],
-  exports: [OrderService, PaymentService],
+  providers: [OrderService, PaymentService, PaymentReconciliationService, OrderEvents],
+  exports: [OrderService, PaymentService, OrderEvents],
 })
 export class OrdersModule {}

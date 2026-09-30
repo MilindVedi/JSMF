@@ -12,6 +12,7 @@ import { SmsModule } from './shared/sms/sms.module';
 import { WhatsAppModule } from './shared/whatsapp/whatsapp.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { EntitlementsModule } from './modules/entitlements/entitlements.module';
+import { EventsModule } from './modules/events/events.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -75,6 +76,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     StorageModule,
     PaymentsModule,
     CatalogModule,
+    EventsModule,
     EntitlementsModule,
     OrdersModule,
     HealthModule,

@@ -31,7 +31,7 @@ There is no `pdfs` table. See [Architecture](./02-architecture.md#content-model-
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid PK | |
-| `type` | enum NOT NULL | `PDF`, `VIDEO`, `COURSE`, `BUNDLE`. **V1 only ever writes `PDF`** — the others exist so adding them later is a new row, not a new table. |
+| `type` | enum NOT NULL | `PDF`, `VIDEO`, `COURSE`, `BUNDLE`, `LIVE_SESSION`. The store writes `PDF`; `LIVE_SESSION` is a paid live session sold on the main website — its extra fields live in `live_sessions`, and it is excluded from every store listing. See [main website](../main-website/README.md#2-data-model--reuse-first-add-only-what-a-session-alone-has). |
 | `slug` | varchar(160) | **UNIQUE NOT NULL.** The public URL `/p/pathology-rapid-revision`. Immutable once published — this link goes in YouTube descriptions permanently, so changing it must be a deliberate act with a redirect, not a side effect of editing a title. |
 | `title` | varchar(200) NOT NULL | |
 | `subtitle` | varchar(300) NULL | The short description shown on cards and under the title. |
