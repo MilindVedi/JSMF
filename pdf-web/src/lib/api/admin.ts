@@ -137,6 +137,12 @@ export const adminOrderApi = {
 };
 
 /** A live session as the admin API returns it. Money is paise, as a string. */
+export interface SessionDay {
+  id: string;
+  startsAt: string;
+  durationMinutes: number;
+}
+
 export interface AdminSession {
   id: string;
   slug: string;
@@ -144,8 +150,10 @@ export interface AdminSession {
   tagline: string | null;
   description: string | null;
   status: "DRAFT" | "PUBLISHED" | "UNPUBLISHED" | "ARCHIVED";
+  /** The first day's start. */
   startsAt: string;
-  durationMinutes: number;
+  /** In start order; one entry for a one-day session. */
+  days: SessionDay[];
   platformLabel: string;
   capacity: number | null;
   seatsTaken: number;
@@ -164,8 +172,8 @@ export interface SessionInput {
   title?: string;
   tagline?: string;
   description?: string;
-  startsAt?: string;
-  durationMinutes?: number;
+  /** Every day, every save. An id keeps an existing day; days left out are removed. */
+  days?: Array<{ id?: string; startsAt: string; durationMinutes: number }>;
   platformLabel?: string;
   capacity?: number | null;
   priceAmountMinor?: string;
@@ -186,7 +194,9 @@ export interface SessionRegistrationRow {
   paid: boolean;
   order: { orderNumber: string; status: string } | null;
   confirmationSentAt: string | null;
-  reminderSentAt: string | null;
+  /** How many days this person has been reminded about. */
+  remindersSent: number;
+  lastReminderSentAt: string | null;
   createdAt: string;
 }
 

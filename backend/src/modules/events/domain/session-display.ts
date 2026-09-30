@@ -14,15 +14,20 @@ export const STAGE_OPTIONS = ['1st / 2nd year', '3rd year', 'Final year', 'Inter
  */
 const TIME_ZONE = 'Asia/Kolkata';
 
+export interface SessionDayTime {
+  startsAt: Date;
+  durationMinutes: number;
+}
+
 /** "Sunday, 12 October 2026 · 7:30 PM IST · 90 minutes" */
-export function sessionWhenLabel(startsAt: Date, durationMinutes: number): string {
+export function sessionDayLabel(day: SessionDayTime): string {
   const date = new Intl.DateTimeFormat('en-IN', {
     timeZone: TIME_ZONE,
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }).format(startsAt);
+  }).format(day.startsAt);
 
   const time = new Intl.DateTimeFormat('en-IN', {
     timeZone: TIME_ZONE,
@@ -30,10 +35,16 @@ export function sessionWhenLabel(startsAt: Date, durationMinutes: number): strin
     minute: '2-digit',
     hour12: true,
   })
-    .format(startsAt)
+    .format(day.startsAt)
     .toUpperCase();
 
-  return `${date} · ${time} IST · ${durationMinutes} minutes`;
+  return `${date} · ${time} IST · ${day.durationMinutes} minutes`;
+}
+
+/** One line for a one-day session; "Day 1 · …", "Day 2 · …" for longer ones. Days must be in order. */
+export function sessionWhenLines(days: SessionDayTime[]): string[] {
+  if (days.length === 1) return [sessionDayLabel(days[0])];
+  return days.map((day, index) => `Day ${index + 1} · ${sessionDayLabel(day)}`);
 }
 
 /** Minor units to "₹499" — the same rule the purchase receipt uses. */

@@ -3,8 +3,10 @@
  * facts about Dr. Angad Rai. Session details (date, price, seats) are NOT here
  * — they come from the API, managed in the admin panel at /admin/sessions.
  */
+export const supportEmail = "support@jsmf.me";
+
 export const links = {
-  telegram: "https://t.me/jsmfresources",
+  telegram: "https://t.me/JABSTUDIESMETFUN",
   youtube: "https://www.youtube.com/@jsmf",
   instagram: "https://www.instagram.com/jsmf",
   interviewWatch: "https://www.youtube.com/live/MMLKjFlV1tA",

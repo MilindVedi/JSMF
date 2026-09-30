@@ -26,21 +26,30 @@ A session is a **`products` row with `type = LIVE_SESSION`**. That is the whole
 trick: orders, order items, payments, Razorpay, refunds, audit and entitlements
 work unchanged — the schema was designed for new product types from day one.
 
-What only a session has lives in two new tables (migration
-`20260930150000_live_sessions`):
+What only a session has lives in four tables (migrations
+`20260930150000_live_sessions` and `20261001120000_live_session_days`):
 
 **`live_sessions`** — one row per session product, keyed by `product_id`.
 
 | Column | Notes |
 | :--- | :--- |
 | `product_id` | PK, FK → products **RESTRICT** |
-| `starts_at`, `duration_minutes` | CHECK duration > 0 |
+| `starts_at` | the **first day's** start — a copy the service writes in the same transaction as the days, so listing, ordering and "registration closes at the start" stay one indexed column |
 | `platform_label` | display text ("Live on Zoom · Link sent on mail") |
 | `capacity` | NULL = unlimited; CHECK > 0 |
 | `join_url` | **private** — never in a public response; emailed to seat holders only |
 | `recording_url` | shown publicly after the start |
 | `highlights text[]` | "What you'll learn", in order — never queried, so an array, not a table |
 | `perk_text` | the perk line in the card |
+
+**`live_session_days`** — one row per day. A one-day session has one row; a
+multi-day session one per day (up to 14). One seat covers every day, with the
+same joining link.
+
+| Column | Notes |
+| :--- | :--- |
+| `live_session_id` | FK → live_sessions **RESTRICT** |
+| `starts_at`, `duration_minutes` | CHECK duration > 0. Days may not overlap — checked by the service, not a unique index, because postponing every day by one moves a day onto another's old time mid-save |
 
 **`session_registrations`** — what the attendee told us, and what we sent them.
 
@@ -50,8 +59,15 @@ What only a session has lives in two new tables (migration
 | `user_id` | FK → users **RESTRICT** (unique with session) |
 | `whatsapp_number`, `exam`, `stage` | plain text; the options are a list in the API, so changing them is a deploy, never a migration |
 | `order_id` | FK → orders **SET NULL** — latest checkout, for support |
-| `confirmation_sent_at`, `reminder_sent_at` | delivery bookkeeping |
+| `confirmation_sent_at` | delivery bookkeeping |
 | `attended_at` | reserved for attendance tracking later |
+
+**`session_day_reminders`** — "this person was reminded about this day".
+
+| Column | Notes |
+| :--- | :--- |
+| `registration_id`, `live_session_day_id` | composite PK — inserting the row *is* the claim, so overlapping sweeps can never double-send; both FKs **RESTRICT** |
+| `sent_at` | when it went |
 
 Deliberate choices:
 
@@ -83,7 +99,8 @@ jsmf.me  →  Reserve  →  (not signed in) "Sign up is required" → Google →
          →  OrderEvents "order paid"  →  session confirmation email
                (the generic "files in your library" receipt is skipped)
 cron every 5 min  →  POST /internal/session-reminders
-               →  reminder with the link, once, starting SESSION_REMINDER_LEAD_MINUTES before
+               →  reminder with the link, once per person per day, starting
+                  SESSION_REMINDER_LEAD_MINUTES before each day ("Day 2 of 3")
 ```
 
 - **Payment code does not know sessions exist.** Settlement announces "order
@@ -92,6 +109,11 @@ cron every 5 min  →  POST /internal/session-reminders
 - **Seats are checked at checkout, not held.** Two people can both pay for the
   last seat and both keep it — refusing a cleared payment is worse than one
   person over capacity.
+- **Editing days.** The admin form sends every day on each save; an existing
+  day keeps its row (and reminder history), a missing one is removed. Moving a
+  day's start clears that day's reminders so a fresh one goes out for the new
+  time. The confirmation email lists every day, but one already sent does not
+  update itself if dates change later.
 - **Reminders wait for a link.** A session with no `join_url` is skipped and
   retried every sweep until the start, so adding the link late still reaches
   everyone. Each reminder is claimed before sending, so overlapping sweeps
@@ -138,12 +160,14 @@ To go live (not done yet):
 
 ## 6. Verification
 
-- 6 integration tests against Postgres (`live-session.integration.spec.ts`):
+- 10 integration tests against Postgres (`live-session.integration.spec.ts`):
   publish without a file and no public join link; excluded from store and
   generic checkout; seat + planner granted with exactly one email; capacity
   refusal and refund freeing the seat; no-email account and post-start refused;
   reminders held until a link exists, then sent exactly once, never to unpaid
-  registrations. Full backend suite: 100 passing.
+  registrations; multi-day days stored in order and all listed in the
+  confirmation; overlapping days refused; one reminder per day, re-sent for a
+  rescheduled day; postponing every day by one. Full backend suite: 104 passing.
 - Driven in a real browser: home page desktop and mobile (no horizontal
   overflow), signed-out dialog, validation, signed-in form, and the real
   Razorpay test-mode window opening with ₹99. Admin create/edit/publish and the

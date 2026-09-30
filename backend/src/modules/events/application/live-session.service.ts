@@ -22,8 +22,7 @@ export interface LiveSessionInput {
   slug?: string;
   tagline?: string;
   description?: string;
-  startsAt?: string;
-  durationMinutes?: number;
+  days?: SessionDayInput[];
   platformLabel?: string;
   capacity?: number | null;
   priceAmountMinor?: string;
@@ -35,6 +34,19 @@ export interface LiveSessionInput {
   includedProductIds?: string[];
 }
 
+export interface SessionDayInput {
+  /** Present when editing a day that already exists. */
+  id?: string;
+  startsAt: string;
+  durationMinutes: number;
+}
+
+interface NormalisedDay {
+  id?: string;
+  startsAt: Date;
+  durationMinutes: number;
+}
+
 export interface RegistrationAnswers {
   whatsappNumber: string;
   exam: string;
@@ -42,6 +54,7 @@ export interface RegistrationAnswers {
 }
 
 const SESSION_INCLUDE = {
+  days: { orderBy: { startsAt: 'asc' } },
   product: {
     include: {
       bundleItems: {
@@ -71,6 +84,28 @@ function normalisePhone(raw: string): string {
 }
 
 /**
+ * Days in start order, refusing any two that overlap (which also refuses two
+ * at the same time). The order the admin typed them in does not matter.
+ */
+function normaliseDays(days: SessionDayInput[]): NormalisedDay[] {
+  const sorted = days
+    .map((day) => ({ id: day.id, startsAt: new Date(day.startsAt), durationMinutes: day.durationMinutes }))
+    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+
+  for (let i = 1; i < sorted.length; i++) {
+    const previousEnd = sorted[i - 1].startsAt.getTime() + sorted[i - 1].durationMinutes * 60_000;
+    if (sorted[i].startsAt.getTime() < previousEnd) {
+      throw new BadRequestException(`Day ${i + 1} starts before day ${i} has finished.`);
+    }
+  }
+
+  const ids = sorted.map((d) => d.id).filter(Boolean);
+  if (new Set(ids).size !== ids.length) throw new BadRequestException('The same day was sent twice.');
+
+  return sorted;
+}
+
+/**
  * Live sessions: the one thing the main website sells today.
  *
  * Everything that is merely "a product being bought" is delegated — the
@@ -94,8 +129,9 @@ export class LiveSessionService {
    * What the landing page shows: the next session, and the most recent past
    * one (for its recording) when there is nothing upcoming.
    *
-   * "Upcoming" ends at the start time, which is also when registration closes:
-   * a seat bought after the session began is a seat for something mostly over.
+   * "Upcoming" ends when the first day starts, which is also when registration
+   * closes: a seat bought after the session began is a seat for something
+   * partly over.
    */
   async landing() {
     const now = new Date();
@@ -245,13 +281,14 @@ export class LiveSessionService {
   }
 
   async create(input: LiveSessionInput, actor: Actor) {
-    const required = ['title', 'tagline', 'startsAt', 'durationMinutes', 'platformLabel', 'priceAmountMinor'] as const;
+    const required = ['title', 'tagline', 'days', 'platformLabel', 'priceAmountMinor'] as const;
     for (const field of required) {
       if (input[field] === undefined) throw new BadRequestException(`${field} is required`);
     }
 
-    const startsAt = new Date(input.startsAt!);
-    if (startsAt.getTime() <= Date.now()) {
+    const days = normaliseDays(input.days!);
+    if (days.some((day) => day.id)) throw new BadRequestException('A new session cannot have existing days.');
+    if (days[0].startsAt.getTime() <= Date.now()) {
       throw new BadRequestException('A new session must start in the future.');
     }
 
@@ -274,8 +311,7 @@ export class LiveSessionService {
         const session = await tx.liveSession.create({
           data: {
             productId: created.id,
-            startsAt,
-            durationMinutes: input.durationMinutes!,
+            startsAt: days[0].startsAt,
             platformLabel: input.platformLabel!,
             capacity: input.capacity ?? null,
             joinUrl: blankToNull(input.joinUrl) ?? null,
@@ -283,6 +319,14 @@ export class LiveSessionService {
             highlights: input.highlights ?? [],
             perkText: blankToNull(input.perkText) ?? null,
           },
+        });
+
+        await tx.liveSessionDay.createMany({
+          data: days.map((day) => ({
+            liveSessionId: created.id,
+            startsAt: day.startsAt,
+            durationMinutes: day.durationMinutes,
+          })),
         });
 
         await this.replaceIncluded(tx, created.id, included);
@@ -293,7 +337,7 @@ export class LiveSessionService {
             action: 'live_session.created',
             entityType: 'live_session',
             entityId: created.id,
-            after: { ...session, includedProductIds: included },
+            after: { ...session, days, includedProductIds: included },
             ip: actor.ip,
           },
           tx,
@@ -308,6 +352,14 @@ export class LiveSessionService {
     const before = await this.getRowOrThrow(id);
     const included =
       input.includedProductIds === undefined ? undefined : await this.validateIncluded(input.includedProductIds);
+    const days = input.days === undefined ? undefined : normaliseDays(input.days);
+
+    if (days) {
+      const known = new Set(before.days.map((d) => d.id));
+      if (days.some((day) => day.id && !known.has(day.id))) {
+        throw new BadRequestException('A day does not belong to this session.');
+      }
+    }
 
     await this.products.update(
       id,
@@ -321,11 +373,12 @@ export class LiveSessionService {
       },
       actor,
       async (tx) => {
+        if (days) await this.replaceDays(tx, id, before.days, days);
+
         const after = await tx.liveSession.update({
           where: { productId: id },
           data: {
-            startsAt: input.startsAt === undefined ? undefined : new Date(input.startsAt),
-            durationMinutes: input.durationMinutes,
+            startsAt: days?.[0].startsAt,
             platformLabel: input.platformLabel,
             capacity: input.capacity,
             joinUrl: blankToNull(input.joinUrl),
@@ -345,7 +398,7 @@ export class LiveSessionService {
             entityType: 'live_session',
             entityId: id,
             before: beforeRow,
-            after: included ? { ...after, includedProductIds: included } : after,
+            after: { ...after, ...(days && { days }), ...(included && { includedProductIds: included }) },
             ip: actor.ip,
           },
           tx,
@@ -387,6 +440,7 @@ export class LiveSessionService {
       include: {
         user: { select: { id: true, name: true, email: true } },
         order: { select: { orderNumber: true, status: true } },
+        dayReminders: { select: { sentAt: true }, orderBy: { sentAt: 'desc' } },
       },
     });
 
@@ -405,7 +459,9 @@ export class LiveSessionService {
       paid: seated.has(row.userId),
       order: row.order,
       confirmationSentAt: row.confirmationSentAt,
-      reminderSentAt: row.reminderSentAt,
+      /** Days this person has been reminded about, and when the latest went. */
+      remindersSent: row.dayReminders.length,
+      lastReminderSentAt: row.dayReminders[0]?.sentAt ?? null,
       createdAt: row.createdAt,
     }));
   }
@@ -470,6 +526,48 @@ export class LiveSessionService {
     }
   }
 
+  /**
+   * Makes the session's days match the list sent, keeping each existing day's
+   * row (matched by id) so its reminder history survives an unrelated edit.
+   *
+   * A day whose start moves has its reminders cleared: the reminder already
+   * sent was for a time that is no longer true, so it should go out again for
+   * the new one. A removed day has its reminders removed first — deliberately,
+   * here, rather than by a cascade.
+   */
+  private async replaceDays(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    existing: Array<{ id: string; startsAt: Date }>,
+    days: NormalisedDay[],
+  ) {
+    const kept = new Set(days.map((d) => d.id).filter(Boolean));
+    const removed = existing.filter((d) => !kept.has(d.id)).map((d) => d.id);
+
+    if (removed.length > 0) {
+      await tx.sessionDayReminder.deleteMany({ where: { liveSessionDayId: { in: removed } } });
+      await tx.liveSessionDay.deleteMany({ where: { id: { in: removed } } });
+    }
+
+    for (const day of days) {
+      if (!day.id) {
+        await tx.liveSessionDay.create({
+          data: { liveSessionId: sessionId, startsAt: day.startsAt, durationMinutes: day.durationMinutes },
+        });
+        continue;
+      }
+
+      const current = existing.find((d) => d.id === day.id)!;
+      if (current.startsAt.getTime() !== day.startsAt.getTime()) {
+        await tx.sessionDayReminder.deleteMany({ where: { liveSessionDayId: day.id } });
+      }
+      await tx.liveSessionDay.update({
+        where: { id: day.id },
+        data: { startsAt: day.startsAt, durationMinutes: day.durationMinutes },
+      });
+    }
+  }
+
   private toPublic(session: SessionRow, taken: number) {
     const { product } = session;
     const started = session.startsAt.getTime() <= Date.now();
@@ -482,7 +580,7 @@ export class LiveSessionService {
       tagline: product.subtitle,
       description: product.description,
       startsAt: session.startsAt,
-      durationMinutes: session.durationMinutes,
+      days: session.days.map((day) => ({ startsAt: day.startsAt, durationMinutes: day.durationMinutes })),
       platformLabel: session.platformLabel,
       highlights: session.highlights,
       perkText: session.perkText,
@@ -509,7 +607,7 @@ export class LiveSessionService {
       description: product.description,
       status: product.status,
       startsAt: session.startsAt,
-      durationMinutes: session.durationMinutes,
+      days: session.days.map((day) => ({ id: day.id, startsAt: day.startsAt, durationMinutes: day.durationMinutes })),
       platformLabel: session.platformLabel,
       capacity: session.capacity,
       seatsTaken: taken,

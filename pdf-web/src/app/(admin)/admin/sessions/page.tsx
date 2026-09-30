@@ -46,7 +46,7 @@ export default function AdminSessionsPage() {
       ) : sessions.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No sessions yet. The website shows &ldquo;Next session announced soon&rdquo; until one is
+            No sessions yet. The website shows &ldquo;New Session announced&rdquo; until one is
             published.
           </CardContent>
         </Card>
@@ -70,7 +70,12 @@ export default function AdminSessionsPage() {
                       {session.title}
                     </Link>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">{istLabel(session.startsAt)}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {istLabel(session.startsAt)}
+                    {session.days.length > 1 && (
+                      <span className="ml-1.5 text-xs text-muted-foreground">· {session.days.length} days</span>
+                    )}
+                  </TableCell>
                   <TableCell>{formatMoney(session.priceAmountMinor, session.currency)}</TableCell>
                   <TableCell>
                     {session.seatsTaken}

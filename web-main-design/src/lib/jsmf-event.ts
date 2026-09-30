@@ -20,7 +20,7 @@ export type SessionEvent = {
 };
 
 export const upcomingSession: SessionEvent = {
-  title: "From MBBS to AIR 925: How to Prepare Smarter, Not Longer",
+  title: "From MBBS to Your Dream Rank: How to Prepare Smarter, Not Longer",
   tagline:
     "A live, no-fluff session with Dr. Angad Rai on building a revision system that actually holds until exam day.",
   startsAt: "2026-10-12T19:30:00+05:30",
@@ -30,13 +30,13 @@ export const upcomingSession: SessionEvent = {
   seatsNote: "Free to attend · Limited seats",
   seatsRemaining: 37,
   learn: [
-    "Building a revision cycle that survives clinical postings and duty hours",
-    "How to read a PYQ properly — what the examiner is actually testing",
-    "Subject sequencing for NEET-PG, INI-CET and FMGE in the final 6 months",
-    "Where most aspirants lose marks, and the fixes that recover them fastest",
-    "A live Q&A: bring your toughest preparation problem",
+    "🧠 High-Yield Concepts Across All 19 Subjects",
+    "🎯 Difficult & Unfamiliar Question Approach",
+    "⚠️ Common Mistakes & Confusing Concepts",
+    "💬 Live Interaction & Doubt Solving",
+    "🚀 Exam-Day Confidence & Strategy",
   ],
-  perk: "Every attendee gets Dr. Angad's high-yield revision planner (PDF) free.",
+  perk: "Get Dr. Angad's High-Yield Revision Planner — FREE",
   published: true,
 };
 

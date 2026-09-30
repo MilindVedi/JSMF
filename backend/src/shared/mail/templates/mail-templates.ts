@@ -314,7 +314,8 @@ function detailTable(rows: Array<[string, string]>): string {
 export function liveSessionConfirmation(input: {
   attendeeName: string;
   sessionTitle: string;
-  whenLabel: string;
+  /** One line per day, in order. */
+  whenLines: string[];
   platformLabel: string;
   joinUrl: string | null;
   totalFormatted: string;
@@ -327,7 +328,7 @@ export function liveSessionConfirmation(input: {
   const {
     attendeeName,
     sessionTitle,
-    whenLabel,
+    whenLines,
     platformLabel,
     joinUrl,
     totalFormatted,
@@ -348,10 +349,10 @@ export function liveSessionConfirmation(input: {
   const text = [
     `Hi ${attendeeName},`,
     ``,
-    `Your seat is confirmed.`,
+    `Your seat is confirmed${whenLines.length > 1 ? ` for all ${whenLines.length} days` : ''}.`,
     ``,
     `  ${sessionTitle}`,
-    `  ${whenLabel}`,
+    ...whenLines.map((line) => `  ${line}`),
     `  ${platformLabel}`,
     ``,
     linkLine,
@@ -371,7 +372,7 @@ export function liveSessionConfirmation(input: {
     <div style="margin:0 0 20px;padding:16px;background:#fafafa;border-radius:8px;">
       <p style="margin:0 0 10px;font-size:15px;line-height:1.45;font-weight:600;">${escapeHtml(sessionTitle)}</p>
       ${detailTable([
-        ['When', whenLabel],
+        ...whenLines.map((line, index): [string, string] => [index === 0 ? 'When' : '', line]),
         ['Where', platformLabel],
       ])}
     </div>
@@ -400,20 +401,27 @@ export function liveSessionConfirmation(input: {
   return { subject: `JSMF - Your seat is confirmed: ${sessionTitle}`, text, html };
 }
 
-/** Sent shortly before a session starts, to everyone holding a seat. */
+/**
+ * Sent shortly before each day of a session starts, to everyone holding a
+ * seat. A multi-day session sends one per day, marked "Day 2 of 3".
+ */
 export function liveSessionReminder(input: {
   attendeeName: string;
   sessionTitle: string;
+  /** The day this reminder is for. */
   whenLabel: string;
+  /** "Day 2 of 3", or null for a one-day session. */
+  dayMarker: string | null;
   platformLabel: string;
   joinUrl: string;
 }): RenderedMail {
-  const { attendeeName, sessionTitle, whenLabel, platformLabel, joinUrl } = input;
+  const { attendeeName, sessionTitle, whenLabel, dayMarker, platformLabel, joinUrl } = input;
+  const heading = dayMarker ? `${sessionTitle} (${dayMarker})` : sessionTitle;
 
   const text = [
     `Hi ${attendeeName},`,
     ``,
-    `${sessionTitle} starts soon.`,
+    `${heading} starts soon.`,
     ``,
     `  ${whenLabel}`,
     `  ${platformLabel}`,
@@ -428,7 +436,7 @@ export function liveSessionReminder(input: {
     `
     <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Hi ${escapeHtml(attendeeName)},</p>
     <div style="margin:0 0 20px;padding:16px;background:#fafafa;border-radius:8px;">
-      <p style="margin:0 0 10px;font-size:15px;line-height:1.45;font-weight:600;">${escapeHtml(sessionTitle)}</p>
+      <p style="margin:0 0 10px;font-size:15px;line-height:1.45;font-weight:600;">${escapeHtml(heading)}</p>
       ${detailTable([
         ['When', whenLabel],
         ['Where', platformLabel],
@@ -439,5 +447,5 @@ export function liveSessionReminder(input: {
     `,
   );
 
-  return { subject: `JSMF - Starting soon: ${sessionTitle}`, text, html };
+  return { subject: `JSMF - Starting soon: ${heading}`, text, html };
 }

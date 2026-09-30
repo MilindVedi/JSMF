@@ -27,8 +27,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${sora.variable} ${manrope.variable}`}>
-      <body className="antialiased">
+    <html lang="en" className={`${sora.variable} ${manrope.variable}`} suppressHydrationWarning>
+      <body className="antialiased" suppressHydrationWarning>
         {children}
         <Toaster position="top-center" richColors />
       </body>

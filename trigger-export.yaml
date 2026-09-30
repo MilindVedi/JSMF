@@ -1,0 +1,75 @@
+build:
+  images:
+  - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+  options:
+    logging: CLOUD_LOGGING_ONLY
+    substitutionOption: ALLOW_LOOSE
+  steps:
+  - args:
+    - build
+    - --no-cache
+    - -t
+    - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+    - pdf-web
+    - -f
+    - pdf-web/Dockerfile
+    id: Build
+    name: gcr.io/cloud-builders/docker
+  - args:
+    - push
+    - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+    id: Push
+    name: gcr.io/cloud-builders/docker
+  - args:
+    - run
+    - services
+    - update
+    - $_SERVICE_NAME
+    - --platform=managed
+    - --image=$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+    - --labels=managed-by=gcp-cloud-build-deploy-cloud-run,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID,gcb-trigger-id=$_TRIGGER_ID
+    - --region=$_DEPLOY_REGION
+    - --quiet
+    entrypoint: gcloud
+    id: Deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+  substitutions:
+    REPO_NAME: jsmf
+    _AR_HOSTNAME: asia-south1-docker.pkg.dev
+    _AR_PROJECT_ID: production-509708
+    _AR_REPOSITORY: cloud-run-source-deploy
+    _DEPLOY_REGION: asia-south1
+    _PLATFORM: managed
+    _SERVICE_NAME: jsmf-pdf-web
+    _TRIGGER_ID: 23dc22be-aaf5-45ef-8996-95b3cb45994d
+  tags:
+  - gcp-cloud-build-deploy-cloud-run
+  - gcp-cloud-build-deploy-cloud-run-managed
+  - jsmf-pdf-web
+createTime: '2026-09-25T12:37:45.749887539Z'
+description: Build and deploy to Cloud Run service jsmf-pdf-web on push to "main"
+github:
+  name: JSMF
+  owner: MilindVedi
+  push:
+    branch: main
+id: 23dc22be-aaf5-45ef-8996-95b3cb45994d
+includeBuildLogs: INCLUDE_BUILD_LOGS_WITH_STATUS
+includedFiles:
+- pdf-web/**
+name: rmgpgab-jsmf-pdf-web-asia-south1-MilindVedi-JSMF-mlld
+resourceName: projects/production-509708/locations/global/triggers/23dc22be-aaf5-45ef-8996-95b3cb45994d
+serviceAccount: projects/production-509708/serviceAccounts/569375141363-compute@developer.gserviceaccount.com
+substitutions:
+  REPO_NAME: jsmf
+  _AR_HOSTNAME: asia-south1-docker.pkg.dev
+  _AR_PROJECT_ID: production-509708
+  _AR_REPOSITORY: cloud-run-source-deploy
+  _DEPLOY_REGION: asia-south1
+  _PLATFORM: managed
+  _SERVICE_NAME: jsmf-pdf-web
+  _TRIGGER_ID: 23dc22be-aaf5-45ef-8996-95b3cb45994d
+tags:
+- gcp-cloud-build-deploy-cloud-run
+- gcp-cloud-build-deploy-cloud-run-managed
+- jsmf-pdf-web

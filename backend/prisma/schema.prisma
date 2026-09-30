@@ -1002,8 +1002,10 @@ model LiveSession {
   /// Shares the product's id: one session per product, and the product is the
   /// thing orders point at.
   productId       String   @id @map("product_id") @db.Uuid
+  /// The first day's start. A copy kept by LiveSessionService — the only writer
+  /// — in the same transaction that writes the days, so listing, ordering and
+  /// "registration closes when it starts" stay one indexed column.
   startsAt        DateTime @map("starts_at") @db.Timestamptz(6)
-  durationMinutes Int      @map("duration_minutes")
   /// "Live on Zoom · Link sent on mail". Display text, not a URL.
   platformLabel   String   @map("platform_label") @db.VarChar(160)
   /// NULL = unlimited. Seats taken are counted from entitlements, never stored,
@@ -1027,10 +1029,33 @@ model LiveSession {
   /// Restrict: a session that has been sold must keep its product forever,
   /// the same rule every other product follows (archive, never delete).
   product       Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  days          LiveSessionDay[]
   registrations SessionRegistration[]
 
   @@index([startsAt])
   @@map("live_sessions")
+}
+
+/// One sitting of a session. A single-day session has one row; a multi-day
+/// session has one per day. One seat covers every day, and the joining link is
+/// shared across them.
+model LiveSessionDay {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  liveSessionId   String   @map("live_session_id") @db.Uuid
+  startsAt        DateTime @map("starts_at") @db.Timestamptz(6)
+  durationMinutes Int      @map("duration_minutes")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  liveSession LiveSession          @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
+  reminders   SessionDayReminder[]
+
+  /// Not unique: moving a session's days by one day passes through a moment
+  /// where two rows share a start. LiveSessionService refuses overlapping days,
+  /// which is the stricter rule.
+  @@index([liveSessionId, startsAt])
+  @@index([startsAt])
+  @@map("live_session_days")
 }
 
 /// What a person told us when they signed up for a session, and what we have
@@ -1054,7 +1079,6 @@ model SessionRegistration {
   /// The most recent order started for this registration, for support.
   orderId            String?   @map("order_id") @db.Uuid
   confirmationSentAt DateTime? @map("confirmation_sent_at") @db.Timestamptz(6)
-  reminderSentAt     DateTime? @map("reminder_sent_at") @db.Timestamptz(6)
   /// Reserved for attendance tracking (from the platform's report, later).
   attendedAt         DateTime? @map("attended_at") @db.Timestamptz(6)
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -1065,8 +1089,25 @@ model SessionRegistration {
   /// record, and removing an account is a deliberate process, not a cascade.
   user        User        @relation(fields: [userId], references: [id], onDelete: Restrict)
   order       Order?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  dayReminders SessionDayReminder[]
 
   @@unique([liveSessionId, userId])
   @@index([userId])
   @@map("session_registrations")
+}
+
+/// "This person has been reminded about this day." The primary key is the
+/// claim: a reminder is sent only by whoever manages to insert the row, so two
+/// overlapping sweeps can never email the same person twice for the same day.
+model SessionDayReminder {
+  registrationId   String   @map("registration_id") @db.Uuid
+  liveSessionDayId String   @map("live_session_day_id") @db.Uuid
+  sentAt           DateTime @default(now()) @map("sent_at") @db.Timestamptz(6)
+
+  registration SessionRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  day          LiveSessionDay      @relation(fields: [liveSessionDayId], references: [id], onDelete: Restrict)
+
+  @@id([registrationId, liveSessionDayId])
+  @@index([liveSessionDayId])
+  @@map("session_day_reminders")
 }

@@ -18,13 +18,14 @@ import {
   Sparkles,
   Stethoscope,
 } from "lucide-react";
+import { FloatingVideo } from "@/components/floating-video";
 import { RegisterDialog } from "@/components/register-dialog";
 import { SiteLayout } from "@/components/site";
-import { InstagramIcon, YouTubeIcon } from "@/components/social-icons";
+import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/social-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { sessionsApi } from "@/lib/api/sessions";
 import type { LiveSession, SessionLanding } from "@/lib/api/types";
-import { dateLabel, formatMoney, timeLabel } from "@/lib/format";
+import { dateLabel, formatMoney, sessionDateLabel, shortDateLabel, timeLabel } from "@/lib/format";
 import { credentials, links } from "@/lib/site-content";
 
 /**
@@ -75,10 +76,7 @@ export function Landing() {
       <section className="border-b border-border bg-card">
         <div className="mx-auto grid max-w-7xl items-center gap-14 px-5 py-14 lg:grid-cols-12 lg:px-8 lg:py-20">
           <div className="lg:col-span-7">
-            <span className="eyebrow">
-              <Sparkles size={13} /> Doctor-led preparation · JSMF
-            </span>
-            <h1 className="mt-6 max-w-2xl font-display text-5xl font-semibold leading-[1.06] text-brand-deep md:text-6xl">
+            <h1 className="max-w-2xl font-display text-5xl font-semibold leading-[1.08] text-brand-deep md:text-6xl">
               Prepare smarter, with a doctor who has just done it.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
@@ -86,39 +84,52 @@ export function Landing() {
               behind it — live sessions, high-yield material, and honest guidance through JSMF.
             </p>
 
-            <div className="mt-9 flex flex-wrap items-center gap-4">
+            <div className="mt-9 flex flex-col items-start">
               {loading ? (
-                <Button size="xl" className="text-base" disabled>
+                <Button size="xl" className="w-full max-w-md rounded-full text-base font-semibold" disabled>
                   <Loader2 size={18} className="animate-spin" /> Loading session
                 </Button>
               ) : live ? (
-                <Button size="xl" className="cta-spot text-base" onClick={() => setOpen(true)}>
-                  Reserve your spot <ArrowRight size={19} strokeWidth={2.4} />
-                </Button>
+                <button
+                  type="button"
+                  onClick={() => setOpen(true)}
+                  className="cta-spot flex w-full max-w-md items-center justify-center gap-2.5 rounded-full py-4 px-8 font-display text-lg font-semibold text-white active:translate-y-0"
+                >
+                  <span className="cta-shine" aria-hidden />
+                  Reserve Your Spot Now <ArrowRight size={20} strokeWidth={2.4} className="cta-arrow transition-transform duration-300" />
+                </button>
               ) : (
-                <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ size: "xl", className: "cta-spot text-base" })}>
+                <a
+                  href={links.telegram}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="cta-spot flex w-full max-w-md items-center justify-center gap-2.5 rounded-full py-4 px-8 font-display text-lg font-semibold text-white"
+                >
                   <Send size={18} /> Get notified on Telegram
                 </a>
               )}
-              <a href={links.interviewWatch} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary", size: "lg" })}>
-                <Play size={16} /> Watch the interview
-              </a>
-            </div>
-            {live && session && <SeatsLine session={session} className="mt-4" />}
 
-            <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-              <span className="flex items-center gap-2 text-primary"><Award size={14} /> AIR 925 · NEET-PG 2026</span>
-              <span className="flex items-center gap-2 text-primary"><Award size={14} /> AIR 9 · FMGE 2023</span>
-              <span className="flex items-center gap-2 text-primary"><Stethoscope size={14} /> MBBS · Bronze Medalist</span>
-              <span className="flex items-center gap-2"><MonitorPlay size={14} /> Live sessions</span>
+              {live && session && <SeatsLine session={session} className="mt-4" />}
             </div>
           </div>
 
           <div className="relative mx-auto w-full max-w-sm lg:col-span-5">
+            <div className="absolute -top-3 right-0 z-20 flex items-center gap-2">
+              <a href={links.instagram} target="_blank" rel="noreferrer" aria-label="Instagram" className="social-orb"><InstagramIcon size={16} /></a>
+              <a href={links.youtube} target="_blank" rel="noreferrer" aria-label="YouTube" className="social-orb"><YouTubeIcon size={16} /></a>
+              <a href={links.telegram} target="_blank" rel="noreferrer" aria-label="Telegram" className="social-orb"><TelegramIcon size={16} /></a>
+            </div>
+            <div className="rank-badge"><Award size={13} /> AIR 925 · NEET-PG 2026</div>
+            
+            <div className="absolute top-36 -right-6 z-10 hidden flex-col items-end gap-3 sm:flex">
+              <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Award size={13} /> AIR 9 · FMGE 2023</div>
+              <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Stethoscope size={13} /> MBBS · Bronze Medalist</div>
+              <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><MonitorPlay size={13} /> Live sessions</div>
+            </div>
+
             <div className="portrait-frame">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/angad-bench.png" alt="Dr. Angad Rai" width={1536} height={1024} className="h-full w-full object-cover" />
-              <div className="rank-badge"><Award size={13} /> AIR 925 · NEET-PG 2026</div>
             </div>
             <div className="doctor-credential">
               <p className="text-[10px] font-bold uppercase text-primary">Founder &amp; mentor</p>
@@ -132,35 +143,34 @@ export function Landing() {
       {/* Upcoming session */}
       <section id="session" className="bg-brand-deep py-20 text-brand-on-deep">
         <div className="mx-auto max-w-6xl px-5 lg:px-8">
-          <span className="inline-flex items-center gap-2 rounded-full bg-brand-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
-            {session ? (full ? "Registration closed" : "Upcoming live session") : "Next session announced soon"}
-          </span>
-          <h2 className="mt-5 max-w-2xl font-display text-3xl font-semibold leading-tight md:text-4xl">
-            {loading ? "Loading the next session…" : session ? session.title : "The last session has wrapped up"}
-          </h2>
-          <p className="mt-4 max-w-2xl text-base leading-relaxed opacity-80">
-            {session
-              ? session.tagline
-              : loading
-                ? ""
-                : "Join the Telegram channel to be the first to know when the next live session opens."}
-          </p>
-
           {session ? (
-            <div className="mt-12 grid gap-8 lg:grid-cols-12">
+            <div className="grid items-start gap-10 lg:grid-cols-12">
               <div className="lg:col-span-7">
+                <span className="inline-flex items-center gap-2 rounded-full bg-brand-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
+                  {full ? "Registration closed" : "Upcoming live session"}
+                </span>
+                <h2 className="mt-5 max-w-2xl font-display text-3xl font-semibold leading-tight md:text-4xl">
+                  {session.title}
+                </h2>
+                <p className="mt-4 max-w-2xl text-base leading-relaxed opacity-80">
+                  {session.tagline}
+                </p>
+
                 {session.highlights.length > 0 && (
-                  <>
+                  <div className="mt-10">
                     <p className="text-[11px] font-bold uppercase tracking-wide opacity-70">What you&apos;ll learn</p>
                     <ul className="mt-5 grid gap-3">
-                      {session.highlights.map((item) => (
-                        <li key={item} className="flex gap-3 text-sm leading-relaxed opacity-90">
-                          <CheckCircle2 size={17} className="mt-0.5 shrink-0" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
+                      {session.highlights.map((item) => {
+                        const hasEmoji = /^\p{Extended_Pictographic}/u.test(item) || /^[^\p{L}\p{N}\s]/u.test(item);
+                        return (
+                          <li key={item} className="flex items-start gap-3 text-sm leading-relaxed opacity-90">
+                            {!hasEmoji && <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-primary" />}
+                            <span>{item}</span>
+                          </li>
+                        );
+                      })}
                     </ul>
-                  </>
+                  </div>
                 )}
               </div>
 
@@ -169,18 +179,32 @@ export function Landing() {
               </div>
             </div>
           ) : (
-            !loading && (
-              <div className="mt-10 flex flex-wrap gap-3">
-                <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ size: "lg" })}>
-                  <Send size={16} /> Join Telegram
-                </a>
-                {data?.previous?.recordingUrl && (
-                  <a href={data.previous.recordingUrl} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary", size: "lg" })}>
-                    <Play size={16} /> Watch the last recording
+            <div>
+              <span className="inline-flex items-center gap-2 rounded-full bg-brand-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
+                New Session announced
+              </span>
+              <h2 className="mt-5 max-w-2xl font-display text-3xl font-semibold leading-tight md:text-4xl">
+                {loading ? "Loading the next session…" : "The last session has wrapped up"}
+              </h2>
+              <p className="mt-4 max-w-2xl text-base leading-relaxed opacity-80">
+                {loading
+                  ? ""
+                  : "Join the Telegram channel to be the first to know when the next live session opens."}
+              </p>
+
+              {!loading && (
+                <div className="mt-10 flex flex-wrap gap-3">
+                  <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ size: "lg" })}>
+                    <Send size={16} /> Join Telegram
                   </a>
-                )}
-              </div>
-            )
+                  {data?.previous?.recordingUrl && (
+                    <a href={data.previous.recordingUrl} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary", size: "lg" })}>
+                      <Play size={16} /> Watch the last recording
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </section>
@@ -292,9 +316,9 @@ export function Landing() {
                 Curated, doctor-written material to support your revision — growing steadily with each
                 subject we cover.
               </p>
-              <a href={links.store} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary", className: "mt-6" })}>
-                Explore resources <ArrowRight size={15} />
-              </a>
+              <span className="mt-6 inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                Coming soon
+              </span>
             </article>
           </div>
         </div>
@@ -307,21 +331,19 @@ export function Landing() {
           <h2 className="font-display text-3xl font-semibold leading-tight md:text-4xl">Ready to start preparing smarter?</h2>
           <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed opacity-80">
             {live && session
-              ? `Join Dr. Angad Rai live on ${dateLabel(session.startsAt)}.${session.included.length ? " The revision planner comes with your seat." : ""}`
+              ? `Join Dr. Angad Rai live ${session.days.length > 1 ? `over ${session.days.length} days, from` : "on"} ${dateLabel(session.startsAt)}.${session.included.length ? " The revision planner comes with your seat." : ""}`
               : "Follow JSMF so you hear about the next live session the moment it opens."}
           </p>
-          <div className="mt-9 flex flex-wrap justify-center gap-3">
+          <div className="mt-9 flex justify-center">
             {live ? (
-              <Button size="lg" onClick={() => setOpen(true)}>Reserve your spot <ArrowRight size={17} /></Button>
+              <Button size="lg" onClick={() => setOpen(true)}>Reserve Your Spot Now <ArrowRight size={17} /></Button>
             ) : (
               <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ size: "lg" })}><Send size={16} /> Join Telegram</a>
             )}
-            <a href={links.youtube} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary", size: "lg" })}>
-              <YouTubeIcon size={16} /> Watch past sessions
-            </a>
           </div>
         </div>
       </section>
+      <FloatingVideo />
     </SiteLayout>
   );
 }
@@ -329,12 +351,12 @@ export function Landing() {
 function SeatsLine({ session, className = "" }: { session: LiveSession; className?: string }) {
   if (session.seatsRemaining === null) return null;
   return (
-    <p className={`flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground ${className}`}>
-      <Sparkles size={13} className="text-primary" />
-      <span className="text-destructive">
+    <div className={`flex items-center gap-2 text-sm font-semibold text-red-600 ${className}`}>
+      <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" />
+      <span>
         Only {session.seatsRemaining} {session.seatsRemaining === 1 ? "seat" : "seats"} left
       </span>
-    </p>
+    </div>
   );
 }
 
@@ -345,22 +367,40 @@ function SessionCard({ session, onRegister }: { session: LiveSession; onRegister
   return (
     <div className="rounded-3xl border border-border bg-card p-7 text-foreground shadow-editorial">
       <div className="grid gap-4">
-        <Detail icon={<CalendarDays size={18} />} label="Date" value={dateLabel(session.startsAt)} />
-        <Detail icon={<Clock size={18} />} label="Time" value={timeLabel(session.startsAt, session.durationMinutes)} />
+        <Detail icon={<CalendarDays size={18} />} label="Date" value={sessionDateLabel(session)} />
+        <Detail
+          icon={<Clock size={18} />}
+          label="Time"
+          value={
+            session.days.length === 1 ? (
+              timeLabel(session.days[0].startsAt, session.days[0].durationMinutes)
+            ) : (
+              <span className="grid gap-1">
+                {session.days.map((day, index) => (
+                  <span key={day.startsAt}>
+                    Day {index + 1} · {shortDateLabel(day.startsAt)} · {timeLabel(day.startsAt, day.durationMinutes)}
+                  </span>
+                ))}
+              </span>
+            )
+          }
+        />
         <Detail icon={<MonitorPlay size={18} />} label="Where" value={session.platformLabel} />
       </div>
 
       {session.perkText && (
         <div className="mt-6 flex gap-3 rounded-2xl bg-accent p-4">
           <FileText size={18} className="mt-0.5 shrink-0 text-primary" />
-          <p className="text-xs font-semibold leading-relaxed text-accent-foreground">
-            {session.perkText}
+          <div className="text-xs leading-relaxed text-accent-foreground">
+            <p className="font-semibold text-brand-deep">
+              {session.perkText}
+            </p>
             {session.included.length > 0 && (
-              <span className="mt-1 block font-medium opacity-80">
-                Added to your JSMF account when you register — sign up is required to get it.
-              </span>
+              <p className="mt-1 font-medium opacity-80">
+                A practical PDF to help you structure your revision and focus on high-yield areas. Added to your JSMF account as soon as you pay.
+              </p>
             )}
-          </p>
+          </div>
         </div>
       )}
 
@@ -396,13 +436,13 @@ function SessionCard({ session, onRegister }: { session: LiveSession; onRegister
   );
 }
 
-function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start gap-3">
       <span className="mt-0.5 shrink-0 text-primary">{icon}</span>
       <div>
         <p className="text-[10px] font-bold uppercase text-muted-foreground">{label}</p>
-        <p className="text-sm font-semibold text-brand-deep">{value}</p>
+        <div className="text-sm font-semibold text-brand-deep">{value}</div>
       </div>
     </div>
   );

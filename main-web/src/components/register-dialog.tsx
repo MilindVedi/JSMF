@@ -8,7 +8,7 @@ import { GoogleButton } from "@/components/ui/google-button";
 import { googleAuth } from "@/lib/api/auth";
 import { sessionsApi } from "@/lib/api/sessions";
 import type { LiveSession } from "@/lib/api/types";
-import { dateLabel, formatMoney, timeLabel } from "@/lib/format";
+import { dateLabel, formatMoney, sessionDateLabel, timeLabel } from "@/lib/format";
 import { links } from "@/lib/site-content";
 import { useSessionCheckout } from "@/lib/use-session-checkout";
 import { useSessionStore } from "@/store/session-store";
@@ -154,11 +154,9 @@ export function RegisterDialog({
             <div className="mt-6 flex gap-3 rounded-2xl bg-accent p-4">
               <FileText size={18} className="mt-0.5 shrink-0 text-primary" />
               <div className="text-sm leading-relaxed text-accent-foreground">
-                <p className="font-semibold">Sign up is required to register.</p>
+                <p className="font-semibold">Sign up to register.</p>
                 <p className="mt-1">
-                  {planner
-                    ? `Your free PDF, ${planner}, is given only to the email you sign up with, and your joining link is sent there too.`
-                    : "Your confirmation and joining link are sent to the email you sign up with."}
+                  {planner ? `Your free ${planner} and the` : "The"} session joining link will be sent to the email address you sign up with. Please make sure you have access to this email.
                 </p>
               </div>
             </div>
@@ -268,7 +266,9 @@ function Heading({ session }: { session: LiveSession }) {
         {session.title}
       </h2>
       <p className="mt-2 text-xs font-semibold text-muted-foreground">
-        {dateLabel(session.startsAt)} · {timeLabel(session.startsAt, session.durationMinutes)}
+        {session.days.length > 1
+          ? sessionDateLabel(session)
+          : `${dateLabel(session.startsAt)} · ${timeLabel(session.startsAt, session.days[0].durationMinutes)}`}
       </p>
     </>
   );

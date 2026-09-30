@@ -27,6 +27,22 @@ export function timeLabel(iso: string, durationMinutes: number): string {
   return `${time} IST · ${durationMinutes} minutes`;
 }
 
+/** "Sun, 12 Oct" — for listing the days of a multi-day session. */
+export function shortDateLabel(iso: string): string {
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: IST,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(iso));
+}
+
+/** "Sunday, 12 October 2026", or "3 days, from Sunday, 12 October 2026". */
+export function sessionDateLabel(session: { startsAt: string; days: unknown[] }): string {
+  const first = dateLabel(session.startsAt);
+  return session.days.length > 1 ? `${session.days.length} days, from ${first}` : first;
+}
+
 /** Paise string to "₹99" / "₹99.50" without ever going through a float. */
 export function formatMoney(minor: string | null, currency = "INR"): string {
   if (minor === null) return "";

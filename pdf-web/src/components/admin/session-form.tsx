@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,11 @@ function toIstInput(iso: string): string {
 function fromIstInput(value: string): string {
   return `${value}:00+05:30`;
 }
+
+type DayRow = { key: string; id?: string; startsAt: string; durationMinutes: string };
+
+let nextKey = 0;
+const newKey = () => `new-${nextKey++}`;
 
 const HUNDRED = BigInt(100);
 const ZERO = BigInt(0);
@@ -54,8 +59,6 @@ export function SessionForm({
     title: session?.title ?? "",
     tagline: session?.tagline ?? "",
     description: session?.description ?? "",
-    startsAt: session ? toIstInput(session.startsAt) : "",
-    durationMinutes: String(session?.durationMinutes ?? 90),
     platformLabel: session?.platformLabel ?? "Live on Zoom · Link sent on mail",
     capacity: session?.capacity ? String(session.capacity) : "",
     price: paiseToRupees(session?.priceAmountMinor ?? null),
@@ -65,6 +68,14 @@ export function SessionForm({
     highlights: (session?.highlights ?? []).join("\n"),
     perkText: session?.perkText ?? "",
   });
+  const [days, setDays] = useState<DayRow[]>(
+    session?.days.map((day) => ({
+      key: day.id,
+      id: day.id,
+      startsAt: toIstInput(day.startsAt),
+      durationMinutes: String(day.durationMinutes),
+    })) ?? [{ key: newKey(), startsAt: "", durationMinutes: "90" }],
+  );
   const [included, setIncluded] = useState<string[]>(session?.included.map((p) => p.id) ?? []);
   const [pdfs, setPdfs] = useState<ProductListItem[]>([]);
   const [saving, setSaving] = useState(false);
@@ -75,6 +86,9 @@ export function SessionForm({
       .then((result) => setPdfs(result.items))
       .catch(() => toast.error("Could not load PDFs to include"));
   }, []);
+
+  const setDay = (key: string, field: "startsAt" | "durationMinutes", value: string) =>
+    setDays((current) => current.map((day) => (day.key === key ? { ...day, [field]: value } : day)));
 
   const set = (key: keyof typeof values) => (event: { target: { value: string } }) =>
     setValues((current) => ({ ...current, [key]: event.target.value }));
@@ -87,8 +101,8 @@ export function SessionForm({
       toast.error("Sessions are paid — enter a price above ₹0.");
       return;
     }
-    if (!values.startsAt) {
-      toast.error("Choose when the session starts.");
+    if (days.some((day) => !day.startsAt)) {
+      toast.error(days.length > 1 ? "Choose a start time for every day." : "Choose when the session starts.");
       return;
     }
 
@@ -98,8 +112,11 @@ export function SessionForm({
         title: values.title.trim(),
         tagline: values.tagline.trim(),
         description: values.description.trim() || undefined,
-        startsAt: fromIstInput(values.startsAt),
-        durationMinutes: Number(values.durationMinutes),
+        days: days.map((day) => ({
+          id: day.id,
+          startsAt: fromIstInput(day.startsAt),
+          durationMinutes: Number(day.durationMinutes),
+        })),
         platformLabel: values.platformLabel.trim(),
         capacity: values.capacity ? Number(values.capacity) : null,
         priceAmountMinor: price,
@@ -171,12 +188,58 @@ export function SessionForm({
             <CardTitle>When, where, how much</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Field label="Starts at (IST)">
-              <Input type="datetime-local" value={values.startsAt} onChange={set("startsAt")} required />
-            </Field>
-            <Field label="Duration (minutes)">
-              <Input type="number" min={5} max={720} value={values.durationMinutes} onChange={set("durationMinutes")} required />
-            </Field>
+            <div className="grid gap-3 sm:col-span-2">
+              {days.map((day, index) => (
+                <div key={day.key} className="grid grid-cols-[1fr_7rem_auto] items-end gap-2">
+                  <Field label={days.length > 1 ? `Day ${index + 1} starts (IST)` : "Starts at (IST)"}>
+                    <Input
+                      type="datetime-local"
+                      value={day.startsAt}
+                      onChange={(event) => setDay(day.key, "startsAt", event.target.value)}
+                      required
+                    />
+                  </Field>
+                  <Field label="Minutes">
+                    <Input
+                      type="number"
+                      min={5}
+                      max={720}
+                      value={day.durationMinutes}
+                      onChange={(event) => setDay(day.key, "durationMinutes", event.target.value)}
+                      required
+                    />
+                  </Field>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Remove day ${index + 1}`}
+                    disabled={days.length === 1}
+                    onClick={() => setDays((current) => current.filter((d) => d.key !== day.key))}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="justify-self-start"
+                disabled={days.length >= 14}
+                onClick={() =>
+                  setDays((current) => [
+                    ...current,
+                    { key: newKey(), startsAt: "", durationMinutes: current[current.length - 1]?.durationMinutes ?? "90" },
+                  ])
+                }
+              >
+                <Plus className="size-4" /> Add another day
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                One seat covers every day, with the same joining link. Each day gets its own reminder email.
+              </p>
+            </div>
             <Field label="Platform" className="sm:col-span-2">
               <Input value={values.platformLabel} onChange={set("platformLabel")} required maxLength={160} />
             </Field>

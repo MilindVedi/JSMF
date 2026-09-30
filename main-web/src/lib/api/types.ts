@@ -17,8 +17,10 @@ export interface LiveSession {
   title: string;
   tagline: string | null;
   description: string | null;
+  /** The first day's start. */
   startsAt: string;
-  durationMinutes: number;
+  /** In start order; one entry for a one-day session. */
+  days: Array<{ startsAt: string; durationMinutes: number }>;
   platformLabel: string;
   highlights: string[];
   perkText: string | null;

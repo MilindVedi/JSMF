@@ -88,7 +88,8 @@ export default function EditSessionPage({ params }: { params: Promise<{ id: stri
             <StatusBadge status={session.status} />
           </div>
           <p className="text-sm text-muted-foreground">
-            {istLabel(session.startsAt)} IST · {session.seatsTaken} paid
+            {istLabel(session.startsAt)} IST
+            {session.days.length > 1 ? ` · ${session.days.length} days` : ""} · {session.seatsTaken} paid
             {session.capacity ? ` of ${session.capacity} seats` : " (unlimited seats)"}
           </p>
         </div>
@@ -162,7 +163,11 @@ export default function EditSessionPage({ params }: { params: Promise<{ id: stri
                       )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {row.reminderSentAt ? istLabel(row.reminderSentAt) : "—"}
+                      {row.lastReminderSentAt
+                        ? session.days.length > 1
+                          ? `${row.remindersSent} of ${session.days.length} days · last ${istLabel(row.lastReminderSentAt)}`
+                          : istLabel(row.lastReminderSentAt)
+                        : "—"}
                     </TableCell>
                   </TableRow>
                 ))}

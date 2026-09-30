@@ -12,7 +12,7 @@ import {
   type OrderPaidEvent,
   type OrderPaidListener,
 } from '../../orders/application/order-events';
-import { firstName, formatMoney, sessionWhenLabel } from '../domain/session-display';
+import { firstName, formatMoney, sessionDayLabel, sessionWhenLines } from '../domain/session-display';
 
 /**
  * The two emails a live session sends: the confirmation when a seat is paid
@@ -52,6 +52,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
     const session = await this.prisma.liveSession.findUnique({
       where: { productId: item.productId },
       include: {
+        days: { orderBy: { startsAt: 'asc' } },
         product: {
           include: {
             bundleItems: {
@@ -68,7 +69,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
     const rendered = liveSessionConfirmation({
       attendeeName: firstName(event.customerName),
       sessionTitle: session.product.title,
-      whenLabel: sessionWhenLabel(session.startsAt, session.durationMinutes),
+      whenLines: sessionWhenLines(session.days),
       platformLabel: session.platformLabel,
       joinUrl: session.joinUrl,
       totalFormatted: formatMoney(event.totalAmountMinor, event.currency),
@@ -104,13 +105,15 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
   }
 
   /**
-   * Sends reminders for sessions starting within the lead time. Run by the
-   * same external 5-minute clock as payment reconciliation.
+   * Sends reminders for session days starting within the lead time. Run by the
+   * same external 5-minute clock as payment reconciliation. A multi-day
+   * session is reminded once per day, before each day.
    *
-   * Each registration is **claimed** before its email is sent — `reminder_sent_at`
-   * set only if still null — so two overlapping sweeps cannot both email the
-   * same person. A failed send releases the claim, and the next sweep retries
-   * until the session starts.
+   * Each reminder is **claimed** before its email is sent, by inserting its
+   * (registration, day) row — the primary key lets only one insert win — so two
+   * overlapping sweeps cannot both email the same person for the same day. A
+   * failed send deletes the claim, and the next sweep retries until that day
+   * starts.
    *
    * A session with no joining link yet is skipped, not reminded: a reminder
    * without the link is the one email that makes people miss the session. It
@@ -121,23 +124,32 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
     const lead = this.config.get('SESSION_REMINDER_LEAD_MINUTES');
     const horizon = new Date(now.getTime() + lead * 60_000);
 
-    const sessions = await this.prisma.liveSession.findMany({
+    const days = await this.prisma.liveSessionDay.findMany({
       where: {
         startsAt: { gt: now, lte: horizon },
-        product: { status: ProductStatus.PUBLISHED, deletedAt: null },
+        liveSession: { product: { status: ProductStatus.PUBLISHED, deletedAt: null } },
       },
-      include: { product: { select: { title: true } } },
+      include: {
+        liveSession: {
+          include: {
+            product: { select: { title: true } },
+            days: { select: { id: true }, orderBy: { startsAt: 'asc' } },
+          },
+        },
+      },
     });
 
     let sent = 0;
     let failed = 0;
     let awaitingLink = 0;
 
-    for (const session of sessions) {
+    for (const day of days) {
+      const session = day.liveSession;
+
       const due = await this.prisma.sessionRegistration.findMany({
         where: {
           liveSessionId: session.productId,
-          reminderSentAt: null,
+          dayReminders: { none: { liveSessionDayId: day.id } },
           // Only seat holders: a registration row alone may be an abandoned checkout.
           user: {
             entitlements: { some: { productId: session.productId, status: EntitlementStatus.ACTIVE } },
@@ -151,25 +163,29 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
       if (!session.joinUrl) {
         awaitingLink += due.length;
         this.logger.warn(
-          `Session "${session.product.title}" starts ${session.startsAt.toISOString()} with ` +
+          `Session "${session.product.title}" has a day starting ${day.startsAt.toISOString()} with ` +
             `${due.length} seat holder(s) and no joining link — reminders held until one is added`,
         );
         continue;
       }
 
+      const total = session.days.length;
+      const dayMarker = total > 1 ? `Day ${session.days.findIndex((d) => d.id === day.id) + 1} of ${total}` : null;
+
       for (const registration of due) {
         if (!registration.user.email) continue;
 
-        const claimed = await this.prisma.sessionRegistration.updateMany({
-          where: { id: registration.id, reminderSentAt: null },
-          data: { reminderSentAt: new Date() },
+        const claimed = await this.prisma.sessionDayReminder.createMany({
+          data: [{ registrationId: registration.id, liveSessionDayId: day.id }],
+          skipDuplicates: true,
         });
         if (claimed.count !== 1) continue;
 
         const rendered = liveSessionReminder({
           attendeeName: firstName(registration.user.name),
           sessionTitle: session.product.title,
-          whenLabel: sessionWhenLabel(session.startsAt, session.durationMinutes),
+          whenLabel: sessionDayLabel(day),
+          dayMarker,
           platformLabel: session.platformLabel,
           joinUrl: session.joinUrl,
         });
@@ -186,9 +202,10 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
           sent++;
         } else {
           failed++;
-          await this.prisma.sessionRegistration.update({
-            where: { id: registration.id },
-            data: { reminderSentAt: null },
+          await this.prisma.sessionDayReminder.delete({
+            where: {
+              registrationId_liveSessionDayId: { registrationId: registration.id, liveSessionDayId: day.id },
+            },
           });
         }
       }
@@ -198,6 +215,6 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
       this.logger.log(`Session reminders: ${sent} sent, ${failed} failed (will retry)`);
     }
 
-    return { sessions: sessions.length, sent, failed, awaitingLink };
+    return { days: days.length, sent, failed, awaitingLink };
   }
 }

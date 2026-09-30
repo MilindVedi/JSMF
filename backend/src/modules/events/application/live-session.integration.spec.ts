@@ -80,13 +80,17 @@ async function createUser(email: string | null = `session-spec-${randomUUID()}@j
   return user;
 }
 
-async function createSession(overrides: { capacity?: number | null } = {}) {
+const HOUR = 3600_000;
+const inHours = (hours: number) => new Date(Date.now() + hours * HOUR).toISOString();
+
+async function createSession(
+  overrides: { capacity?: number | null; days?: Array<{ startsAt: string; durationMinutes: number }> } = {},
+) {
   const session = await sessions.create(
     {
       title: `Session spec ${randomUUID().slice(0, 8)}`,
       tagline: 'A test session',
-      startsAt: new Date(Date.now() + 2 * 24 * 3600_000).toISOString(),
-      durationMinutes: 90,
+      days: overrides.days ?? [{ startsAt: inHours(48), durationMinutes: 90 }],
       platformLabel: 'Live on Zoom',
       capacity: overrides.capacity ?? null,
       priceAmountMinor: PRICE.toString(),
@@ -135,7 +139,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const productIds = created.productIds;
+  await prisma.sessionDayReminder.deleteMany({ where: { day: { liveSessionId: { in: productIds } } } });
   await prisma.sessionRegistration.deleteMany({ where: { liveSessionId: { in: productIds } } });
+  await prisma.liveSessionDay.deleteMany({ where: { liveSessionId: { in: productIds } } });
   await prisma.productBundleItem.deleteMany({ where: { bundleProductId: { in: productIds } } });
   await prisma.liveSession.deleteMany({ where: { productId: { in: productIds } } });
 
@@ -245,10 +251,11 @@ describe('live sessions', () => {
     // Registered but never paid: must not be reminded.
     await sessions.register(bystander.id, session.id, answers);
 
-    await prisma.liveSession.update({
-      where: { productId: session.id },
-      data: { startsAt: new Date(Date.now() + 30 * 60_000), joinUrl: null },
-    });
+    await sessions.update(
+      session.id,
+      { days: [{ startsAt: inHours(0.5), durationMinutes: 90 }], joinUrl: null },
+      { id: adminId },
+    );
 
     sentMail.length = 0;
     await notifications.sendDueReminders();
@@ -262,5 +269,115 @@ describe('live sessions', () => {
     expect(reminders).toHaveLength(1);
     expect(reminders[0].to.email).toBe(buyer.email);
     expect(reminders[0].text).toContain('https://zoom.us/j/123');
+    expect(reminders[0].subject).not.toContain('Day 1');
+  });
+
+  it('stores multi-day sessions in day order and lists every day in the confirmation', async () => {
+    const session = await createSession({
+      days: [
+        { startsAt: inHours(72), durationMinutes: 60 },
+        { startsAt: inHours(24), durationMinutes: 90 },
+        { startsAt: inHours(48), durationMinutes: 120 },
+      ],
+    });
+
+    expect(session.days.map((d) => d.durationMinutes)).toEqual([90, 120, 60]);
+    expect(new Date(session.startsAt).getTime()).toBe(new Date(session.days[0].startsAt).getTime());
+
+    const buyer = await createUser();
+    sentMail.length = 0;
+    await registerAndPay(buyer.id, session.id);
+
+    const [confirmation] = sentMail;
+    expect(confirmation.text).toContain('for all 3 days');
+    expect(confirmation.text).toContain('Day 1 ·');
+    expect(confirmation.text).toContain('Day 3 ·');
+  });
+
+  it('refuses days that overlap', async () => {
+    await expect(
+      createSession({
+        days: [
+          { startsAt: inHours(24), durationMinutes: 120 },
+          { startsAt: inHours(25), durationMinutes: 60 },
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('reminds before each day, once, and again for a day that is rescheduled', async () => {
+    const session = await createSession({
+      days: [
+        { startsAt: inHours(0.5), durationMinutes: 20 },
+        { startsAt: inHours(24), durationMinutes: 60 },
+      ],
+    });
+    await sessions.update(session.id, { joinUrl: 'https://zoom.us/j/multi' }, { id: adminId });
+    const buyer = await createUser();
+    await registerAndPay(buyer.id, session.id);
+    const [day1, day2] = session.days;
+
+    const reminded = () => sentMail.filter((m) => m.tag === 'session-reminder').map((m) => m.subject);
+
+    sentMail.length = 0;
+    await notifications.sendDueReminders();
+    await notifications.sendDueReminders();
+    expect(reminded()).toEqual([expect.stringContaining('Day 1 of 2')]);
+
+    // Day 2 moved to within the lead time: its own reminder, day 1 untouched.
+    const day2Soon = inHours(0.9);
+    sentMail.length = 0;
+    await sessions.update(
+      session.id,
+      {
+        days: [
+          { id: day1.id, startsAt: new Date(day1.startsAt).toISOString(), durationMinutes: 20 },
+          { id: day2.id, startsAt: day2Soon, durationMinutes: 60 },
+        ],
+      },
+      { id: adminId },
+    );
+    await notifications.sendDueReminders();
+    expect(reminded()).toEqual([expect.stringContaining('Day 2 of 2')]);
+
+    // Day 1 rescheduled: the reminder already sent was for the old time, so it goes again.
+    sentMail.length = 0;
+    await sessions.update(
+      session.id,
+      {
+        days: [
+          { id: day1.id, startsAt: inHours(0.25), durationMinutes: 30 },
+          { id: day2.id, startsAt: day2Soon, durationMinutes: 60 },
+        ],
+      },
+      { id: adminId },
+    );
+    await notifications.sendDueReminders();
+    expect(reminded()).toEqual([expect.stringContaining('Day 1 of 2')]);
+  });
+
+  it('postpones every day by one day, even when a day moves onto another day\'s old time', async () => {
+    const session = await createSession({
+      days: [
+        { startsAt: inHours(24), durationMinutes: 60 },
+        { startsAt: inHours(48), durationMinutes: 60 },
+      ],
+    });
+    const [day1, day2] = session.days;
+    const shift = (iso: string | Date) => new Date(new Date(iso).getTime() + 24 * HOUR).toISOString();
+
+    const moved = await sessions.update(
+      session.id,
+      {
+        days: [
+          { id: day1.id, startsAt: shift(day1.startsAt), durationMinutes: 60 },
+          { id: day2.id, startsAt: shift(day2.startsAt), durationMinutes: 60 },
+        ],
+      },
+      { id: adminId },
+    );
+
+    expect(moved.days.map((d) => d.id)).toEqual([day1.id, day2.id]);
+    expect(new Date(moved.startsAt).toISOString()).toBe(shift(day1.startsAt));
   });
 });

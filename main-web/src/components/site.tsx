@@ -2,10 +2,9 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ExternalLink, LogIn, LogOut, Menu, Send, X } from "lucide-react";
+import { LogIn, LogOut, Mail, Menu, X } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
-import { InstagramIcon, YouTubeIcon } from "@/components/social-icons";
-import { links } from "@/lib/site-content";
+import { ContactDialog } from "@/components/contact-dialog";
 import { useSessionStore } from "@/store/session-store";
 
 function Brand() {
@@ -86,19 +85,18 @@ function SiteHeader() {
 }
 
 export function SocialLinks() {
-  const item = buttonVariants({ variant: "secondary", size: "sm" });
+  const [open, setOpen] = useState(false);
   return (
-    <div className="flex flex-wrap justify-center gap-3">
-      <a href={links.telegram} target="_blank" rel="noreferrer" className={item}>
-        <Send size={15} /> Telegram <ExternalLink size={12} />
-      </a>
-      <a href={links.youtube} target="_blank" rel="noreferrer" className={item}>
-        <YouTubeIcon size={15} /> YouTube <ExternalLink size={12} />
-      </a>
-      <a href={links.instagram} target="_blank" rel="noreferrer" className={item}>
-        <InstagramIcon size={15} /> Instagram <ExternalLink size={12} />
-      </a>
-    </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={buttonVariants({ variant: "secondary", size: "sm" })}
+      >
+        <Mail size={15} /> Contact us
+      </button>
+      <ContactDialog open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }
 
@@ -106,11 +104,11 @@ function SiteFooter() {
   return (
     <footer className="border-t border-border bg-card py-10">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 lg:px-8">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
+          <SocialLinks />
           <p className="text-sm font-semibold text-brand-deep">
             Doctor-led preparation for NEET-PG, FMGE and INI-CET.
           </p>
-          <SocialLinks />
         </div>
         <div className="flex flex-col gap-2 border-t border-border pt-5 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
           <p>© {new Date().getFullYear()} JSMF · Dr. Angad Rai</p>

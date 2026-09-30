@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsDateString,
   IsIn,
@@ -15,14 +16,35 @@ import {
   Min,
   MinLength,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import { EXAM_OPTIONS, STAGE_OPTIONS } from '../../domain/session-display';
 
 const MINOR_UNITS = /^\d{1,12}$/;
 const HTTP_URL = /^https?:\/\/\S+$/;
 
+export const MAX_SESSION_DAYS = 14;
+
+export class SessionDayDto {
+  @ApiPropertyOptional({ description: 'An existing day being edited. Omit for a new day.' })
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
+  @ApiProperty({ example: '2026-10-12T19:30:00+05:30' })
+  @IsDateString({}, { message: 'Each day needs a valid start date and time' })
+  startsAt!: string;
+
+  @ApiProperty({ example: 90 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(5)
+  @Max(12 * 60)
+  durationMinutes!: number;
+}
+
 export class CreateLiveSessionDto {
-  @ApiProperty({ example: 'From MBBS to AIR 925: How to Prepare Smarter, Not Longer' })
+  @ApiProperty({ example: 'From MBBS to Your Dream Rank: How to Prepare Smarter, Not Longer' })
   @IsString()
   @MinLength(3)
   @MaxLength(200)
@@ -45,16 +67,16 @@ export class CreateLiveSessionDto {
   @MaxLength(5000)
   description?: string;
 
-  @ApiProperty({ example: '2026-10-12T19:30:00+05:30' })
-  @IsDateString({}, { message: 'startsAt must be an ISO date-time' })
-  startsAt!: string;
-
-  @ApiProperty({ example: 90 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(5)
-  @Max(12 * 60)
-  durationMinutes!: number;
+  @ApiProperty({
+    type: [SessionDayDto],
+    description: 'One entry per day. The whole list is sent on every save; days left out are removed.',
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'A session needs at least one day' })
+  @ArrayMaxSize(MAX_SESSION_DAYS)
+  @ValidateNested({ each: true })
+  @Type(() => SessionDayDto)
+  days!: SessionDayDto[];
 
   @ApiProperty({ example: 'Live on Zoom · Link sent on mail' })
   @IsString()
