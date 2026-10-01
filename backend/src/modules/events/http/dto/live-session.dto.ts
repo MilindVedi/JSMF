@@ -93,6 +93,19 @@ export class CreateLiveSessionDto {
   @Max(100_000)
   capacity?: number | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'TEMPORARY external-checkout scarcity number for /prep-kit. Null = no seats line, 0 = fully booked.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(100_000)
+  displaySeats?: number | null;
+
   @ApiProperty({ example: '9900', description: 'Paise, as a string. Always paid, so > 0.' })
   @Matches(MINOR_UNITS, { message: 'priceAmountMinor must be a whole number of paise' })
   priceAmountMinor!: string;

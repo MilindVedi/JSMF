@@ -25,6 +25,7 @@ export interface LiveSessionInput {
   days?: SessionDayInput[];
   platformLabel?: string;
   capacity?: number | null;
+  displaySeats?: number | null;
   priceAmountMinor?: string;
   compareAtAmountMinor?: string | null;
   joinUrl?: string | null;
@@ -314,6 +315,7 @@ export class LiveSessionService {
             startsAt: days[0].startsAt,
             platformLabel: input.platformLabel!,
             capacity: input.capacity ?? null,
+            displaySeats: input.displaySeats ?? null,
             joinUrl: blankToNull(input.joinUrl) ?? null,
             recordingUrl: blankToNull(input.recordingUrl) ?? null,
             highlights: input.highlights ?? [],
@@ -381,6 +383,7 @@ export class LiveSessionService {
             startsAt: days?.[0].startsAt,
             platformLabel: input.platformLabel,
             capacity: input.capacity,
+            displaySeats: input.displaySeats,
             joinUrl: blankToNull(input.joinUrl),
             recordingUrl: blankToNull(input.recordingUrl),
             highlights: input.highlights,
@@ -588,6 +591,7 @@ export class LiveSessionService {
       compareAtAmountMinor: product.compareAtAmountMinor,
       currency: product.currency,
       capacity: session.capacity,
+      displaySeats: session.displaySeats,
       seatsRemaining,
       registrationOpen: !started && (seatsRemaining === null || seatsRemaining > 0),
       // The joining link is never here. It goes only to seat holders, by email.
@@ -610,6 +614,7 @@ export class LiveSessionService {
       days: session.days.map((day) => ({ id: day.id, startsAt: day.startsAt, durationMinutes: day.durationMinutes })),
       platformLabel: session.platformLabel,
       capacity: session.capacity,
+      displaySeats: session.displaySeats,
       seatsTaken: taken,
       joinUrl: session.joinUrl,
       recordingUrl: session.recordingUrl,

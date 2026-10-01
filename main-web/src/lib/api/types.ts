@@ -28,6 +28,8 @@ export interface LiveSession {
   compareAtAmountMinor: string | null;
   currency: string;
   capacity: number | null;
+  /** Temporary external-checkout scarcity number. Null = no line, 0 = fully booked. */
+  displaySeats: number | null;
   seatsRemaining: number | null;
   registrationOpen: boolean;
   recordingUrl: string | null;

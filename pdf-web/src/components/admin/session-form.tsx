@@ -61,6 +61,8 @@ export function SessionForm({
     description: session?.description ?? "",
     platformLabel: session?.platformLabel ?? "Live on Zoom · Link sent on mail",
     capacity: session?.capacity ? String(session.capacity) : "",
+    displaySeats:
+      session?.displaySeats !== null && session?.displaySeats !== undefined ? String(session.displaySeats) : "",
     price: paiseToRupees(session?.priceAmountMinor ?? null),
     compareAt: paiseToRupees(session?.compareAtAmountMinor ?? null),
     joinUrl: session?.joinUrl ?? "",
@@ -119,6 +121,7 @@ export function SessionForm({
         })),
         platformLabel: values.platformLabel.trim(),
         capacity: values.capacity ? Number(values.capacity) : null,
+        displaySeats: values.displaySeats.trim() === "" ? null : Number(values.displaySeats),
         priceAmountMinor: price,
         compareAtAmountMinor: rupeesToPaise(values.compareAt),
         joinUrl: values.joinUrl.trim() || null,
@@ -249,8 +252,14 @@ export function SessionForm({
             <Field label="Struck-through price (₹)" hint="Optional.">
               <Input inputMode="decimal" value={values.compareAt} onChange={set("compareAt")} placeholder="499" />
             </Field>
-            <Field label="Seats" hint="Blank = unlimited." className="sm:col-span-2">
+            <Field label="Seats" hint="Blank = unlimited.">
               <Input type="number" min={1} value={values.capacity} onChange={set("capacity")} />
+            </Field>
+            <Field
+              label="Displayed seats (Razorpay phase)"
+              hint="Temporary. Shown on /prep-kit only. Blank = no seats line, 0 = fully booked."
+            >
+              <Input type="number" min={0} value={values.displaySeats} onChange={set("displaySeats")} />
             </Field>
           </CardContent>
         </Card>

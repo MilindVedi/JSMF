@@ -1012,6 +1012,11 @@ model LiveSession {
   /// so this is the only number here that can go stale — and only by an admin
   /// changing it.
   capacity        Int?
+  /// TEMPORARY (external Razorpay Payment Page phase): a manually-set "seats
+  /// available" number shown on /prep-kit to signal demand. NOT real capacity
+  /// and not derived from entitlements. NULL = show no seats line, 0 = fully
+  /// booked. Remove this column when the external checkout flow is retired.
+  displaySeats    Int?     @map("display_seats")
   /// The joining link. Private: sent only to people holding a seat, never in a
   /// public response. Nullable because it is often created days after the
   /// session is announced.

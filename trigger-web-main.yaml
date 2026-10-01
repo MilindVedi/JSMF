@@ -27,6 +27,7 @@ build:
     - $_SERVICE_NAME
     - --platform=managed
     - --image=$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+    - --startup-probe=httpGet.path=/,httpGet.port=8080,initialDelaySeconds=5,periodSeconds=3,failureThreshold=10,timeoutSeconds=3
     - --labels=managed-by=gcp-cloud-build-deploy-cloud-run,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID
     - --region=$_DEPLOY_REGION
     - --quiet

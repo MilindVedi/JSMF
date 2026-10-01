@@ -15,7 +15,6 @@ import {
   MonitorPlay,
   Play,
   Send,
-  Sparkles,
   Stethoscope,
 } from "lucide-react";
 import { FloatingVideo } from "@/components/floating-video";
@@ -377,6 +376,33 @@ function SeatsLine({ session, className = "" }: { session: LiveSession; classNam
   );
 }
 
+/**
+ * The manually-set "seats available" line for the external Razorpay phase.
+ * Driven by the admin's `displaySeats`, not real capacity. Null hides it.
+ */
+function ExternalSeatsLine({ seats }: { seats: number | null }) {
+  if (seats === null) return null;
+
+  const urgent = seats > 0 && seats < 150;
+  let label: string;
+  if (seats === 0) label = "Fully booked";
+  else if (seats < 20) label = `Almost full — only ${seats} seats left!`;
+  else if (seats < 150) label = `Filling fast — only ${seats} seats left`;
+  else if (seats < 200) label = `${seats} seats available`;
+  else label = "200+ seats available";
+
+  const tone = seats === 0 ? "text-muted-foreground" : urgent ? "text-red-600" : "text-emerald-600";
+
+  return (
+    <div className={`mt-4 flex items-center justify-center gap-2 text-sm font-semibold ${tone}`}>
+      {seats !== 0 && (
+        <span className={`h-2 w-2 shrink-0 rounded-full ${urgent ? "bg-red-600" : "bg-emerald-600"}`} />
+      )}
+      <span>{label}</span>
+    </div>
+  );
+}
+
 export function SessionCard({
   session,
   onRegister,
@@ -437,6 +463,8 @@ export function SessionCard({
         <span className="font-display text-3xl font-semibold text-brand-deep">{price}</span>
         {compareAt && <span className="text-sm text-muted-foreground line-through">{compareAt}</span>}
       </div>
+
+      {external && <ExternalSeatsLine seats={session.displaySeats} />}
 
       {session.registrationOpen ? (
         external ? (

@@ -156,6 +156,8 @@ export interface AdminSession {
   days: SessionDay[];
   platformLabel: string;
   capacity: number | null;
+  /** TEMPORARY external-checkout scarcity number for /prep-kit. Null = hidden, 0 = full. */
+  displaySeats: number | null;
   seatsTaken: number;
   joinUrl: string | null;
   recordingUrl: string | null;
@@ -176,6 +178,7 @@ export interface SessionInput {
   days?: Array<{ id?: string; startsAt: string; durationMinutes: number }>;
   platformLabel?: string;
   capacity?: number | null;
+  displaySeats?: number | null;
   priceAmountMinor?: string;
   compareAtAmountMinor?: string | null;
   joinUrl?: string | null;
