@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CheckCircle2, Send } from "lucide-react";
+import { InstagramIcon, YouTubeIcon } from "@/components/social-icons";
 import { SiteLayout } from "@/components/site";
 import { buttonVariants } from "@/components/ui/button";
 import { EXTERNAL_CHECKOUT_NOTICE } from "@/lib/external-checkout";
@@ -37,10 +38,16 @@ export default function BookingSuccessPage() {
           .
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ size: "lg" })}>
-            <Send size={16} /> Join Telegram for updates
+          <a href={links.instagram} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary", size: "lg" })}>
+            <InstagramIcon size={16} /> Instagram
           </a>
-          <Link href="/" className={buttonVariants({ variant: "secondary", size: "lg" })}>
+          <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ size: "lg" })}>
+            <Send size={16} /> Join Telegram
+          </a>
+          <a href={links.youtube} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary", size: "lg" })}>
+            <YouTubeIcon size={16} /> YouTube
+          </a>
+          <Link href="/" className={buttonVariants({ variant: "ghost", size: "lg" })}>
             Back to home
           </Link>
         </div>
