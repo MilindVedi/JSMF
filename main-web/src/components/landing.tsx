@@ -378,10 +378,16 @@ function SeatsLine({ session, className = "" }: { session: LiveSession; classNam
 
 /**
  * The manually-set "seats available" line for the external Razorpay phase.
- * Driven by the admin's `displaySeats`, not real capacity. Null hides it.
+ * Driven by the admin's `displaySeats`, not real capacity. Null/absent hides it.
  */
-function ExternalSeatsLine({ seats, capacity }: { seats: number | null; capacity: number | null }) {
-  if (seats === null) return null;
+function ExternalSeatsLine({
+  seats,
+  capacity,
+}: {
+  seats: number | null | undefined;
+  capacity: number | null;
+}) {
+  if (seats === null || seats === undefined) return null;
 
   // Admin typed in a number at or above total capacity: that's the real count,
   // not scarcity, so show it plainly instead of "less than X".
