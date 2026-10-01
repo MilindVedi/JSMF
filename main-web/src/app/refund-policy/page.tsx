@@ -7,7 +7,10 @@ export default function RefundPolicyPage() {
   return (
     <LegalPage title="Refund & Cancellation Policy">
       <LegalSection heading="Digital Products">
-        <p>Due to the digital nature of our products, purchases are generally non-refundable once access has been provided.</p>
+        <p>
+          JSMF (Jab Studies Met Fun) products are digital. Due to the digital nature of our products, purchases are
+          generally non-refundable once access has been provided.
+        </p>
         <p>
           If you are charged but cannot access your purchased product, contact{" "}
           <a href="mailto:support@jsmf.me" className="font-semibold text-primary">

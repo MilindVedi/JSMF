@@ -8,7 +8,7 @@ export default function TermsPage() {
   return (
     <LegalPage title="Terms & Conditions">
       <LegalSection>
-        <p>By using JSMF, you agree to these Terms &amp; Conditions.</p>
+        <p>By using JSMF (Jab Studies Met Fun), you agree to these Terms &amp; Conditions.</p>
         <p>JSMF provides educational resources, digital products, and online sessions for medical examination preparation.</p>
       </LegalSection>
 

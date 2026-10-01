@@ -36,12 +36,22 @@ import { credentials, links } from "@/lib/site-content";
  * deploy to announce the next one. When no session is upcoming, every CTA
  * falls back to the Telegram channel rather than a dead "Reserve" button.
  */
-export function Landing() {
+export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null }) {
   const router = useRouter();
   const params = useSearchParams();
   const [data, setData] = useState<SessionLanding | null>(null);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState(false);
+
+  /**
+   * While Razorpay is still reviewing the site, every Reserve button goes to
+   * the Razorpay-hosted page instead of opening the registration dialog —
+   * there is no account, seat or email on that route, so the dialog (which
+   * promises all three) would be misleading. Clearing the variable restores it.
+   */
+  const reserve = checkoutUrl
+    ? () => window.location.assign(checkoutUrl)
+    : () => setOpen(true);
 
   // Back from Google sign-in mid-registration (`?register=1`): reopen the
   // dialog once the session has loaded, and drop the flag from the URL so a
@@ -53,13 +63,13 @@ export function Landing() {
       .landing()
       .then((result) => {
         setData(result);
-        if (resume && result.upcoming?.registrationOpen) {
+        if (!checkoutUrl && resume && result.upcoming?.registrationOpen) {
           setOpen(true);
           router.replace("/", { scroll: false });
         }
       })
       .catch(() => setFailed(true));
-  }, [resume, router]);
+  }, [resume, router, checkoutUrl]);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -92,7 +102,7 @@ export function Landing() {
               ) : live ? (
                 <button
                   type="button"
-                  onClick={() => setOpen(true)}
+                  onClick={reserve}
                   className="cta-spot flex w-full max-w-md items-center justify-center gap-2.5 rounded-full py-4 px-8 font-display text-lg font-semibold text-white active:translate-y-0"
                 >
                   <span className="cta-shine" aria-hidden />
@@ -109,34 +119,11 @@ export function Landing() {
                 </a>
               )}
 
-              {live && session && <SeatsLine session={session} className="mt-4" />}
+              {!checkoutUrl && live && session && <SeatsLine session={session} className="mt-4" />}
             </div>
           </div>
 
-          <div className="relative mx-auto w-full max-w-sm lg:col-span-5">
-            <div className="absolute -top-3 right-0 z-20 flex items-center gap-2">
-              <a href={links.instagram} target="_blank" rel="noreferrer" aria-label="Instagram" className="social-orb"><InstagramIcon size={16} /></a>
-              <a href={links.youtube} target="_blank" rel="noreferrer" aria-label="YouTube" className="social-orb"><YouTubeIcon size={16} /></a>
-              <a href={links.telegram} target="_blank" rel="noreferrer" aria-label="Telegram" className="social-orb"><TelegramIcon size={16} /></a>
-            </div>
-            <div className="rank-badge"><Award size={13} /> AIR 925 · NEET-PG 2026</div>
-            
-            <div className="absolute top-36 -right-6 z-10 hidden flex-col items-end gap-3 sm:flex">
-              <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Award size={13} /> AIR 9 · FMGE 2023</div>
-              <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Stethoscope size={13} /> MBBS · Bronze Medalist</div>
-            </div>
-
-            <div className="portrait-frame">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/angad-bench.png" alt="Dr. Angad Rai" width={1536} height={1024} className="h-full w-full object-cover" />
-            </div>
-            <div className="doctor-credential">
-              <div className="credential-chip absolute -top-3 right-4 z-10 flex w-fit items-center gap-2 shadow-md"><MonitorPlay size={13} /> Live sessions</div>
-              <p className="text-[10px] font-bold uppercase text-primary">Founder &amp; mentor</p>
-              <h2 className="mt-1 font-display font-semibold text-brand-deep">Dr. Angad Rai</h2>
-              <p className="mt-1 text-xs text-muted-foreground">MBBS — Medical Lead, JSMF</p>
-            </div>
-          </div>
+          <DoctorPortrait className="lg:col-span-5" />
         </div>
       </section>
 
@@ -175,7 +162,7 @@ export function Landing() {
               </div>
 
               <div className="lg:col-span-5">
-                <SessionCard session={session} onRegister={() => setOpen(true)} />
+                <SessionCard session={session} onRegister={reserve} external={Boolean(checkoutUrl)} />
               </div>
             </div>
           ) : (
@@ -331,12 +318,12 @@ export function Landing() {
           <h2 className="font-display text-3xl font-semibold leading-tight md:text-4xl">Ready to start preparing smarter?</h2>
           <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed opacity-80">
             {live && session
-              ? `Join Dr. Angad Rai live ${session.days.length > 1 ? `over ${session.days.length} days, from` : "on"} ${dateLabel(session.startsAt)}.${session.included.length ? " The revision planner comes with your seat." : ""}`
+              ? `Join Dr. Angad Rai live ${checkoutUrl ? "— date to be announced" : `${session.days.length > 1 ? `over ${session.days.length} days, from` : "on"} ${dateLabel(session.startsAt)}`}.${session.included.length ? " The revision planner comes with your seat." : ""}`
               : "Follow JSMF so you hear about the next live session the moment it opens."}
           </p>
           <div className="mt-9 flex justify-center">
             {live ? (
-              <Button size="lg" onClick={() => setOpen(true)}>Reserve Your Spot Now <ArrowRight size={17} /></Button>
+              <Button size="lg" onClick={reserve}>Reserve Your Spot Now <ArrowRight size={17} /></Button>
             ) : (
               <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ size: "lg" })}><Send size={16} /> Join Telegram</a>
             )}
@@ -345,6 +332,36 @@ export function Landing() {
       </section>
       <FloatingVideo />
     </SiteLayout>
+  );
+}
+
+/** The portrait card with credentials and social links, shared by the home and /prep-kit pages. */
+export function DoctorPortrait({ className = "" }: { className?: string }) {
+  return (
+    <div className={`relative mx-auto w-full max-w-sm ${className}`}>
+      <div className="absolute -top-3 right-0 z-20 flex items-center gap-2">
+        <a href={links.instagram} target="_blank" rel="noreferrer" aria-label="Instagram" className="social-orb"><InstagramIcon size={16} /></a>
+        <a href={links.youtube} target="_blank" rel="noreferrer" aria-label="YouTube" className="social-orb"><YouTubeIcon size={16} /></a>
+        <a href={links.telegram} target="_blank" rel="noreferrer" aria-label="Telegram" className="social-orb"><TelegramIcon size={16} /></a>
+      </div>
+      <div className="rank-badge"><Award size={13} /> AIR 925 · NEET-PG 2026</div>
+      
+      <div className="absolute top-36 -right-6 z-10 hidden flex-col items-end gap-3 sm:flex">
+        <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Award size={13} /> AIR 9 · FMGE 2023</div>
+        <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Stethoscope size={13} /> MBBS · Bronze Medalist</div>
+      </div>
+
+      <div className="portrait-frame">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/dr-angad-rai.jpg" alt="Dr. Angad Rai" width={800} height={1000} className="h-full w-full object-cover" />
+      </div>
+      <div className="doctor-credential">
+        <div className="credential-chip absolute -top-3 right-4 z-10 flex w-fit items-center gap-2 shadow-md"><MonitorPlay size={13} /> Live sessions</div>
+        <p className="text-[10px] font-bold uppercase text-primary">Founder &amp; mentor</p>
+        <h2 className="mt-1 font-display font-semibold text-brand-deep">Dr. Angad Rai</h2>
+        <p className="mt-1 text-xs text-muted-foreground">MBBS — Medical Lead, JSMF</p>
+      </div>
+    </div>
   );
 }
 
@@ -360,19 +377,30 @@ function SeatsLine({ session, className = "" }: { session: LiveSession; classNam
   );
 }
 
-function SessionCard({ session, onRegister }: { session: LiveSession; onRegister: () => void }) {
+export function SessionCard({
+  session,
+  onRegister,
+  external,
+}: {
+  session: LiveSession;
+  onRegister: () => void;
+  /** Paying on Razorpay's own page: nothing is granted or counted here yet. */
+  external: boolean;
+}) {
   const price = formatMoney(session.priceAmountMinor, session.currency);
   const compareAt = formatMoney(session.compareAtAmountMinor, session.currency);
 
   return (
     <div className="rounded-3xl border border-border bg-card p-7 text-foreground shadow-editorial">
       <div className="grid gap-4">
-        <Detail icon={<CalendarDays size={18} />} label="Date" value={sessionDateLabel(session)} />
+        <Detail icon={<CalendarDays size={18} />} label="Date" value={external ? "To be announced" : sessionDateLabel(session)} />
         <Detail
           icon={<Clock size={18} />}
           label="Time"
           value={
-            session.days.length === 1 ? (
+            external ? (
+              "To be announced"
+            ) : session.days.length === 1 ? (
               timeLabel(session.days[0].startsAt, session.days[0].durationMinutes)
             ) : (
               <span className="grid gap-1">
@@ -397,7 +425,8 @@ function SessionCard({ session, onRegister }: { session: LiveSession; onRegister
             </p>
             {session.included.length > 0 && (
               <p className="mt-1 font-medium opacity-80">
-                A practical PDF to help you structure your revision and focus on high-yield areas. Added to your JSMF account as soon as you pay.
+                A practical PDF to help you structure your revision and focus on high-yield areas.{" "}
+                {external ? "Emailed to you before the session." : "Added to your JSMF account as soon as you pay."}
               </p>
             )}
           </div>
@@ -410,9 +439,20 @@ function SessionCard({ session, onRegister }: { session: LiveSession; onRegister
       </div>
 
       {session.registrationOpen ? (
-        <Button size="lg" className="mt-4 w-full" onClick={onRegister}>
-          Reserve for {price} <ArrowRight size={16} />
-        </Button>
+        external ? (
+          <button
+            type="button"
+            onClick={onRegister}
+            className="cta-spot mt-4 flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base text-white"
+          >
+            <span className="cta-shine" aria-hidden />
+            Book Your Spot Now <ArrowRight size={18} strokeWidth={2.4} className="cta-arrow" />
+          </button>
+        ) : (
+          <Button size="lg" className="mt-4 w-full" onClick={onRegister}>
+            Reserve for {price} <ArrowRight size={16} />
+          </Button>
+        )
       ) : (
         <Button size="lg" className="mt-4 w-full" disabled>
           {session.seatsRemaining === 0 ? "This session is full" : "Registration closed"}
@@ -420,7 +460,7 @@ function SessionCard({ session, onRegister }: { session: LiveSession; onRegister
       )}
       <p className="mt-3 text-center text-[11px] font-semibold text-muted-foreground">
         Secure payment by Razorpay
-        {session.seatsRemaining !== null && session.registrationOpen && (
+        {!external && session.seatsRemaining !== null && session.registrationOpen && (
           <>
             {" · "}
             <span className="font-bold text-destructive">

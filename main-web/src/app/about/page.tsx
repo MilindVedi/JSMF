@@ -9,7 +9,7 @@ export default function AboutPage() {
     <LegalPage title="About JSMF">
       <LegalSection>
         <p>
-          JSMF is a medical education and examination-preparation platform focused on helping students prepare
+          JSMF (Jab Studies Met Fun) is a medical education and examination-preparation platform focused on helping students prepare
           through structured resources, interactive sessions, high-yield revision, and question-solving strategies.
         </p>
         <p>JSMF is medically led by Dr. Angad Rai.</p>

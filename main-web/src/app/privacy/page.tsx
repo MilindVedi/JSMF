@@ -8,7 +8,7 @@ export default function PrivacyPage() {
     <LegalPage title="Privacy Policy">
       <LegalSection>
         <p>
-          JSMF collects information such as your name, email address, mobile number, account details, and purchase
+          JSMF (Jab Studies Met Fun) collects information such as your name, email address, mobile number, account details, and purchase
           information to provide our services.
         </p>
       </LegalSection>

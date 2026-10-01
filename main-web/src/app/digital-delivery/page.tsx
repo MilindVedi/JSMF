@@ -7,7 +7,7 @@ export default function DigitalDeliveryPage() {
   return (
     <LegalPage title="Digital Delivery Policy">
       <LegalSection>
-        <p>All JSMF digital products are delivered electronically.</p>
+        <p>All JSMF (Jab Studies Met Fun) digital products are delivered electronically.</p>
         <p>
           After successful payment verification, purchased resources are added to your JSMF account and made
           available through My Library.

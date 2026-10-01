@@ -7,7 +7,7 @@ export default function DisclaimerPage() {
   return (
     <LegalPage title="Disclaimer">
       <LegalSection>
-        <p>JSMF provides educational content for medical examination preparation.</p>
+        <p>JSMF (Jab Studies Met Fun) provides educational content for medical examination preparation.</p>
         <p>
           The information provided is for educational purposes and should not be considered medical diagnosis,
           treatment, or professional medical advice.

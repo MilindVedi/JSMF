@@ -123,6 +123,48 @@ cron every 5 min  →  POST /internal/session-reminders
 
 ---
 
+## 3b. Temporary: selling through a Razorpay Payment Page
+
+While the switch is on, session cards show the date and time as **To be announced** (it isn't final yet), the price button reads **Book Your Spot Now**, and seat counts are hidden. `/prep-kit` reuses the home page's portrait card (`DoctorPortrait`) and session card (`SessionCard`) and shows the floating video too.
+
+Razorpay will not issue API keys for a website until that website passes
+review, but a **Payment Page** is hosted on `rzp.io` and works immediately. So
+seats can be sold before the integration is approved.
+
+Switched on with one environment variable on `main-web`:
+
+```
+EXTERNAL_CHECKOUT_URL=https://rzp.io/rzp/<your-page>
+```
+
+| Empty (the default) | Set |
+| :--- | :--- |
+| The real flow: sign in, answer three questions, pay in-app, seat + planner granted, confirmation and reminder emails sent. | Every Reserve button opens the Razorpay page instead. `/prep-kit` becomes a shareable page for Telegram, and Razorpay returns people to `/booking-success`. |
+
+Read **server-side** and passed down as a prop, deliberately: a `NEXT_PUBLIC_`
+value is inlined into the client bundle at build time, so switching it would
+need a rebuilt image rather than an environment change.
+
+**What this route does not do.** Nothing is recorded here — no account, no
+order, no entitlement, no email, and the seat count cannot move, so the
+"seats remaining" line and the registration dialog are hidden while it is on.
+The attendee list lives in the Razorpay dashboard and is fulfilled by hand.
+`/booking-success` grants nothing and is `noindex`: anyone can open that URL,
+so it is a thank-you message only, never proof of payment.
+
+**Turning it off is the whole exit plan.** Clear the variable and the real flow
+returns unchanged — nothing was removed to make room for this. Delete
+`src/lib/external-checkout.ts`, `/prep-kit` and `/booking-success` once the site is
+approved.
+
+Add the same custom fields on the Razorpay page that the real form collects
+(name, email, WhatsApp, exam, stage), and set its redirect URL to
+`https://jsmf.me/booking-success`. The price and title on that page are a
+second copy of what the admin panel holds — change one and the other does not
+follow.
+
+---
+
 ## 4. API
 
 | Route | Auth | Purpose |

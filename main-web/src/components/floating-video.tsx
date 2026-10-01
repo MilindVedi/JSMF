@@ -103,7 +103,7 @@ export function FloatingVideo() {
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
-      className={`fixed right-4 bottom-4 z-40 w-[min(320px,calc(100vw-32px))] touch-none ${
+      className={`fixed right-4 bottom-4 z-40 w-[min(240px,calc(100vw-32px))] touch-none ${
         dragging ? "cursor-grabbing select-none" : "cursor-grab"
       }`}
     >
