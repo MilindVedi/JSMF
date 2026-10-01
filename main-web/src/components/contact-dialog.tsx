@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Clock, Copy, Mail, X } from "lucide-react";
+import { Check, Clock, Copy, Mail, MapPin, X } from "lucide-react";
 import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/social-icons";
-import { links, supportEmail } from "@/lib/site-content";
+import { businessAddress, links, supportEmail } from "@/lib/site-content";
 
 /** How to reach JSMF: email first, the channels underneath. */
 export function ContactDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -89,6 +89,16 @@ export function ContactDialog({ open, onClose }: { open: boolean; onClose: () =>
         <p className="mt-5 inline-flex items-center gap-2 text-xs text-muted-foreground">
           <Clock size={14} /> Response time: usually 1–2 working days
         </p>
+
+        <a
+          href={businessAddress.mapsUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 flex items-start justify-center gap-2 text-xs text-muted-foreground hover:text-primary"
+        >
+          <MapPin size={14} className="mt-0.5 shrink-0" />
+          <span>{businessAddress.lines.join(", ")}</span>
+        </a>
 
         <div className="mt-6 border-t border-border pt-5">
           <p className="text-xs font-bold uppercase text-muted-foreground">Or follow along</p>

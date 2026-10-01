@@ -100,6 +100,15 @@ export function SocialLinks() {
   );
 }
 
+const LEGAL_LINKS = [
+  { href: "/about", label: "About Us" },
+  { href: "/privacy", label: "Privacy Policy" },
+  { href: "/terms", label: "Terms & Conditions" },
+  { href: "/refund-policy", label: "Refund & Cancellation" },
+  { href: "/digital-delivery", label: "Digital Delivery" },
+  { href: "/disclaimer", label: "Disclaimer" },
+];
+
 function SiteFooter() {
   return (
     <footer className="border-t border-border bg-card py-10">
@@ -110,7 +119,14 @@ function SiteFooter() {
             Doctor-led preparation for NEET-PG, FMGE and INI-CET.
           </p>
         </div>
-        <div className="flex flex-col gap-2 border-t border-border pt-5 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
+        <nav className="flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-5 text-xs font-semibold text-muted-foreground">
+          {LEGAL_LINKS.map((link) => (
+            <Link key={link.href} href={link.href} className="hover:text-primary">
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+        <div className="flex flex-col gap-2 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
           <p>© {new Date().getFullYear()} JSMF · Dr. Angad Rai</p>
           <p>JSMF is not affiliated with NBEMS, AIIMS, or any exam-conducting body.</p>
         </div>

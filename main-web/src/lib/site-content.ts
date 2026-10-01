@@ -5,6 +5,12 @@
  */
 export const supportEmail = "support@jsmf.me";
 
+/** The registered/operating address shown on Contact Us and About Us, for payment-provider verification. */
+export const businessAddress = {
+  lines: ["Angad Niwas, House No 125, Sector 118", "near TDI Park Street Mall", "S.A.S. Nagar, Mohali, Punjab 160055"],
+  mapsUrl: "https://maps.app.goo.gl/MRtfC9ZhCcVppzsu6",
+};
+
 export const links = {
   telegram: "https://t.me/JABSTUDIESMETFUN",
   youtube: "https://www.youtube.com/@jsmf",
