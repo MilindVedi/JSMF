@@ -255,14 +255,12 @@ export function SessionForm({
             <Field label="Seats" hint="Blank = unlimited.">
               <Input type="number" min={1} value={values.capacity} onChange={set("capacity")} />
             </Field>
-            {process.env.NEXT_PUBLIC_EXTERNAL_CHECKOUT_RAZORPAY === "true" && (
-              <Field
-                label="Displayed seats (Razorpay phase)"
-                hint="Temporary. Shown on /prep-kit only. Blank = no seats line, 0 = fully booked."
-              >
-                <Input type="number" min={0} value={values.displaySeats} onChange={set("displaySeats")} />
-              </Field>
-            )}
+            <Field
+              label="Displayed seats (Razorpay phase)"
+              hint="Temporary. Shown on /prep-kit only. Blank = no seats line, 0 = fully booked."
+            >
+              <Input type="number" min={0} value={values.displaySeats} onChange={set("displaySeats")} />
+            </Field>
           </CardContent>
         </Card>
 
