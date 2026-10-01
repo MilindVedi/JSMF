@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2, Send } from "lucide-react";
+import { ArrowRight, CheckCircle2, Loader2, Send } from "lucide-react";
 import { SiteLayout } from "@/components/site";
 import { FloatingVideo } from "@/components/floating-video";
 import { DoctorPortrait, SessionCard } from "@/components/landing";
@@ -40,9 +40,22 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
       <section className="bg-brand-deep py-16 text-brand-on-deep">
         <div className="mx-auto grid max-w-6xl items-start gap-10 px-5 lg:grid-cols-12 lg:px-8">
           <div className="lg:col-span-7">
-            <span className="inline-flex items-center gap-2 rounded-full bg-brand-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
-              {loading ? "Loading" : session ? "Upcoming live session" : "Next session coming soon"}
-            </span>
+            <div className="flex flex-wrap items-center gap-4">
+              <span className="inline-flex items-center gap-2 rounded-full bg-brand-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
+                {loading ? "Loading" : session ? "Upcoming live session" : "Next session coming soon"}
+              </span>
+              {session && (
+                <button
+                  type="button"
+                  onClick={book}
+                  className="cta-spot inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm text-white"
+                >
+                  <span className="cta-shine" aria-hidden />
+                  Book Your Spot Now
+                  <ArrowRight size={18} strokeWidth={2.4} className="cta-arrow" />
+                </button>
+              )}
+            </div>
 
             {loading ? (
               <p className="mt-8 flex items-center gap-2 opacity-80">
