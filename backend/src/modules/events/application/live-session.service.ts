@@ -25,6 +25,7 @@ export interface LiveSessionInput {
   days?: SessionDayInput[];
   platformLabel?: string;
   capacity?: number | null;
+  showSeats?: boolean;
   displaySeats?: number | null;
   priceAmountMinor?: string;
   compareAtAmountMinor?: string | null;
@@ -315,6 +316,7 @@ export class LiveSessionService {
             startsAt: days[0].startsAt,
             platformLabel: input.platformLabel!,
             capacity: input.capacity ?? null,
+            showSeats: input.showSeats ?? true,
             displaySeats: input.displaySeats ?? null,
             joinUrl: blankToNull(input.joinUrl) ?? null,
             recordingUrl: blankToNull(input.recordingUrl) ?? null,
@@ -383,6 +385,7 @@ export class LiveSessionService {
             startsAt: days?.[0].startsAt,
             platformLabel: input.platformLabel,
             capacity: input.capacity,
+            showSeats: input.showSeats,
             displaySeats: input.displaySeats,
             joinUrl: blankToNull(input.joinUrl),
             recordingUrl: blankToNull(input.recordingUrl),
@@ -591,8 +594,8 @@ export class LiveSessionService {
       compareAtAmountMinor: product.compareAtAmountMinor,
       currency: product.currency,
       capacity: session.capacity,
-      displaySeats: session.displaySeats,
-      seatsRemaining,
+      displaySeats: session.showSeats ? session.displaySeats : null,
+      seatsRemaining: session.showSeats ? seatsRemaining : null,
       registrationOpen: !started && (seatsRemaining === null || seatsRemaining > 0),
       // The joining link is never here. It goes only to seat holders, by email.
       recordingUrl: started ? session.recordingUrl : null,
@@ -614,6 +617,7 @@ export class LiveSessionService {
       days: session.days.map((day) => ({ id: day.id, startsAt: day.startsAt, durationMinutes: day.durationMinutes })),
       platformLabel: session.platformLabel,
       capacity: session.capacity,
+      showSeats: session.showSeats,
       displaySeats: session.displaySeats,
       seatsTaken: taken,
       joinUrl: session.joinUrl,

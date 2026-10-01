@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsIn,
   IsInt,
@@ -92,6 +93,14 @@ export class CreateLiveSessionDto {
   @Min(1)
   @Max(100_000)
   capacity?: number | null;
+
+  @ApiPropertyOptional({
+    description: 'When false, seat counts (seatsRemaining and displaySeats) are hidden from the public API.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  showSeats?: boolean;
 
   @ApiPropertyOptional({
     nullable: true,

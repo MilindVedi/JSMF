@@ -156,6 +156,8 @@ export interface AdminSession {
   days: SessionDay[];
   platformLabel: string;
   capacity: number | null;
+  /** When false, seat counts are hidden from the public website. */
+  showSeats: boolean;
   /** TEMPORARY external-checkout scarcity number for /prep-kit. Null = hidden, 0 = full. */
   displaySeats: number | null;
   seatsTaken: number;
@@ -178,6 +180,7 @@ export interface SessionInput {
   days?: Array<{ id?: string; startsAt: string; durationMinutes: number }>;
   platformLabel?: string;
   capacity?: number | null;
+  showSeats?: boolean;
   displaySeats?: number | null;
   priceAmountMinor?: string;
   compareAtAmountMinor?: string | null;

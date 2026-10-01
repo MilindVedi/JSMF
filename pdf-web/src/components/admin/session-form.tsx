@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { adminApi, type AdminSession, type SessionInput } from "@/lib/api/admin";
 import type { ProductListItem } from "@/lib/api/types";
@@ -61,6 +62,7 @@ export function SessionForm({
     description: session?.description ?? "",
     platformLabel: session?.platformLabel ?? "Live on Zoom · Link sent on mail",
     capacity: session?.capacity ? String(session.capacity) : "",
+    showSeats: session?.showSeats ?? true,
     displaySeats:
       session?.displaySeats !== null && session?.displaySeats !== undefined ? String(session.displaySeats) : "",
     price: paiseToRupees(session?.priceAmountMinor ?? null),
@@ -121,6 +123,7 @@ export function SessionForm({
         })),
         platformLabel: values.platformLabel.trim(),
         capacity: values.capacity ? Number(values.capacity) : null,
+        showSeats: values.showSeats,
         displaySeats: values.displaySeats.trim() === "" ? null : Number(values.displaySeats),
         priceAmountMinor: price,
         compareAtAmountMinor: rupeesToPaise(values.compareAt),
@@ -255,12 +258,26 @@ export function SessionForm({
             <Field label="Seats" hint="Blank = unlimited.">
               <Input type="number" min={1} value={values.capacity} onChange={set("capacity")} />
             </Field>
-            <Field
-              label="Displayed seats (Razorpay phase)"
-              hint="Temporary. Shown on /prep-kit only. Blank = no seats line, 0 = fully booked."
-            >
-              <Input type="number" min={0} value={values.displaySeats} onChange={set("displaySeats")} />
-            </Field>
+            <div className="sm:col-span-2">
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={values.showSeats}
+                  onCheckedChange={(checked: boolean) => setValues((c) => ({ ...c, showSeats: checked }))}
+                />
+                <Label className="text-sm font-medium">Show seat availability on website</Label>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                When off, seat counts are hidden from visitors. The actual capacity still applies.
+              </p>
+            </div>
+            {values.showSeats && (
+              <Field
+                label="Displayed seats (Razorpay phase)"
+                hint="Temporary. Shown on /prep-kit only. Blank = no seats line, 0 = fully booked."
+              >
+                <Input type="number" min={0} value={values.displaySeats} onChange={set("displaySeats")} />
+              </Field>
+            )}
           </CardContent>
         </Card>
 

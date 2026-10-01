@@ -131,11 +131,10 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
             <DoctorPortrait className="lg:col-span-5" />
             <div className="lg:col-span-7">
               <h2 className="max-w-xl font-display text-3xl font-semibold leading-tight md:text-4xl">
-                Prepare smarter, with a doctor who has just done it.
+                The strategy behind the preparation.
               </h2>
               <p className="mt-5 max-w-lg text-base leading-relaxed opacity-80">
-                Dr. Angad Rai — NEET-PG 2026, AIR 925. Sharing the revision system behind his preparation — live
-                sessions, high-yield material, and honest guidance through JSMF.
+                Dr. Angad Rai shares the revision methods, strategies, and question-solving approaches that shaped his own preparation journey.
               </p>
             </div>
           </div>

@@ -1012,6 +1012,10 @@ model LiveSession {
   /// so this is the only number here that can go stale — and only by an admin
   /// changing it.
   capacity        Int?
+  /// Admin toggle: when false, both seatsRemaining and displaySeats are hidden
+  /// from the public-facing API. Lets the admin suppress seat counts without
+  /// deleting the underlying data.
+  showSeats       Boolean  @default(true) @map("show_seats")
   /// TEMPORARY (external Razorpay Payment Page phase): a manually-set "seats
   /// available" number shown on /prep-kit to signal demand. NOT real capacity
   /// and not derived from entitlements. NULL = show no seats line, 0 = fully
