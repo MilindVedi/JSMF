@@ -80,8 +80,8 @@ export function Landing() {
               Prepare smarter, with a doctor who has just done it.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
-              Dr. Angad Rai cleared NEET-PG 2026 with AIR 925. He shares the exact revision system
-              behind it — live sessions, high-yield material, and honest guidance through JSMF.
+              Dr. Angad Rai — NEET-PG 2026, AIR 925. Sharing the 
+              revision system behind his preparation — live sessions, high-yield material, and honest guidance through JSMF.
             </p>
 
             <div className="mt-9 flex flex-col items-start">
@@ -124,7 +124,6 @@ export function Landing() {
             <div className="absolute top-36 -right-6 z-10 hidden flex-col items-end gap-3 sm:flex">
               <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Award size={13} /> AIR 9 · FMGE 2023</div>
               <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Stethoscope size={13} /> MBBS · Bronze Medalist</div>
-              <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><MonitorPlay size={13} /> Live sessions</div>
             </div>
 
             <div className="portrait-frame">
@@ -132,6 +131,7 @@ export function Landing() {
               <img src="/angad-bench.png" alt="Dr. Angad Rai" width={1536} height={1024} className="h-full w-full object-cover" />
             </div>
             <div className="doctor-credential">
+              <div className="credential-chip absolute -top-3 right-4 z-10 flex w-fit items-center gap-2 shadow-md"><MonitorPlay size={13} /> Live sessions</div>
               <p className="text-[10px] font-bold uppercase text-primary">Founder &amp; mentor</p>
               <h2 className="mt-1 font-display font-semibold text-brand-deep">Dr. Angad Rai</h2>
               <p className="mt-1 text-xs text-muted-foreground">MBBS — Medical Lead, JSMF</p>
