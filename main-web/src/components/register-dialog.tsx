@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { CheckCircle2, Clock, FileText, Library, Loader2, Send, Stethoscope, X } from "lucide-react";
 import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -163,10 +164,21 @@ export function RegisterDialog({
             <GoogleButton
               label="Continue with Google"
               className="mt-6 w-full"
-              onClick={() => googleAuth.start("/?register=1")}
+              onClick={() => googleAuth.start({ next: "/?register=1" })}
             />
             <p className="mt-3 text-center text-xs text-muted-foreground">
               One tap, no password. You come straight back here to finish.
+            </p>
+            {/* Email stays available here too, the same as the full sign-up
+                screen — Google is the fastest way in, never the only one. */}
+            <p className="mt-4 text-center text-sm text-muted-foreground">
+              Rather use email?{" "}
+              <Link
+                href={`/account/signup?next=${encodeURIComponent("/?register=1")}`}
+                className="font-semibold text-primary hover:underline"
+              >
+                Create an account
+              </Link>
             </p>
           </div>
         ) : stage === "already" ? (

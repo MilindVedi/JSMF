@@ -14,7 +14,7 @@ sessions with Dr. Angad Rai**. Design source: `web-main-design/`. Code:
 | Separate database? | **No — same Postgres**, two new tables | One `users` table means one account: someone who buys a seat and later a PDF is the same person, and the planner that comes with a seat appears in their store library. |
 | Separate frontend? | **Yes — `main-web/`** | Different domain, different release timeline, and a change to the store must never break the site selling sessions (the same reasoning that split `pdf-web/` from `web/`). |
 | Pricing | **Always paid** | Enforced by the API (`PAID`, price > 0). |
-| Account | **Google sign-in required before paying** | The free PDF is granted to that account's email, and the joining link is emailed there. The dialog says so before asking. |
+| Account | **An account is required before paying** | The free PDF is granted to that account's email, and the joining link is emailed there. The dialog says so before asking. The ways in are the same as the store — Google, email + password, and mobile when the server enables it — because identity is platform-wide and both sites sign into one account. |
 | Joining link | **Email** — in the confirmation if already set, and in a **reminder** before the start | Reminders run on the existing 5-minute cron. |
 | Resources / Browse pages from the design | **Not built** | Resources live on store.jsmf.me; "Explore resources" links there. |
 
@@ -90,7 +90,7 @@ orders, payments or the tables above.
 ## 3. Flow
 
 ```
-jsmf.me  →  Reserve  →  (not signed in) "Sign up is required" → Google → back, dialog reopens
+jsmf.me  →  Reserve  →  (not signed in) "Sign up is required" → Google or email → back, dialog reopens
          →  WhatsApp / exam / stage  →  POST /sessions/:id/register
          →  checks: published, not started, no seat yet, seats left
          →  saves answers, starts a normal order  →  Razorpay

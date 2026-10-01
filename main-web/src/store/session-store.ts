@@ -12,15 +12,19 @@ import {
 import type { AuthSession, AuthUser } from "@/lib/api/types";
 
 /**
- * The signed-in session, against the shared identity API. The same logic as
- * pdf-web's store, minus password login: the main website signs in with
- * Google only. See pdf-web/src/store/session-store.ts for the reasoning behind
- * the refresh deduplication, which matters just as much here.
+ * The signed-in session, against the shared identity API. The same ways in as
+ * pdf-web — password, Google and (when the server enables it) mobile — because
+ * identity is platform-wide and one account spans both sites. See
+ * pdf-web/src/store/session-store.ts for the reasoning behind the refresh
+ * deduplication, which matters just as much here.
  */
 interface SessionState {
   user: AuthUser | null;
   /** False until the initial refresh-from-storage attempt has finished. */
   ready: boolean;
+  login: (email: string, password: string) => Promise<AuthUser>;
+  /** Replaces the signed-in user's details after a change such as adding a number. */
+  updateUser: (user: AuthUser) => void;
   /** Stores a session produced by Google sign-in or an accepted invitation. */
   adopt: (session: AuthSession) => AuthUser;
   logout: () => Promise<void>;
@@ -30,6 +34,20 @@ interface SessionState {
 export const useSessionStore = create<SessionState>()((set, get) => ({
   user: null,
   ready: false,
+
+  async login(email, password) {
+    const session = await api.postAnonymous<AuthSession>("/auth/login", { email, password });
+
+    setAccessToken(session.tokens.accessToken);
+    setStoredRefreshToken(session.tokens.refreshToken);
+    set({ user: session.user, ready: true });
+
+    return session.user;
+  },
+
+  updateUser(user: AuthUser) {
+    set({ user });
+  },
 
   /**
    * Adopts a session obtained outside the password flow — Google sign-in, or
