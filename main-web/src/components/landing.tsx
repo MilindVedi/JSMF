@@ -380,16 +380,19 @@ function SeatsLine({ session, className = "" }: { session: LiveSession; classNam
  * The manually-set "seats available" line for the external Razorpay phase.
  * Driven by the admin's `displaySeats`, not real capacity. Null hides it.
  */
-function ExternalSeatsLine({ seats }: { seats: number | null }) {
+function ExternalSeatsLine({ seats, capacity }: { seats: number | null; capacity: number | null }) {
   if (seats === null) return null;
 
+  // Admin typed in a number at or above total capacity: that's the real count,
+  // not scarcity, so show it plainly instead of "less than X".
+  const atCapacity = capacity !== null && seats >= capacity;
   const urgent = seats > 0 && seats < 150;
   let label: string;
   if (seats === 0) label = "Fully booked";
-  else if (seats < 20) label = `Almost full — only ${seats} seats left!`;
-  else if (seats < 150) label = `Filling fast — only ${seats} seats left`;
-  else if (seats < 200) label = `${seats} seats available`;
-  else label = "200+ seats available";
+  else if (atCapacity) label = `${seats} seats available`;
+  else if (seats < 20) label = `Almost full — less than ${seats} seats left!`;
+  else if (seats < 150) label = `Filling fast — less than ${seats} seats left`;
+  else label = `Less than ${seats} seats available`;
 
   const tone = seats === 0 ? "text-muted-foreground" : urgent ? "text-red-600" : "text-emerald-600";
 
@@ -464,7 +467,7 @@ export function SessionCard({
         {compareAt && <span className="text-sm text-muted-foreground line-through">{compareAt}</span>}
       </div>
 
-      {external && <ExternalSeatsLine seats={session.displaySeats} />}
+      {external && <ExternalSeatsLine seats={session.displaySeats} capacity={session.capacity} />}
 
       {session.registrationOpen ? (
         external ? (
