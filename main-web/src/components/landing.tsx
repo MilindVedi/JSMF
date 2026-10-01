@@ -181,7 +181,7 @@ export function Landing() {
           ) : (
             <div>
               <span className="inline-flex items-center gap-2 rounded-full bg-brand-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
-                New Session announced
+                {loading ? "Loading" : "Next session coming soon"}
               </span>
               <h2 className="mt-5 max-w-2xl font-display text-3xl font-semibold leading-tight md:text-4xl">
                 {loading ? "Loading the next session…" : "The last session has wrapped up"}

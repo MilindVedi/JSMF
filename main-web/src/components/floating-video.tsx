@@ -5,6 +5,17 @@ import { GripVertical, X } from "lucide-react";
 
 const VIDEO_ID = "CXZ4UPsoAEI";
 const MARGIN = 16;
+// Remembers a dismissal for the rest of the browsing session, so closing it on
+// one page keeps it closed while navigating — but a fresh visit shows it again.
+const DISMISSED_KEY = "jsmf-floating-video-dismissed";
+
+function wasDismissed(): boolean {
+  try {
+    return sessionStorage.getItem(DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 type Offset = { x: number; y: number };
 
@@ -25,9 +36,19 @@ export function FloatingVideo() {
   const origin = useRef({ pointerX: 0, pointerY: 0, x: 0, y: 0 });
 
   useEffect(() => {
+    if (wasDismissed()) return;
     const timer = window.setTimeout(() => setShown(true), 1200);
     return () => window.clearTimeout(timer);
   }, []);
+
+  function close() {
+    setClosed(true);
+    try {
+      sessionStorage.setItem(DISMISSED_KEY, "1");
+    } catch {
+      // Private mode or blocked storage: it simply reappears on the next page.
+    }
+  }
 
   /** Keeps the box on screen after a drag or a window resize. */
   const clamp = useCallback((next: Offset): Offset => {
@@ -92,7 +113,7 @@ export function FloatingVideo() {
           <GripVertical className="size-3.5" aria-hidden />
           <button
             type="button"
-            onClick={() => setClosed(true)}
+            onClick={close}
             aria-label="Close video"
             className="grid size-6 place-items-center rounded-full hover:bg-white/15 hover:text-white"
           >
