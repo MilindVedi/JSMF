@@ -1,3 +1,5 @@
+// export const dynamic = "force-dynamic";
+
 import { Suspense } from "react";
 import { Landing } from "@/components/landing";
 import { externalCheckoutUrl } from "@/lib/external-checkout";
