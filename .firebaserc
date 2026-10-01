@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "production-509708"
-  }
+  },
+  "targets": {
+    "production-509708": {
+      "hosting": {
+        "main": [
+          "jsmf-web-main-569375141363"
+        ],
+        "store": [
+          "production-509708"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

@@ -305,7 +305,7 @@ Write-Output "PUBLIC: $PUBLIC_KEY_B64"
 1. Navigate to **Security** > **Secret Manager**.
 2. Click **+ CREATE SECRET** for each secret:
    - `DATABASE_URL`: 
-     - *If Cloud SQL*: `postgresql://postgres:YOUR_PASSWORD@/jsmf_db?host=/cloudsql/YOUR_PROJECT_ID:asia-south1:jsmf-postgres`
+     - *If Cloud SQL*: `postgresql://postgres:YOUR_PASSWORD@localhost/jsmf_db?host=/cloudsql/YOUR_PROJECT_ID:asia-south1:jsmf-postgres` (the `localhost` before `/jsmf_db` is required — Prisma's URL parser rejects an empty host even though the real connection goes over the `/cloudsql/...` socket named in `host=`)
      - *If Supabase/Neon*: `postgresql://postgres:PASSWORD@HOST:5432/dbname?sslmode=require`
    - `CLOUDINARY_CLOUD_NAME`: Your Cloudinary cloud name
    - `CLOUDINARY_API_KEY`: Your Cloudinary API key
@@ -319,7 +319,7 @@ Write-Output "PUBLIC: $PUBLIC_KEY_B64"
 #### ⚡ CLI:
 ```powershell
 # Create secrets
-echo -n "postgresql://postgres:YOUR_PASSWORD@/jsmf_db?host=/cloudsql/${PROJECT_ID}:${REGION}:jsmf-postgres" | gcloud secrets create DATABASE_URL --data-file=-
+echo -n "postgresql://postgres:YOUR_PASSWORD@localhost/jsmf_db?host=/cloudsql/${PROJECT_ID}:${REGION}:jsmf-postgres" | gcloud secrets create DATABASE_URL --data-file=-
 echo -n "YOUR_CLOUDINARY_CLOUD_NAME" | gcloud secrets create CLOUDINARY_CLOUD_NAME --data-file=-
 echo -n "YOUR_CLOUDINARY_API_KEY" | gcloud secrets create CLOUDINARY_API_KEY --data-file=-
 echo -n "YOUR_CLOUDINARY_API_SECRET" | gcloud secrets create CLOUDINARY_API_SECRET --data-file=-

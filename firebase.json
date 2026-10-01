@@ -1,14 +1,30 @@
 {
-  "hosting": {
-    "public": "public",
-    "rewrites": [
-      {
-        "source": "**",
-        "run": {
-          "serviceId": "jsmf-pdf-web",
-          "region": "asia-south1"
+  "hosting": [
+    {
+      "target": "main",
+      "public": "public",
+      "rewrites": [
+        {
+          "source": "**",
+          "run": {
+            "serviceId": "jsmf-web-main",
+            "region": "asia-south1"
+          }
         }
-      }
-    ]
-  }
+      ]
+    },
+    {
+      "target": "store",
+      "public": "public",
+      "rewrites": [
+        {
+          "source": "**",
+          "run": {
+            "serviceId": "jsmf-pdf-web",
+            "region": "asia-south1"
+          }
+        }
+      ]
+    }
+  ]
 }
