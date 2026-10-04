@@ -16,6 +16,8 @@ import { EventsModule } from './modules/events/events.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { QuestionsModule } from './modules/questions/questions.module';
+import { SettingsModule } from './modules/settings/settings.module';
 import { StorageModule } from './modules/storage/storage.module';
 import {
   IdentityThrottlerGuard,
@@ -80,6 +82,8 @@ import { RolesGuard } from './common/guards/roles.guard';
     EntitlementsModule,
     OrdersModule,
     HealthModule,
+    SettingsModule,
+    QuestionsModule,
   ],
   providers: [
     // Order matters: throttling runs first (cheapest, and should apply to

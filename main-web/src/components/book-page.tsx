@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, CheckCircle2, Loader2, Send } from "lucide-react";
 import { SiteLayout } from "@/components/site";
 import { FloatingVideo } from "@/components/floating-video";
+import { RegisterDialog } from "@/components/register-dialog";
 import { DoctorPortrait, SessionCard } from "@/components/landing";
+import { TestimonialsSection } from "@/components/testimonials-section";
 import { buttonVariants } from "@/components/ui/button";
 import { sessionsApi } from "@/lib/api/sessions";
 import type { LiveSession } from "@/lib/api/types";
@@ -20,23 +22,43 @@ import { links } from "@/lib/site-content";
 export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
   const [session, setSession] = useState<LiveSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const params = useSearchParams();
   const router = useRouter();
+
+  // Back from Google sign-in mid-registration: reopen the dialog once the
+  // session has loaded, and drop the flag so a refresh does not reopen it.
+  const resume = params.get("register") === "1";
 
   useEffect(() => {
     sessionsApi
       .landing()
-      .then((result) => setSession(result.upcoming))
+      .then((result) => {
+        setSession(result.upcoming);
+        if (!checkoutUrl && resume && result.upcoming?.registrationOpen) {
+          setOpen(true);
+          router.replace("/prep-kit", { scroll: false });
+        }
+      })
       .catch(() => undefined)
       .finally(() => setLoading(false));
-  }, []);
+  }, [checkoutUrl, resume, router]);
 
+  // Razorpay's own page while that is the flow; otherwise the ordinary
+  // registration dialog, right here. Sending people to the homepage for it —
+  // which this did while the dialog lived only there — loses the page they
+  // chose to be on, and with it the reason they were about to pay.
   const book = () => {
     if (checkoutUrl) window.location.assign(checkoutUrl);
-    else router.push("/");
+    else setOpen(true);
   };
+
+  const close = useCallback(() => setOpen(false), []);
 
   return (
     <SiteLayout>
+      {session && !checkoutUrl && <RegisterDialog open={open} onClose={close} session={session} />}
+
       <section className="bg-brand-deep py-16 text-brand-on-deep">
         <div className="mx-auto grid max-w-6xl items-start gap-10 px-5 lg:grid-cols-12 lg:px-8">
           <div className="lg:col-span-7">
@@ -87,15 +109,22 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
                   </div>
                 )}
 
+                {session.audienceText && (
+                  <div className="mt-10">
+                    <p className="text-[11px] font-bold uppercase tracking-wide opacity-70">
+                      Who is this session for?
+                    </p>
+                    <p className="mt-4 max-w-2xl text-sm leading-relaxed opacity-90">
+                      {session.audienceText}
+                    </p>
+                  </div>
+                )}
+
                 {session.description && (
                   <p className="mt-8 max-w-2xl text-sm leading-relaxed whitespace-pre-line opacity-80">
                     {session.description}
                   </p>
                 )}
-                <p className="mt-8 max-w-2xl text-sm leading-relaxed opacity-80">
-                  Use an email address you can access — the joining link and your free PDF are sent there before the
-                  session.
-                </p>
               </>
             ) : (
               <>
@@ -141,7 +170,10 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
         </section>
       )}
 
+      {session && <TestimonialsSection session={session} />}
+
       <FloatingVideo />
     </SiteLayout>
   );
 }
+

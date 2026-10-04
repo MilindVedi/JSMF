@@ -1,6 +1,7 @@
 import { api } from "./client";
 import type {
   CheckoutResult,
+  LiveSession,
   MyRegistration,
   RegistrationAnswers,
   SessionLanding,
@@ -8,6 +9,9 @@ import type {
 
 export const sessionsApi = {
   landing: () => api.getAnonymous<SessionLanding>("/sessions"),
+
+  /** The cheap session behind /testapayment. 404 when the backend has none configured. */
+  paymentTest: () => api.getAnonymous<LiveSession>("/sessions/payment-test"),
 
   options: () =>
     api.getAnonymous<{ exams: string[]; stages: string[] }>("/sessions/registration-options"),

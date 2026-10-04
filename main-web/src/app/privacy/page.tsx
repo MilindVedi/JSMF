@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage, LegalSection } from "@/components/legal-page";
+import { supportEmail } from "@/lib/site-content";
 
 export const metadata: Metadata = { title: "Privacy Policy — JSMF" };
 
@@ -38,8 +39,8 @@ export default function PrivacyPage() {
         </p>
         <p>
           For privacy-related questions, contact{" "}
-          <a href="mailto:support@jsmf.me" className="font-semibold text-primary">
-            support@jsmf.me
+          <a href={`mailto:${supportEmail}`} className="font-semibold text-primary">
+            {supportEmail}
           </a>
           .
         </p>

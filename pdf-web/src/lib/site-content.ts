@@ -23,6 +23,44 @@ export const brand = {
   contactEmail: "hello@jsmf.in",
 } as const;
 
+/**
+ * The address a visitor should actually write to about an order, a refund or
+ * anything else — the one on jsmf.me's Contact page and the one every
+ * outgoing mail replies to. `contactEmail` above predates this and is left
+ * alone because it is referenced from several places; new UI should prefer
+ * `supportEmail`.
+ */
+export const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@jsmf.me";
+
+/** The registered/operating address, shared with jsmf.me — the one legal pages and payment providers verify against. */
+export const businessAddress = {
+  lines: ["Angad Niwas, House No 125, Sector 118", "near TDI Park Street Mall", "S.A.S. Nagar, Mohali, Punjab 160055"],
+  mapsUrl: "https://maps.app.goo.gl/MRtfC9ZhCcVppzsu6",
+};
+
+/**
+ * The main JSMF website. One URL kept in configuration so a staging deploy
+ * can point at a staging main-site without a code change. "Visit our main
+ * website" links and footer legal links (hosted on jsmf.me) use this base.
+ */
+export const mainWebsiteUrl =
+  process.env.NEXT_PUBLIC_MAIN_SITE_URL?.replace(/\/$/, "") ?? "https://jsmf.me";
+
+/**
+ * The main website's hostname — "jsmf.me", "staging.jsmf.me", "localhost:3000"
+ * — for user-visible copy that would otherwise hardcode the domain ("live on
+ * jsmf.me"). Derived from `mainWebsiteUrl` so a staging deploy says the right
+ * thing without a code change. Keeps the port when there is one, because a
+ * local host that drops it reads as the production domain.
+ */
+export const mainWebsiteHost = (() => {
+  try {
+    return new URL(mainWebsiteUrl).host;
+  } catch {
+    return "jsmf.me";
+  }
+})();
+
 export const author = {
   name: "Dr. Angad Rai",
   title: "Founder & Medical Lead",
@@ -59,4 +97,27 @@ export const author = {
 export const socials = {
   youtube: "https://www.youtube.com/@Jabstudiesmetfun",
   instagram: "https://www.instagram.com/angadrai009/",
+  telegram: "https://t.me/JABSTUDIESMETFUN",
 } as const;
+
+/**
+ * Social links shared with jsmf.me. `socials` above holds the storefront's
+ * historical pair; this is the full set, including Telegram where new
+ * sessions are first announced — kept as its own export so adding Telegram
+ * here does not reshape the existing `socials` usage.
+ */
+export const links = {
+  telegram: "https://t.me/JABSTUDIESMETFUN",
+  youtube: "https://www.youtube.com/@jsmf",
+  instagram: "https://www.instagram.com/jsmf",
+} as const;
+
+/**
+ * The full credential list shown on the doctor-portrait card — same three
+ * lines jsmf.me shows, so the two sites tell one consistent story.
+ */
+export const credentials = [
+  "AIR 925 · NEET-PG 2026",
+  "AIR 9 · FMGE 2023",
+  "MBBS Bronze Medalist",
+] as const;

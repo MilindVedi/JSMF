@@ -1,7 +1,18 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  ConflictException,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { AppConfig } from '../../../config/config.module';
 import type { AuthenticatedUser } from '../../identity/application/auth.service';
 import { OrderService } from '../application/order.service';
 import { PaymentService } from '../application/payment.service';
@@ -20,6 +31,7 @@ export class AdminOrderController {
   constructor(
     private readonly orders: OrderService,
     private readonly payments: PaymentService,
+    private readonly config: AppConfig,
   ) {}
 
   @Get()
@@ -36,12 +48,21 @@ export class AdminOrderController {
 
   @Post(':id/refund')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Refund an order and revoke the entitlements it granted' })
+  @ApiOperation({
+    summary: 'Refund an order and revoke the entitlements it granted',
+    description: 'Disabled while REFUNDS_ENABLED is false — answers 409 rather than touching Razorpay.',
+  })
   refund(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: RefundOrderDto,
     @CurrentUser() admin: AuthenticatedUser,
   ) {
+    if (!this.config.get('REFUNDS_ENABLED')) {
+      throw new ConflictException(
+        'Refunds are temporarily disabled. A refund issued directly in the Razorpay dashboard still revokes the buyer’s access as usual.',
+      );
+    }
+
     return this.payments.refund(id, admin.id, body.reason);
   }
 }

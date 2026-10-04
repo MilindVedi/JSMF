@@ -5,9 +5,12 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  Patch,
   Post,
   Req,
 } from '@nestjs/common';
+import { ProfileService, type Profile } from '../application/profile.service';
+import { UpdateProfileDto } from './dto/profile.dto';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
@@ -29,6 +32,7 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
 import {
+  ChangePasswordDto,
   CompleteSignupDto,
   ForgotPasswordDto,
   ResetPasswordDto,
@@ -46,6 +50,7 @@ export class AuthController {
     private readonly recovery: AccountRecoveryService,
     private readonly phone: PhoneSignInService,
     private readonly delivery: VerificationDeliveryService,
+    private readonly profiles: ProfileService,
   ) {}
 
   /**
@@ -236,6 +241,44 @@ export class AuthController {
   @ApiOperation({ summary: 'The currently authenticated user' })
   me(@CurrentUser() user: AuthenticatedUser): AuthenticatedUser {
     return user;
+  }
+
+  /**
+   * Changes the password of the signed-in account. Returns a fresh token pair,
+   * because the change revokes every existing session including this one —
+   * the client must adopt these or it will be signed out moments later.
+   */
+  @Patch('me/password')
+  @ApiBearerAuth()
+  // As tight as login: this is a credential-guessing surface too, since a
+  // wrong `currentPassword` is exactly the signal an attacker would probe.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Change your password, proving the current one' })
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangePasswordDto,
+    @Req() request: Request,
+  ): Promise<{ user: AuthenticatedUser; tokens: SessionTokens }> {
+    return this.auth.changePassword(user.id, dto, contextOf(request));
+  }
+
+  @Get('me/profile')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "The signed-in user's profile answers" })
+  profile(@CurrentUser() user: AuthenticatedUser): Promise<Profile> {
+    return this.profiles.get(user.id);
+  }
+
+  /** Saves the questions asked once after signup. Always the caller's own account. */
+  @Patch('me/profile')
+  @ApiBearerAuth()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Set name, mobile number, exam and stage' })
+  updateProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateProfileDto,
+  ): Promise<AuthenticatedUser> {
+    return this.profiles.update(user.id, dto);
   }
 
   @Public()

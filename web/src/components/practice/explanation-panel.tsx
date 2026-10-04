@@ -1,5 +1,5 @@
 import { CheckCircle2, XCircle } from "lucide-react";
-import type { Question } from "@/types";
+import type { SessionQuestion } from "@/types";
 import { FigurePlaceholder } from "@/components/common/figure-placeholder";
 import { cn } from "@/lib/utils";
 
@@ -7,7 +7,7 @@ export function ExplanationPanel({
   question,
   isCorrect,
 }: {
-  question: Question;
+  question: SessionQuestion;
   isCorrect: boolean;
 }) {
   return (

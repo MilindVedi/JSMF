@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { BarChart3, Bookmark, CheckCircle2, ChevronRight, Library, Loader2, XCircle } from "lucide-react";
+import { BarChart3, Bookmark, CheckCircle2, ChevronRight, Library, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,12 +18,9 @@ import {
 import { SubjectPerformanceChart } from "@/components/statistics/subject-performance-chart";
 import { AccuracyTrendChart } from "@/components/statistics/accuracy-trend-chart";
 import { DonutBreakdown } from "@/components/statistics/donut-breakdown";
-import { usePracticeStore } from "@/store/practice-store";
-import { useBookmarksStore } from "@/store/bookmarks-store";
-import { useCollectionsStore } from "@/store/collections-store";
-import { getCollectionStats, getStatistics, getSubjectCoverage } from "@/lib/selectors";
-import { getSubjectById } from "@/data/mock/subjects";
-import { QUESTIONS } from "@/data/mock/questions";
+import { getCollectionStats } from "@/lib/selectors";
+import { pyqCapabilities, useCollections, useStats, useTaxonomyLookup } from "@/hooks/pyq";
+import { PageLoading, QueryError } from "@/components/pyq/query-states";
 import { cn } from "@/lib/utils";
 
 function StatTile({
@@ -49,26 +46,31 @@ function StatTile({
 }
 
 export default function StatisticsPage() {
-  const sessions = usePracticeStore((s) => s.sessions);
-  const sessionsHydrated = usePracticeStore((s) => s.hasHydrated);
-  const bookmarks = useBookmarksStore((s) => s.bookmarks);
-  const bookmarksHydrated = useBookmarksStore((s) => s.hasHydrated);
-  const collections = useCollectionsStore((s) => s.collections);
-  const collectionsHydrated = useCollectionsStore((s) => s.hasHydrated);
+  const { data: storedCollections } = useCollections();
+  const collections = pyqCapabilities.collections ? (storedCollections ?? []) : [];
+  const { data: stats, error, refetch } = useStats();
+  const { taxonomy, subject: getSubjectById } = useTaxonomyLookup();
   const [coverageOpen, setCoverageOpen] = useState(false);
 
-  if (!sessionsHydrated || !bookmarksHydrated || !collectionsHydrated) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  if (error) return <QueryError error={error} onRetry={() => refetch()} title="Couldn't load your statistics" />;
+  if (!stats) return <PageLoading className="min-h-[50vh]" />;
 
-  const stats = getStatistics(Object.values(sessions), QUESTIONS, bookmarks);
   const subjectsWithAttempts = stats.bySubject.filter((s) => s.attempted > 0);
   const collectionStats = getCollectionStats(collections);
-  const subjectCoverage = getSubjectCoverage(Object.values(sessions), QUESTIONS);
+  // Least-covered first, including subjects never touched (0%).
+  const attemptedBySubject = new Map(stats.bySubject.map((s) => [s.subjectId, s.attempted] as const));
+  const subjectCoverage = taxonomy.subjects
+    .filter((s) => s.questionCount > 0)
+    .map((s) => {
+      const attempted = attemptedBySubject.get(s.id) ?? 0;
+      return {
+        subjectId: s.id,
+        total: s.questionCount,
+        attempted,
+        coverage: Math.round((attempted / s.questionCount) * 100),
+      };
+    })
+    .sort((a, b) => a.coverage - b.coverage);
 
   return (
     <div className="space-y-6">

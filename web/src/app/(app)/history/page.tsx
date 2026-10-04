@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { History as HistoryIcon, Loader2 } from "lucide-react";
+import { History as HistoryIcon } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Card } from "@/components/ui/card";
@@ -12,14 +12,14 @@ import { SessionHistoryRow, SESSION_MODE_LABEL } from "@/components/history/sess
 import { MultiSelectPopover } from "@/components/question-bank/multi-select-popover";
 import { SortDropdown } from "@/components/common/sort-dropdown";
 import { DateRangePicker } from "@/components/common/date-range-picker";
-import { usePracticeStore } from "@/store/practice-store";
-import { useBookmarksStore } from "@/store/bookmarks-store";
-import { useCollectionsStore } from "@/store/collections-store";
-import { QUESTIONS } from "@/data/mock/questions";
-import { getSessionSummary, getStatistics } from "@/lib/selectors";
 import { useClientSnapshot } from "@/lib/use-client-snapshot";
 import { cn } from "@/lib/utils";
-import type { SessionMode, TestSession } from "@/types";
+import { PageLoading, QueryError } from "@/components/pyq/query-states";
+import { pyqCapabilities, useCollections, useSessionHistory, useStats } from "@/hooks/pyq";
+import type { SessionListItem } from "@/lib/data-source";
+import type { SessionMode } from "@/types";
+
+type TestSession = SessionListItem["session"];
 
 type ModeFilter = SessionMode | "all" | "collections";
 type PeriodFilter = "all" | "7d" | "30d" | "custom";
@@ -87,25 +87,14 @@ interface SessionSortKeys {
   unattemptedCount: number;
 }
 
-function buildSessionSortKeys(session: TestSession, questionMap: Map<string, { year: number }>): SessionSortKeys {
-  let newestYear = -Infinity;
-  let oldestYear = Infinity;
-  for (const id of session.questionIds) {
-    const year = questionMap.get(id)?.year;
-    if (year === undefined) continue;
-    if (year > newestYear) newestYear = year;
-    if (year < oldestYear) oldestYear = year;
-  }
-  let lastWrongAt: string | undefined;
-  for (const attempt of Object.values(session.attempts)) {
-    if (attempt.isCorrect) continue;
-    if (!lastWrongAt || attempt.answeredAt > lastWrongAt) lastWrongAt = attempt.answeredAt;
-  }
-  const attempts = Object.values(session.attempts);
-  const correct = attempts.filter((a) => a.isCorrect).length;
-  const accuracy = attempts.length > 0 ? Math.round((correct / attempts.length) * 100) : 0;
-  const unattemptedCount = session.questionIds.length - attempts.length;
-  return { newestYear, oldestYear, lastWrongAt, accuracy, unattemptedCount };
+function buildSessionSortKeys(item: SessionListItem): SessionSortKeys {
+  return {
+    newestYear: item.newestYear ?? -Infinity,
+    oldestYear: item.oldestYear ?? Infinity,
+    lastWrongAt: item.lastWrongAt,
+    accuracy: item.accuracy,
+    unattemptedCount: item.unattempted,
+  };
 }
 
 /** Missing values (e.g. a session with no wrong attempts) always sort last,
@@ -165,13 +154,10 @@ function sortSessions(
 }
 
 export default function HistoryPage() {
-  const hasHydratedPractice = usePracticeStore((s) => s.hasHydrated);
-  const hasHydratedBookmarks = useBookmarksStore((s) => s.hasHydrated);
-  const hasHydratedCollections = useCollectionsStore((s) => s.hasHydrated);
-  const sessions = usePracticeStore((s) => s.sessions);
-  const bookmarks = useBookmarksStore((s) => s.bookmarks);
-  const collections = useCollectionsStore((s) => s.collections);
-  const hasHydrated = hasHydratedPractice && hasHydratedBookmarks && hasHydratedCollections;
+  const stats = useStats();
+  const history = useSessionHistory(1, 100);
+  const { data: storedCollections } = useCollections();
+  const collections = pyqCapabilities.collections ? (storedCollections ?? []) : [];
 
   const [modeFilter, setModeFilter] = useState<ModeFilter>("all");
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
@@ -180,8 +166,6 @@ export default function HistoryPage() {
   const [customTo, setCustomTo] = useState("");
   const [sort, setSort] = useState<SessionSortOption>("recently-wrong");
 
-  const questionMap = useMemo(() => new Map(QUESTIONS.map((q) => [q.id, q] as const)), []);
-
   // Day granularity keeps this value stable between renders.
   const sinceDay = useClientSnapshot<string | null>(() => {
     const days = PERIODS.find((p) => p.value === periodFilter)?.days;
@@ -189,17 +173,20 @@ export default function HistoryPage() {
     return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
   }, null);
 
-  const statistics = useMemo(
-    () => (hasHydrated ? getStatistics(Object.values(sessions), QUESTIONS, bookmarks) : null),
-    [hasHydrated, sessions, bookmarks]
+  const statistics = stats.data;
+  const itemsById = useMemo(
+    () => new Map((history.data?.items ?? []).map((item) => [item.session.id, item] as const)),
+    [history.data]
   );
 
-  const allCompletedSessions = useMemo(() => {
-    if (!hasHydrated) return [];
-    return Object.values(sessions)
-      .filter((s) => s.completedAt)
-      .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
-  }, [hasHydrated, sessions]);
+  const allCompletedSessions = useMemo(
+    () =>
+      (history.data?.items ?? [])
+        .filter((item) => item.submitted && item.session.completedAt)
+        .map((item) => item.session)
+        .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime()),
+    [history.data]
+  );
 
   const modeCounts = useMemo(() => {
     const counts: Record<ModeFilter, number> = {
@@ -219,9 +206,9 @@ export default function HistoryPage() {
 
   const sessionSortKeys = useMemo(() => {
     const map = new Map<string, SessionSortKeys>();
-    for (const s of allCompletedSessions) map.set(s.id, buildSessionSortKeys(s, questionMap));
+    for (const item of itemsById.values()) map.set(item.session.id, buildSessionSortKeys(item));
     return map;
-  }, [allCompletedSessions, questionMap]);
+  }, [itemsById]);
 
   const completedSessions = useMemo(() => {
     const filtered = allCompletedSessions.filter((s) => {
@@ -248,13 +235,21 @@ export default function HistoryPage() {
     return sortSessions(filtered, sort, sessionSortKeys);
   }, [allCompletedSessions, modeFilter, sinceDay, collectionFilterIds, periodFilter, customFrom, customTo, sort, sessionSortKeys]);
 
-  if (!hasHydrated || !statistics) {
+  const error = stats.error ?? history.error;
+  if (error) {
     return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
+      <QueryError
+        error={error}
+        title="Couldn't load your history"
+        onRetry={() => {
+          void stats.refetch();
+          void history.refetch();
+        }}
+      />
     );
   }
+
+  if (!statistics || !history.data) return <PageLoading />;
 
   return (
     <div className="space-y-5">
@@ -361,7 +356,7 @@ export default function HistoryPage() {
         <Card className="p-0">
           <div className="divide-y divide-border">
             {completedSessions.map((session) => {
-              const summary = getSessionSummary(session, QUESTIONS);
+              const summary = itemsById.get(session.id)!;
               return (
                 <SessionHistoryRow
                   key={session.id}

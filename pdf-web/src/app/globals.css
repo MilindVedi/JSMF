@@ -690,3 +690,88 @@
   padding: 2rem;
   box-shadow: var(--shadow-editorial);
 }
+
+/* ---------------------------------------------------------------------------
+ * Shared with jsmf.me — the doctor-portrait card, the social orbs and the
+ * contact dialog's entrance. Kept visually identical so the two sites feel
+ * like one brand, not a storefront bolted onto a marketing site.
+ * ------------------------------------------------------------------------ */
+
+@utility portrait-frame {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  background: var(--muted);
+  box-shadow: var(--shadow-editorial);
+  &::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 32%;
+    background: linear-gradient(to top, color-mix(in oklab, var(--brand-deep) 55%, transparent), transparent);
+  }
+}
+
+@utility rank-badge {
+  position: absolute;
+  left: 1.5rem;
+  top: -1.25rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  background: #FFD700;
+  color: var(--brand-deep);
+  padding: 0.5rem 0.85rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  box-shadow: var(--shadow-editorial);
+}
+
+@utility social-orb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--primary);
+  box-shadow: var(--shadow-editorial);
+  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+  animation: social-glow 2.4s ease-in-out infinite;
+}
+.social-orb:nth-child(2) { animation-delay: 0.8s; }
+.social-orb:nth-child(3) { animation-delay: 1.6s; }
+@keyframes social-glow {
+  0%, 100% { box-shadow: var(--shadow-editorial), 0 0 0 0 color-mix(in oklab, var(--primary) 45%, transparent); }
+  50% { box-shadow: var(--shadow-editorial), 0 0 14px 4px color-mix(in oklab, var(--primary) 40%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .social-orb { animation: none; } }
+.social-orb:hover {
+  transform: translateY(-2px);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+@keyframes contact-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes contact-card-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes contact-pop-in {
+  0% { opacity: 0; transform: scale(0.3) rotate(-18deg); }
+  60% { opacity: 1; transform: scale(1.12) rotate(4deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+.contact-overlay { animation: contact-overlay-in 0.25s ease both; }
+.contact-card { animation: contact-card-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.contact-pop { animation: contact-pop-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both; }
+@media (prefers-reduced-motion: reduce) {
+  .contact-overlay, .contact-card, .contact-pop { animation: none; }
+}

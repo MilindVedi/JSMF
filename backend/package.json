@@ -19,6 +19,9 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:pyq": "tsx prisma/seed-pyq.ts",
+    "db:seed:pyq-plans": "tsx prisma/seed-pyq-plans.ts",
+    "db:backfill:session-buyers": "tsx prisma/backfill-session-buyers.ts",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down"
   },

@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AccountRecoveryService } from './application/account-recovery.service';
+import { ProfileService } from './application/profile.service';
 import { AdminInvitationService } from './application/admin-invitation.service';
 import { AuthService } from './application/auth.service';
 import { OAuthService } from './application/oauth.service';
@@ -61,6 +62,7 @@ import { PhoneAuthController } from './http/phone-auth.controller';
     SmsVerificationChannel,
     VerificationDeliveryService,
     AccountRecoveryService,
+    ProfileService,
     PhoneSignInService,
     AdminInvitationService,
     OAuthService,

@@ -58,20 +58,33 @@ export interface QuestionFigure {
   caption: string;
 }
 
-export interface Question {
+/**
+ * A question as a student may see it before answering — no answer, no
+ * explanation. The real API never sends those until they are earned, so
+ * screens that list or present questions are typed against this.
+ */
+export interface PublicQuestion {
   id: string;
   examId: ExamId;
   year: number;
   subjectId: string;
+  /** Empty string when the question has no topic. */
   topicId: string;
   stem: string;
   stemFigure?: QuestionFigure;
   options: QuestionOption[];
+  difficulty: Difficulty;
+}
+
+/** A question with its answer — mock content, or revealed after answering. */
+export interface Question extends PublicQuestion {
   correctOptionId: string;
   explanation: string;
   explanationFigure?: QuestionFigure;
-  difficulty: Difficulty;
 }
+
+/** A question inside a session: the answer is present only once revealed. */
+export type SessionQuestion = PublicQuestion & Partial<Pick<Question, "correctOptionId" | "explanation" | "explanationFigure">>;
 
 // ---------------------------------------------------------------------------
 // Bookmarks
@@ -115,6 +128,8 @@ export interface SessionFilters {
 export interface SessionConfig {
   timed: boolean;
   durationSec?: number;
+  /** Answers and correctness stay hidden until the session is submitted. */
+  testMode?: boolean;
 }
 
 export interface Attempt {

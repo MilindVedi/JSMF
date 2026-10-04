@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import {
@@ -24,16 +24,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { EXAMS } from "@/data/mock/exams";
-import { SUBJECTS } from "@/data/mock/subjects";
-import { getQuestions } from "@/lib/data/questions";
-import { getQuestionStatusMap, getQuestionsInCollections } from "@/lib/selectors";
-import { usePracticeStore } from "@/store/practice-store";
-import { useBookmarksStore } from "@/store/bookmarks-store";
-import { useCollectionsStore } from "@/store/collections-store";
-import { useStartSession } from "@/lib/use-start-session";
 import { cn } from "@/lib/utils";
-import type { Question } from "@/types";
+import { pyqCapabilities, useQuestionCount, useStartSession, useTaxonomyLookup } from "@/hooks/pyq";
+import type { QuestionQuery, SessionOrder } from "@/lib/data-source";
 
 const QUESTION_COUNTS = [10, 20, 30, 50];
 // Real exams run close to 1 minute/question (NEET-PG ~63s, FMGE ~60s,
@@ -48,7 +41,7 @@ const PACE_PRESETS = [
   { value: 1.5, label: "Relaxed" },
 ];
 
-type OrderMode = "random" | "unattempted-first" | "incorrect-first" | "bookmarked-first";
+type OrderMode = SessionOrder;
 type PoolMode = "all" | "unattempted";
 
 const ORDER_MODES: { value: OrderMode; label: string; hint: string }[] = [
@@ -57,41 +50,6 @@ const ORDER_MODES: { value: OrderMode; label: string; hint: string }[] = [
   { value: "incorrect-first", label: "Incorrect first", hint: "Questions you got wrong before, first." },
   { value: "bookmarked-first", label: "Bookmarked first", hint: "Your bookmarked questions first, fills in with the rest." },
 ];
-
-function sample<T>(arr: T[], count: number): T[] {
-  const copy = [...arr];
-  const out: T[] = [];
-  for (let i = 0; i < count && copy.length > 0; i++) {
-    const idx = Math.floor(Math.random() * copy.length);
-    out.push(copy.splice(idx, 1)[0]);
-  }
-  return out;
-}
-
-function pickOrdered(
-  pool: Question[],
-  count: number,
-  mode: OrderMode,
-  statusMap: Map<string, string>,
-  bookmarkedIds: Set<string>
-) {
-  if (mode === "unattempted-first" || mode === "incorrect-first") {
-    const wanted = mode === "unattempted-first" ? "unattempted" : "incorrect";
-    const priority = pool.filter((q) => (statusMap.get(q.id) ?? "unattempted") === wanted);
-    const rest = pool.filter((q) => (statusMap.get(q.id) ?? "unattempted") !== wanted);
-    const first = sample(priority, Math.min(count, priority.length));
-    const remaining = count - first.length;
-    return remaining > 0 ? [...first, ...sample(rest, remaining)] : first;
-  }
-  if (mode === "bookmarked-first") {
-    const priority = pool.filter((q) => bookmarkedIds.has(q.id));
-    const rest = pool.filter((q) => !bookmarkedIds.has(q.id));
-    const first = sample(priority, Math.min(count, priority.length));
-    const remaining = count - first.length;
-    return remaining > 0 ? [...first, ...sample(rest, remaining)] : first;
-  }
-  return sample(pool, Math.min(count, pool.length));
-}
 
 function summaryChip(ids: string[], allLabel: string, names: (id: string) => string) {
   if (ids.length === 0) return allLabel;
@@ -111,52 +69,27 @@ export default function CustomTestBuilderPage() {
   const [testName, setTestName] = useState("");
   const [orderMode, setOrderMode] = useState<OrderMode>("random");
   const [poolMode, setPoolMode] = useState<PoolMode>("all");
-  const [filteredPool, setFilteredPool] = useState<Question[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const startSession = useStartSession();
+  const lookup = useTaxonomyLookup();
 
-  const sessions = usePracticeStore((s) => s.sessions);
-  const bookmarks = useBookmarksStore((s) => s.bookmarks);
-  const collections = useCollectionsStore((s) => s.collections);
-
-  const statusMap = useMemo(
-    () => getQuestionStatusMap(Object.values(sessions)),
-    [sessions]
-  );
-  const bookmarkedIds = useMemo(() => new Set(bookmarks.map((b) => b.questionId)), [bookmarks]);
-
-  useEffect(() => {
-    let active = true;
-    getQuestions({
-      examIds: filters.examIds.length ? filters.examIds : undefined,
-      years: filters.years.length ? filters.years : undefined,
-      subjectIds: filters.subjectIds.length ? filters.subjectIds : undefined,
-      topicIds: filters.topicIds.length ? filters.topicIds : undefined,
-    }).then((qs) => {
-      if (active) setFilteredPool(qs);
-    });
-    return () => {
-      active = false;
+  // The pool is "filtered questions, narrowed to unattempted if asked" — counted
+  // by the data source so the count picker and CTA never overpromise.
+  const query = useMemo<QuestionQuery>(() => {
+    const pick = <T,>(list: T[]) => (list.length ? list : undefined);
+    return {
+      examIds: pick(filters.examIds),
+      years: pick(filters.years),
+      subjectIds: pick(filters.subjectIds),
+      topicIds: pick(filters.topicIds),
+      collectionIds: pyqCapabilities.collections ? pick(filters.collectionIds) : undefined,
+      status: poolMode === "unattempted" ? "unattempted" : undefined,
     };
-  }, [filters]);
+  }, [filters, poolMode]);
+  const { count: poolCount, isPending: countPending, error: countError } = useQuestionCount(query);
 
-  const collectionFiltered = useMemo(
-    () => getQuestionsInCollections(collections, filters.collectionIds, filteredPool),
-    [collections, filters.collectionIds, filteredPool]
-  );
-
-  // Pool = filtered questions narrowed by "unattempted only" — this is what's
-  // actually available to draw from, so the count picker and the CTA can
-  // never silently overpromise. Ordering (below) only affects which of these
-  // get picked first, not how many are eligible.
-  const pool = useMemo(() => {
-    if (poolMode === "unattempted") {
-      return collectionFiltered.filter((q) => (statusMap.get(q.id) ?? "unattempted") === "unattempted");
-    }
-    return collectionFiltered;
-  }, [collectionFiltered, poolMode, statusMap]);
-
-  const availableCount = pool.length;
+  // Sessions hold at most 200 questions (backend MAX_SESSION_QUESTIONS).
+  const availableCount = Math.min(poolCount, 200);
   // If a filter/mode change shrinks the pool below the selected count, this
   // derives the largest option that still fits — never lets the user hit
   // Start expecting more questions than actually exist, and never needs an
@@ -169,18 +102,13 @@ export default function CustomTestBuilderPage() {
   const durationMin = Math.max(1, Math.round(finalCount * minPerQuestion));
 
   function handleConfirmStart() {
-    const selected = pickOrdered(pool, finalCount, orderMode, statusMap, bookmarkedIds);
-    startSession({
+    setConfirmOpen(false);
+    void startSession({
       mode: "custom-test",
       label: testName.trim() || "Custom Test",
-      questionIds: selected.map((q) => q.id),
-      filters: {
-        examIds: filters.examIds.length ? filters.examIds : undefined,
-        years: filters.years.length ? filters.years : undefined,
-        subjectIds: filters.subjectIds.length ? filters.subjectIds : undefined,
-        topicIds: filters.topicIds.length ? filters.topicIds : undefined,
-        collectionIds: filters.collectionIds.length ? filters.collectionIds : undefined,
-      },
+      filters: query,
+      count: finalCount,
+      order: orderMode,
       timed,
       durationSec: timed ? durationMin * 60 : undefined,
     });
@@ -189,12 +117,12 @@ export default function CustomTestBuilderPage() {
   const examSummary = summaryChip(
     filters.examIds,
     "All Exams",
-    (id) => EXAMS.find((e) => e.id === id)?.shortName ?? id
+    (id) => lookup.exam(id)?.shortName ?? id
   );
   const subjectSummary = summaryChip(
     filters.subjectIds,
     "All Subjects",
-    (id) => SUBJECTS.find((s) => s.id === id)?.name ?? id
+    (id) => lookup.subject(id)?.name ?? id
   );
   const timeSummary = timed ? `${durationMin} min timed` : "Untimed";
   const summaryLine = `${finalCount} question${finalCount === 1 ? "" : "s"} · ${examSummary} · ${subjectSummary} · ${timeSummary}`;
@@ -221,8 +149,11 @@ export default function CustomTestBuilderPage() {
         <CardHeader>
           <CardTitle className="text-base">Number of questions</CardTitle>
           <CardDescription>
-            Drawn from the {availableCount} question{availableCount === 1 ? "" : "s"} available with
-            these filters.
+            {countError
+              ? "Couldn't count the available questions — check your connection and try again."
+              : countPending
+                ? "Counting available questions…"
+                : `Drawn from the ${availableCount} question${availableCount === 1 ? "" : "s"} available with these filters.`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -435,7 +366,7 @@ export default function CustomTestBuilderPage() {
           size="lg"
           className="w-full"
           onClick={() => setConfirmOpen(true)}
-          disabled={availableCount === 0}
+          disabled={availableCount === 0 || startSession.isPending}
         >
           <Sparkles />
           Start Test
@@ -477,6 +408,7 @@ export default function CustomTestBuilderPage() {
             </div>
           </div>
 
+          {pyqCapabilities.sessionOrdering && (
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold tracking-wide text-foreground uppercase">
               Ordering (optional)
@@ -503,6 +435,7 @@ export default function CustomTestBuilderPage() {
               {ORDER_MODES.find((m) => m.value === orderMode)?.hint}
             </p>
           </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="confirm-test-name" className="text-xs font-semibold tracking-wide text-foreground uppercase">

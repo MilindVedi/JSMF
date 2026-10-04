@@ -4,27 +4,28 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { buttonVariants } from "@/components/ui/button";
-import { EXAMS } from "@/data/mock/exams";
-import { SUBJECTS, getSubjectById } from "@/data/mock/subjects";
-import { getNextUnansweredIndex, getSessionScope, getSessionSummary } from "@/lib/selectors";
-import type { Question, TestSession } from "@/types";
+import { useTaxonomyLookup } from "@/hooks/pyq";
+import type { SessionListItem } from "@/lib/data-source";
 
-function scopeDescription(session: TestSession, questions: Question[]) {
-  const { examIds, subjectIds, questionCount } = getSessionScope(session, questions);
+type Lookup = ReturnType<typeof useTaxonomyLookup>;
 
-  const examNames = examIds.map((id) => EXAMS.find((e) => e.id === id)?.shortName ?? id);
-  const subjectNames = subjectIds.map((id) => getSubjectById(id)?.name ?? id);
+function scopeDescription(item: SessionListItem, lookup: Lookup) {
+  const { examIds, subjectIds, totalQuestions: questionCount } = item;
+  const { exams, subjects } = lookup.taxonomy;
+
+  const examNames = examIds.map((id) => lookup.exam(id)?.shortName ?? id);
+  const subjectNames = subjectIds.map((id) => lookup.subject(id)?.name ?? id);
 
   // Name what's actually covered when it's a short list; fall back to a count
-  // only when spelling it out would be noise.
+  // only when spelling it out would be noise. Empty means "not narrowed".
   const exam =
-    examIds.length >= EXAMS.length
+    examIds.length === 0 || examIds.length >= exams.length
       ? "All exams"
       : examNames.length <= 2
         ? examNames.join(" & ")
         : `${examIds.length} exams`;
   const subject =
-    subjectIds.length >= SUBJECTS.length
+    subjectIds.length === 0 || subjectIds.length >= subjects.length
       ? "All subjects"
       : subjectNames.length === 1
         ? subjectNames[0]
@@ -37,28 +38,25 @@ function scopeDescription(session: TestSession, questions: Question[]) {
 
 /**
  * The label shown on the "Continue where you left off" / "Last session"
- * line: the session's own type (`session.label`, e.g. "Question Bank" or
- * "Custom Test" — set once at creation by whichever screen started it, see
- * `useStartSession` call sites) followed by what it actually covers. This
- * always names the exact session type rather than ever guessing or mixing
- * one mode's presentation with another's.
+ * line: the session's own type (`session.label`, set once at creation by
+ * whichever screen started it) followed by what it actually covers.
  */
-function scopeLabel(session: TestSession, questions: Question[]) {
-  return `${session.label} · ${scopeDescription(session, questions)}`;
+function scopeLabel(item: SessionListItem, lookup: Lookup) {
+  return `${item.session.label} · ${scopeDescription(item, lookup)}`;
 }
 
 export function ContinuePracticeCard({
   inProgress,
   lastCompleted,
-  questions,
 }: {
-  inProgress?: TestSession;
-  lastCompleted?: TestSession;
-  questions: Question[];
+  inProgress?: SessionListItem;
+  lastCompleted?: SessionListItem;
 }) {
+  const lookup = useTaxonomyLookup();
+
   if (inProgress) {
-    const answered = Object.keys(inProgress.attempts).length;
-    const total = inProgress.questionIds.length;
+    const answered = inProgress.attempted;
+    const total = inProgress.totalQuestions;
     const percent = total > 0 ? Math.round((answered / total) * 100) : 0;
 
     return (
@@ -74,7 +72,7 @@ export function ContinuePracticeCard({
             </p>
           </div>
           <Link
-            href={`/practice/${inProgress.id}?i=${getNextUnansweredIndex(inProgress)}`}
+            href={`/practice/${inProgress.session.id}?i=${inProgress.resumeIndex}`}
             className={buttonVariants({ size: "lg", className: "w-fit shrink-0" })}
           >
             Resume
@@ -84,7 +82,7 @@ export function ContinuePracticeCard({
 
         <Progress value={percent} className="mt-4" aria-label="Session progress" />
 
-        <p className="mt-3 text-sm text-muted-foreground">{scopeLabel(inProgress, questions)}</p>
+        <p className="mt-3 text-sm text-muted-foreground">{scopeLabel(inProgress, lookup)}</p>
       </div>
     );
   }
@@ -100,8 +98,7 @@ export function ContinuePracticeCard({
         </p>
         {lastCompleted ? (
           <p className="mt-1 text-sm text-muted-foreground">
-            Last session: {scopeLabel(lastCompleted, questions)} ·{" "}
-            {getSessionSummary(lastCompleted, questions).accuracy}% accuracy
+            Last session: {scopeLabel(lastCompleted, lookup)} · {lastCompleted.accuracy}% accuracy
           </p>
         ) : (
           <p className="mt-1 text-sm text-muted-foreground">

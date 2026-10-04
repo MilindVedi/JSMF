@@ -2,20 +2,26 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { activity } from '../../../shared/logging/activity';
 import {
   AccessType,
+  BundleDeliveryMode,
   EntitlementStatus,
   Prisma,
   ProductStatus,
   ProductType,
 } from '@prisma/client';
+import { AppConfig } from '../../../config/config.module';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { ProductService, type Actor } from '../../catalog/application/product.service';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import { OrderService, type CheckoutResult } from '../../orders/application/order.service';
+import { StorageService } from '../../storage/application/storage.service';
+import { objectRefOf } from '../../storage/domain/storage-provider.port';
 
 export interface LiveSessionInput {
   title?: string;
@@ -27,12 +33,17 @@ export interface LiveSessionInput {
   capacity?: number | null;
   showSeats?: boolean;
   displaySeats?: number | null;
+  bundleDeliveryMode?: BundleDeliveryMode;
   priceAmountMinor?: string;
   compareAtAmountMinor?: string | null;
   joinUrl?: string | null;
   recordingUrl?: string | null;
   highlights?: string[];
   perkText?: string | null;
+  audienceText?: string | null;
+  testimonialsHeading?: string | null;
+  testimonialsSubheading?: string | null;
+  testimonialsTag?: string | null;
   includedProductIds?: string[];
 }
 
@@ -50,13 +61,15 @@ interface NormalisedDay {
 }
 
 export interface RegistrationAnswers {
-  whatsappNumber: string;
+  /** No longer collected; present only when an older page still sends one. */
+  whatsappNumber?: string;
   exam: string;
   stage: string;
 }
 
 const SESSION_INCLUDE = {
   days: { orderBy: { startsAt: 'asc' } },
+  testimonials: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
   product: {
     include: {
       bundleItems: {
@@ -117,13 +130,30 @@ function normaliseDays(days: SessionDayInput[]): NormalisedDay[] {
  */
 @Injectable()
 export class LiveSessionService {
+  private readonly logger = new Logger(LiveSessionService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly products: ProductService,
     private readonly orders: OrderService,
     private readonly entitlements: EntitlementService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
+    private readonly config: AppConfig,
   ) {}
+
+  /**
+   * Testimonial screenshots as URLs the browser can load. They live in the
+   * public bucket like a cover image, so this is a CDN address on Cloudinary;
+   * the local driver has no public surface and signs them instead.
+   */
+  private testimonialUrls(session: SessionRow): Promise<string[]> {
+    return Promise.all(
+      session.testimonials.map((row) =>
+        this.storage.getSignedDownloadUrl(objectRefOf(row), { disposition: 'inline' }),
+      ),
+    );
+  }
 
   // --- public ---------------------------------------------------------------
 
@@ -137,15 +167,27 @@ export class LiveSessionService {
    */
   async landing() {
     const now = new Date();
-    const visible = { product: { status: ProductStatus.PUBLISHED, deletedAt: null } };
+    const testSlug = this.config.get('PAYMENT_TEST_SESSION_SLUG');
+    const visible = {
+      product: {
+        status: ProductStatus.PUBLISHED,
+        deletedAt: null,
+        ...(testSlug ? { slug: { not: testSlug } } : {}),
+      },
+    };
 
     const [upcoming, previous] = await Promise.all([
       this.prisma.liveSession.findFirst({
-        where: { ...visible, startsAt: { gt: now } },
-        orderBy: { startsAt: 'asc' },
+        // A session with no dates yet counts as upcoming: it has not happened,
+        // and it is on sale. `nulls: 'last'` keeps it behind anything actually
+        // scheduled, so announcing a dated session does not bury it.
+        where: { ...visible, OR: [{ startsAt: null }, { startsAt: { gt: now } }] },
+        orderBy: { startsAt: { sort: 'asc', nulls: 'last' } },
         include: SESSION_INCLUDE,
       }),
       this.prisma.liveSession.findFirst({
+        // `lte` excludes NULL on its own, so an undated session is never the
+        // "previous" one — nothing has finished.
         where: { ...visible, startsAt: { lte: now } },
         orderBy: { startsAt: 'desc' },
         include: SESSION_INCLUDE,
@@ -157,9 +199,16 @@ export class LiveSessionService {
     );
 
     return {
-      upcoming: upcoming ? this.toPublic(upcoming, taken.get(upcoming.productId) ?? 0) : null,
-      previous: previous ? this.toPublic(previous, taken.get(previous.productId) ?? 0) : null,
+      upcoming: upcoming ? await this.toPublic(upcoming, taken.get(upcoming.productId) ?? 0) : null,
+      previous: previous ? await this.toPublic(previous, taken.get(previous.productId) ?? 0) : null,
     };
+  }
+
+  /** The session behind /testapayment, or 404 when none is configured. */
+  paymentTestSession() {
+    const slug = this.config.get('PAYMENT_TEST_SESSION_SLUG');
+    if (!slug) throw new NotFoundException('No payment test session is configured');
+    return this.publicBySlug(slug);
   }
 
   async publicBySlug(slug: string) {
@@ -201,13 +250,24 @@ export class LiveSessionService {
    * session with one person over its nominal capacity.
    */
   async register(userId: string, sessionId: string, answers: RegistrationAnswers): Promise<CheckoutResult> {
+    // Every refusal is logged with the reason, so "I clicked Book My Spot and
+    // it didn't work" is answerable from the logs for that userId.
+    // Explicitly typed so calls to it narrow like a `throw` would.
+    const refuse: (reason: string, error: Error) => never = (reason, error) => {
+      activity(this.logger, 'session.registration_refused', { userId, sessionId, reason }, 'warn');
+      throw error;
+    };
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
 
     // The free planner is granted to this account and the confirmation is
     // emailed, so an account with no email (mobile sign-in) cannot register.
     if (!user?.email) {
-      throw new BadRequestException(
-        'Sign in with your Google account to register. The free PDF is added to that account.',
+      refuse(
+        'account has no email',
+        new BadRequestException(
+          'Sign in with your Google account to register. The free PDF is added to that account.',
+        ),
       );
     }
 
@@ -218,22 +278,24 @@ export class LiveSessionService {
       },
     });
 
-    if (!session) throw new NotFoundException('Session not found');
+    if (!session) return refuse('session not found or unpublished', new NotFoundException('Session not found'));
 
-    if (session.startsAt.getTime() <= Date.now()) {
-      throw new ConflictException('Registration for this session has closed.');
+    // No date yet means nothing has started, so registration stays open.
+    if (session.startsAt !== null && session.startsAt.getTime() <= Date.now()) {
+      refuse('session already started', new ConflictException('Registration for this session has closed.'));
     }
 
     if (await this.entitlements.findActive(userId, sessionId)) {
-      throw new ConflictException('You already have a seat for this session.');
+      refuse('already holds a seat', new ConflictException('You already have a seat for this session.'));
     }
 
     if (session.capacity !== null) {
       const taken = (await this.seatsTaken([sessionId])).get(sessionId) ?? 0;
-      if (taken >= session.capacity) throw new ConflictException('This session is full.');
+      if (taken >= session.capacity) refuse('session full', new ConflictException('This session is full.'));
     }
 
-    const whatsappNumber = normalisePhone(answers.whatsappNumber);
+    // The 10-digit mobile number the form asks for, stored with its country code.
+    const whatsappNumber = answers.whatsappNumber ? normalisePhone(answers.whatsappNumber) : null;
 
     const registration = await this.prisma.sessionRegistration.upsert({
       where: { liveSessionId_userId: { liveSessionId: sessionId, userId } },
@@ -244,7 +306,13 @@ export class LiveSessionService {
         exam: answers.exam,
         stage: answers.stage,
       },
-      update: { whatsappNumber, exam: answers.exam, stage: answers.stage },
+      // A number already on record is kept rather than wiped by a form that no
+      // longer collects one.
+      update: {
+        ...(whatsappNumber ? { whatsappNumber } : {}),
+        exam: answers.exam,
+        stage: answers.stage,
+      },
     });
 
     const result = await this.orders.checkout({
@@ -260,6 +328,18 @@ export class LiveSessionService {
       data: { orderId: result.orderId },
     });
 
+    activity(this.logger, 'session.registration_started', {
+      userId,
+      sessionId,
+      registrationId: registration.id,
+      orderId: result.orderId,
+      orderNumber: result.orderNumber,
+      kind: result.kind,
+      exam: answers.exam,
+      stage: answers.stage,
+      hasMobile: Boolean(whatsappNumber),
+    });
+
     return result;
   }
 
@@ -273,7 +353,7 @@ export class LiveSessionService {
     });
 
     const taken = await this.seatsTaken(sessions.map((s) => s.productId));
-    return sessions.map((s) => this.toAdmin(s, taken.get(s.productId) ?? 0));
+    return Promise.all(sessions.map((s) => this.toAdmin(s, taken.get(s.productId) ?? 0)));
   }
 
   async getForAdmin(id: string) {
@@ -290,7 +370,9 @@ export class LiveSessionService {
 
     const days = normaliseDays(input.days!);
     if (days.some((day) => day.id)) throw new BadRequestException('A new session cannot have existing days.');
-    if (days[0].startsAt.getTime() <= Date.now()) {
+    // An empty list is "dates not fixed yet", which is allowed. Only a date
+    // that has been given can be wrong.
+    if (days.length > 0 && days[0].startsAt.getTime() <= Date.now()) {
       throw new BadRequestException('A new session must start in the future.');
     }
 
@@ -313,15 +395,20 @@ export class LiveSessionService {
         const session = await tx.liveSession.create({
           data: {
             productId: created.id,
-            startsAt: days[0].startsAt,
+            startsAt: days[0]?.startsAt ?? null,
             platformLabel: input.platformLabel!,
             capacity: input.capacity ?? null,
             showSeats: input.showSeats ?? true,
             displaySeats: input.displaySeats ?? null,
+            bundleDeliveryMode: input.bundleDeliveryMode ?? BundleDeliveryMode.IMMEDIATE,
             joinUrl: blankToNull(input.joinUrl) ?? null,
             recordingUrl: blankToNull(input.recordingUrl) ?? null,
             highlights: input.highlights ?? [],
             perkText: blankToNull(input.perkText) ?? null,
+            audienceText: blankToNull(input.audienceText) ?? null,
+            testimonialsHeading: blankToNull(input.testimonialsHeading) ?? null,
+            testimonialsSubheading: blankToNull(input.testimonialsSubheading) ?? null,
+            testimonialsTag: blankToNull(input.testimonialsTag) ?? null,
           },
         });
 
@@ -382,15 +469,22 @@ export class LiveSessionService {
         const after = await tx.liveSession.update({
           where: { productId: id },
           data: {
-            startsAt: days?.[0].startsAt,
+            // `undefined` leaves it alone; an empty day list clears it, which
+            // is how a session goes back to "dates to be announced".
+            startsAt: days === undefined ? undefined : (days[0]?.startsAt ?? null),
             platformLabel: input.platformLabel,
             capacity: input.capacity,
             showSeats: input.showSeats,
             displaySeats: input.displaySeats,
+            bundleDeliveryMode: input.bundleDeliveryMode,
             joinUrl: blankToNull(input.joinUrl),
             recordingUrl: blankToNull(input.recordingUrl),
             highlights: input.highlights,
             perkText: blankToNull(input.perkText),
+            audienceText: blankToNull(input.audienceText),
+            testimonialsHeading: blankToNull(input.testimonialsHeading),
+            testimonialsSubheading: blankToNull(input.testimonialsSubheading),
+            testimonialsTag: blankToNull(input.testimonialsTag),
           },
         });
 
@@ -574,9 +668,114 @@ export class LiveSessionService {
     }
   }
 
-  private toPublic(session: SessionRow, taken: number) {
+  // --- testimonials ---------------------------------------------------------
+
+  /**
+   * Adds a screenshot of what someone said about a past session.
+   *
+   * Public-bucket, like a cover image: this is marketing shown to people who
+   * have not paid and must not need a signed URL to load. New ones go to the
+   * end, so the admin's upload order is the display order.
+   */
+  async addTestimonial(
+    sessionId: string,
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+    actor: Actor,
+  ) {
+    await this.getRowOrThrow(sessionId);
+
+    if (!/^image\/(png|jpeg|webp)$/.test(file.mimetype)) {
+      throw new BadRequestException('A testimonial must be a PNG, JPEG or WebP image.');
+    }
+
+    const stored = await this.storage.upload({
+      content: file.buffer,
+      originalFilename: file.originalname,
+      mimeType: file.mimetype,
+      visibility: 'PUBLIC',
+      keyPrefix: `sessions/${sessionId}/testimonials`,
+    });
+
+    const last = await this.prisma.sessionTestimonial.findFirst({
+      where: { liveSessionId: sessionId },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
+
+    const row = await this.prisma.sessionTestimonial.create({
+      data: {
+        liveSessionId: sessionId,
+        storageProvider: stored.provider,
+        bucket: stored.bucket,
+        objectKey: stored.objectKey,
+        mimeType: stored.mimeType,
+        sizeBytes: BigInt(stored.sizeBytes),
+        sortOrder: (last?.sortOrder ?? -1) + 1,
+        uploadedById: actor.id,
+      },
+    });
+
+    return {
+      id: row.id,
+      url: await this.storage.getSignedDownloadUrl(objectRefOf(row), { disposition: 'inline' }),
+      sortOrder: row.sortOrder,
+    };
+  }
+
+  /**
+   * Removes one. The stored file goes too — a testimonial pulled from a page
+   * is meant to be gone, not merely unlinked and still fetchable by anyone who
+   * noted the URL.
+   */
+  async removeTestimonial(sessionId: string, testimonialId: string) {
+    const row = await this.prisma.sessionTestimonial.findFirst({
+      where: { id: testimonialId, liveSessionId: sessionId },
+    });
+
+    if (!row) throw new NotFoundException('Testimonial not found');
+
+    await this.prisma.sessionTestimonial.delete({ where: { id: row.id } });
+
+    try {
+      await this.storage.delete(objectRefOf(row));
+    } catch {
+      // The row is gone, so the page is correct. An orphaned object is a
+      // storage-cleanup problem, not a reason to fail the admin's action.
+    }
+  }
+
+  /**
+   * Sets the display order from the admin's drag-and-drop, in one go.
+   *
+   * `testimonialIds` must name exactly this session's testimonials, once each
+   * — anything else (a stale id from another session, a missing one, a
+   * duplicate) is rejected rather than silently reordering a subset, since a
+   * partial reorder would leave the list in an order nobody asked for.
+   */
+  async reorderTestimonials(sessionId: string, testimonialIds: string[]) {
+    const rows = await this.prisma.sessionTestimonial.findMany({
+      where: { liveSessionId: sessionId },
+      select: { id: true },
+    });
+
+    const current = new Set(rows.map((row) => row.id));
+    const next = new Set(testimonialIds);
+    if (testimonialIds.length !== rows.length || current.size !== next.size || [...next].some((id) => !current.has(id))) {
+      throw new BadRequestException('testimonialIds must list exactly this session\'s testimonials, once each.');
+    }
+
+    await this.prisma.$transaction(
+      testimonialIds.map((id, sortOrder) =>
+        this.prisma.sessionTestimonial.update({ where: { id }, data: { sortOrder } }),
+      ),
+    );
+  }
+
+  private async toPublic(session: SessionRow, taken: number) {
     const { product } = session;
-    const started = session.startsAt.getTime() <= Date.now();
+    // Dates not fixed yet: nothing has started, so registration is open and
+    // there is no recording to show.
+    const started = session.startsAt !== null && session.startsAt.getTime() <= Date.now();
     const seatsRemaining = session.capacity === null ? null : Math.max(0, session.capacity - taken);
 
     return {
@@ -590,6 +789,11 @@ export class LiveSessionService {
       platformLabel: session.platformLabel,
       highlights: session.highlights,
       perkText: session.perkText,
+      audienceText: session.audienceText,
+      testimonialsHeading: session.testimonialsHeading,
+      testimonialsSubheading: session.testimonialsSubheading,
+      testimonialsTag: session.testimonialsTag,
+      testimonialUrls: await this.testimonialUrls(session),
       priceAmountMinor: product.priceAmountMinor,
       compareAtAmountMinor: product.compareAtAmountMinor,
       currency: product.currency,
@@ -603,7 +807,7 @@ export class LiveSessionService {
     };
   }
 
-  private toAdmin(session: SessionRow, taken: number) {
+  private async toAdmin(session: SessionRow, taken: number) {
     const { product } = session;
 
     return {
@@ -619,11 +823,23 @@ export class LiveSessionService {
       capacity: session.capacity,
       showSeats: session.showSeats,
       displaySeats: session.displaySeats,
+      bundleDeliveryMode: session.bundleDeliveryMode,
       seatsTaken: taken,
       joinUrl: session.joinUrl,
       recordingUrl: session.recordingUrl,
       highlights: session.highlights,
       perkText: session.perkText,
+      audienceText: session.audienceText,
+      testimonialsHeading: session.testimonialsHeading,
+      testimonialsSubheading: session.testimonialsSubheading,
+      testimonialsTag: session.testimonialsTag,
+      testimonials: await Promise.all(
+        session.testimonials.map(async (row) => ({
+          id: row.id,
+          url: await this.storage.getSignedDownloadUrl(objectRefOf(row), { disposition: 'inline' }),
+          sortOrder: row.sortOrder,
+        })),
+      ),
       priceAmountMinor: product.priceAmountMinor,
       compareAtAmountMinor: product.compareAtAmountMinor,
       currency: product.currency,

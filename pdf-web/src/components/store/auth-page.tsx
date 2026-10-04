@@ -1,16 +1,17 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
-import { ArrowRight, CheckCircle2, Eye, EyeOff, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowRight, CheckCircle2, Eye, EyeOff, ShieldCheck, Smartphone, Sparkles } from "lucide-react";
 import { GoogleButton } from "@/components/ui/google-button";
 import { storeButton } from "@/components/store/store-button";
 import { VerificationCodeForm } from "@/components/store/verification-code-form";
+import { ProfileForm } from "@/components/store/profile-form";
 import { UndeliverableNotice } from "@/components/store/undeliverable-notice";
 import {
   accountApi,
@@ -28,14 +29,21 @@ const loginSchema = z.object({
   password: z.string().min(1, "Enter your password"),
 });
 
-const signupSchema = z.object({
-  name: z.string().min(1, "Enter your name").max(120),
-  email: z.email("Enter a valid email address"),
-  // Matches the server's minimum. A longer passphrase is the single most
-  // effective thing a person can do here, so the hint says so rather than
-  // demanding symbols nobody remembers.
-  password: z.string().min(8, "Use at least 8 characters — a memorable phrase works best."),
-});
+// Name, mobile and the rest are asked after the code, on the profile step —
+// this first screen is only what the account needs to exist.
+const signupSchema = z
+  .object({
+    email: z.email("Enter a valid email address"),
+    // Matches the server's minimum. A longer passphrase is the single most
+    // effective thing a person can do here, so the hint says so rather than
+    // demanding symbols nobody remembers.
+    password: z.string().min(8, "Use at least 8 characters — a memorable phrase works best."),
+    confirmPassword: z.string().min(1, "Type your password again"),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
 
 type LoginValues = z.infer<typeof loginSchema>;
 type SignupValues = z.infer<typeof signupSchema>;
@@ -66,8 +74,14 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const signup = mode === "signup";
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login, user, ready, restore, adopt } = useSessionStore();
+  const { login, user, ready, restore, adopt, updateUser } = useSessionStore();
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  // Step three. Set as a ref as well as state: the code step signs the person
+  // in, and the "already signed in, move along" effect must not whisk them
+  // away before the profile step has rendered.
+  const [completingProfile, setCompletingProfile] = useState(false);
+  const completingProfileRef = useRef(false);
 
   /**
    * Signup is two steps now: the details, then the code that proves the
@@ -109,7 +123,9 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
   // `errors` is typed against the union, so the name field is only present in
   // signup mode; this keeps the reads below honest without casting the form.
-  const fieldErrors = errors as Partial<Record<"name" | "email" | "password", { message?: string }>>;
+  const fieldErrors = errors as Partial<
+    Record<"email" | "password" | "confirmPassword", { message?: string }>
+  >;
 
   useEffect(() => {
     void restore();
@@ -117,7 +133,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
   }, [restore]);
 
   useEffect(() => {
-    if (!ready || !user) return;
+    if (!ready || !user || completingProfileRef.current) return;
     router.replace(requestedNext ?? (isAdmin(user) ? "/admin/products" : "/library"));
   }, [ready, user, requestedNext, router]);
 
@@ -136,7 +152,12 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
     setUndeliverable(null);
 
     try {
-      const { expiresInMinutes } = await accountApi.startSignup(values);
+      // The confirmation stays in the browser; only one copy of the password
+      // ever leaves it.
+      const { expiresInMinutes } = await accountApi.startSignup({
+        email: values.email,
+        password: values.password,
+      });
       setPending(values);
       setIssued({ expiresInMinutes });
       setCodeError(null);
@@ -175,9 +196,9 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
       const session = await accountApi.verifySignup({ email: pending.email, code });
       // `adopt` puts the tokens where the rest of the app looks for them,
       // keeping one code path responsible for starting a session.
-      const account = adopt(session);
-      toast.success("Account created");
-      router.replace(destinationFor(account));
+      completingProfileRef.current = true;
+      setCompletingProfile(true);
+      adopt(session);
     } catch (error) {
       // Inline rather than a toast: the mistake is in the field the person is
       // looking at, and a toast would vanish before they retyped it.
@@ -246,15 +267,25 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
         <div>
           <p className="mb-2 text-xs font-bold uppercase text-primary">JSMF account</p>
           <h2 className="font-display text-2xl font-semibold text-brand-ink">
-            {awaitingCode ? "Check your email" : signup ? "Create your account" : "Welcome back"}
+            {completingProfile
+              ? "Tell us about yourself"
+              : awaitingCode
+                ? "Check your email"
+                : signup
+                  ? "Create your account"
+                  : "Welcome back"}
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {awaitingCode
-              ? "One last step — confirm the address so nobody else can use it."
-              : signup
-                ? "Start building your personal revision library."
-                : "Sign in to access everything you have bought."}
-          </p>
+          {/* Only the code and profile steps carry a subheading — signup and
+              login headings stand on their own, matching jsmf.me. */}
+          {completingProfile ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Your email is verified. One last step to finish your account.
+            </p>
+          ) : awaitingCode && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              One last step — confirm the address so nobody else can use it.
+            </p>
+          )}
         </div>
 
         {/* Google leads: no password to create or remember, and it is what
@@ -262,16 +293,28 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
             below it — never hidden — for anyone who would rather not use
             Google, or does not have an account. Not shown on the code step:
             that screen has one job. */}
-        {!awaitingCode && (
+        {!awaitingCode && !completingProfile && (
           <div className="mt-7">
-            <GoogleButton
-              label={signup ? "Sign up with Google" : "Continue with Google"}
-              onClick={() => googleAuth.start({ next: requestedNext ?? undefined })}
-              className="h-12 text-[15px]"
-            />
-            <p className="mt-2 text-center text-xs text-muted-foreground">
-              The fastest way in — no password to create or remember.
-            </p>
+            {/* Mirrors jsmf.me's auth page: the "RECOMMENDED" badge nudges a
+                new account toward Google, where there is no password to
+                invent in the first place. Returning sign-ins already know
+                which account they have, so no badge there — the Google
+                button sits on its own. */}
+            <div className={signup ? "relative rounded-2xl bg-accent px-4 pb-4 pt-6" : ""}>
+              {signup && (
+                <span className="absolute left-1/2 top-0 inline-flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full bg-primary px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+                  <Sparkles size={11} /> Recommended
+                </span>
+              )}
+              <GoogleButton
+                label={signup ? "Sign up with Google" : "Continue with Google"}
+                onClick={() => googleAuth.start({ next: requestedNext ?? undefined })}
+                className="h-12 w-full text-[15px] shadow-sm"
+              />
+              <p className="mt-3 text-center text-xs text-muted-foreground">
+                One tap — no password. Fastest sign in / sign up.
+              </p>
+            </div>
 
             <div className="mt-6 flex items-center gap-3 text-xs text-muted-foreground">
               <span className="h-px flex-1 bg-border" />
@@ -284,7 +327,15 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
         {/* The code step replaces the details form rather than appearing below
             it: the details are already submitted, and leaving them editable
             would invite changing the address the code was just sent to. */}
-        {awaitingCode && pending && issued ? (
+        {completingProfile ? (
+          <ProfileForm
+            onSaved={(saved) => {
+              updateUser(saved);
+              toast.success("Account created");
+              router.replace(destinationFor(saved));
+            }}
+          />
+        ) : awaitingCode && pending && issued ? (
           <>
             <VerificationCodeForm
               destination={pending.email}
@@ -309,24 +360,6 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
           </>
         ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-4" noValidate>
-          {signup && (
-            <label className="field-label" htmlFor="name">
-              Name
-              <input
-                id="name"
-                autoComplete="name"
-                className="field"
-                placeholder="Your full name"
-                {...register("name" as keyof SignupValues)}
-              />
-              {fieldErrors.name && (
-                <span className="text-xs font-medium text-destructive">
-                  {fieldErrors.name.message}
-                </span>
-              )}
-            </label>
-          )}
-
           <label className="field-label" htmlFor="email">
             Email
             <input
@@ -371,7 +404,36 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
             )}
           </label>
 
-          {signup && !fieldErrors.password && (
+          {signup && (
+            <label className="field-label" htmlFor="confirmPassword">
+              Confirm password
+              <span className="relative block">
+                <input
+                  id="confirmPassword"
+                  type={showConfirm ? "text" : "password"}
+                  autoComplete="new-password"
+                  className="field pr-12"
+                  placeholder="Type it again"
+                  {...register("confirmPassword" as keyof SignupValues)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm((shown) => !shown)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label={showConfirm ? "Hide password" : "Show password"}
+                >
+                  {showConfirm ? <EyeOff className="size-4.5" /> : <Eye className="size-4.5" />}
+                </button>
+              </span>
+              {fieldErrors.confirmPassword && (
+                <span className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+                  {fieldErrors.confirmPassword.message}
+                </span>
+              )}
+            </label>
+          )}
+
+          {signup && !fieldErrors.password && !fieldErrors.confirmPassword && (
             <p className="text-xs leading-relaxed text-muted-foreground">
               A memorable phrase beats a short, complicated password.
             </p>
@@ -402,7 +464,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
         {/* Rendered only when the server reports mobile sign-in as on, so
             switching it on is a server setting and never a redeploy. */}
-        {phoneEnabled && (
+        {phoneEnabled && !completingProfile && (
           <Link
             href={`/account/mobile?next=${encodeURIComponent(requestedNext ?? "/library")}`}
             className={storeButton({ variant: "secondary", className: "mt-3 w-full" })}
@@ -423,6 +485,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
           </p>
         )}
 
+        {!completingProfile && (
         <p className="mt-6 text-center text-sm text-muted-foreground">
           {signup ? "Already have an account?" : "New here?"}{" "}
           <Link
@@ -434,6 +497,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
             {signup ? "Sign in" : "Create an account"}
           </Link>
         </p>
+        )}
       </div>
     </section>
   );

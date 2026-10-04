@@ -2,11 +2,14 @@
 
 import { useMemo } from "react";
 import { MultiSelectPopover } from "./multi-select-popover";
-import { EXAMS } from "@/data/mock/exams";
-import { SUBJECTS, SUBJECT_GROUP_LABEL } from "@/data/mock/subjects";
-import { TOPICS, getTopicById } from "@/data/mock/topics";
-import { useCollectionsStore } from "@/store/collections-store";
-import type { ExamId } from "@/types";
+import { pyqCapabilities, useCollections, useTaxonomyLookup } from "@/hooks/pyq";
+import type { Exam, ExamId, SubjectGroup } from "@/types";
+
+const SUBJECT_GROUP_LABEL: Record<SubjectGroup, string> = {
+  "pre-clinical": "Pre-Clinical",
+  "para-clinical": "Para-Clinical",
+  clinical: "Clinical",
+};
 
 export interface QuestionFiltersState {
   /** Empty means unfiltered ("All Exams"), same convention as the other
@@ -30,9 +33,9 @@ export const EMPTY_QUESTION_FILTERS: QuestionFiltersState = {
   collectionIds: [],
 };
 
-function examTriggerLabel(examIds: ExamId[]) {
-  if (examIds.length === 0 || examIds.length >= EXAMS.length) return "All Exams";
-  const names = examIds.map((id) => EXAMS.find((e) => e.id === id)?.shortName ?? id);
+function examTriggerLabel(examIds: ExamId[], exams: Exam[]) {
+  if (examIds.length === 0 || examIds.length >= exams.length) return "All Exams";
+  const names = examIds.map((id) => exams.find((e) => e.id === id)?.shortName ?? id);
   return names.length <= 2 ? names.join(" + ") : `${names.length} exams`;
 }
 
@@ -43,30 +46,32 @@ export function FilterPanel({
   value: QuestionFiltersState;
   onChange: (value: QuestionFiltersState) => void;
 }) {
-  const collections = useCollectionsStore((s) => s.collections);
+  const { data: storedCollections } = useCollections();
+  const collections = pyqCapabilities.collections ? (storedCollections ?? []) : [];
+  const { taxonomy, topic: getTopicById } = useTaxonomyLookup();
 
   const subjectOptions = useMemo(
-    () => SUBJECTS.map((s) => ({ id: s.id, label: s.name, hint: SUBJECT_GROUP_LABEL[s.group] })),
-    []
+    () => taxonomy.subjects.map((s) => ({ id: s.id, label: s.name, hint: SUBJECT_GROUP_LABEL[s.group] })),
+    [taxonomy.subjects]
   );
 
   const topicOptions = useMemo(() => {
-    const relevantSubjects = value.subjectIds.length > 0 ? value.subjectIds : SUBJECTS.map((s) => s.id);
-    return TOPICS.filter((t) => relevantSubjects.includes(t.subjectId)).map((t) => ({
-      id: t.id,
-      label: t.name,
-    }));
-  }, [value.subjectIds]);
+    const relevantSubjects =
+      value.subjectIds.length > 0 ? value.subjectIds : taxonomy.subjects.map((s) => s.id);
+    return taxonomy.topics
+      .filter((t) => relevantSubjects.includes(t.subjectId))
+      .map((t) => ({ id: t.id, label: t.name }));
+  }, [value.subjectIds, taxonomy]);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <MultiSelectPopover
         label="Exam"
         allOption="All Exams"
-        options={EXAMS.map((e) => ({ id: e.id, label: e.shortName }))}
+        options={taxonomy.exams.map((e) => ({ id: e.id, label: e.shortName }))}
         selected={value.examIds}
         onChange={(ids) => onChange({ ...value, examIds: ids as ExamId[] })}
-        triggerLabel={examTriggerLabel(value.examIds)}
+        triggerLabel={examTriggerLabel(value.examIds, taxonomy.exams)}
       />
 
       <MultiSelectPopover

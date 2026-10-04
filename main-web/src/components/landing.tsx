@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
@@ -20,11 +21,19 @@ import {
 import { FloatingVideo } from "@/components/floating-video";
 import { RegisterDialog } from "@/components/register-dialog";
 import { SiteLayout } from "@/components/site";
+import { TestimonialsSection } from "@/components/testimonials-section";
 import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/social-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { sessionsApi } from "@/lib/api/sessions";
 import type { LiveSession, SessionLanding } from "@/lib/api/types";
-import { dateLabel, formatMoney, sessionDateLabel, shortDateLabel, timeLabel } from "@/lib/format";
+import {
+  TO_BE_ANNOUNCED,
+  dateLabel,
+  formatMoney,
+  sessionDateLabel,
+  shortDateLabel,
+  timeLabel,
+} from "@/lib/format";
 import { credentials, links } from "@/lib/site-content";
 
 /**
@@ -105,7 +114,7 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
                   className="cta-spot flex w-full max-w-md items-center justify-center gap-2.5 rounded-full py-4 px-8 font-display text-lg font-semibold text-white active:translate-y-0"
                 >
                   <span className="cta-shine" aria-hidden />
-                  Reserve Your Spot Now <ArrowRight size={20} strokeWidth={2.4} className="cta-arrow transition-transform duration-300" />
+                  Book Your Spot Now <ArrowRight size={20} strokeWidth={2.4} className="cta-arrow transition-transform duration-300" />
                 </button>
               ) : (
                 <a
@@ -194,6 +203,10 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
           )}
         </div>
       </section>
+
+      {/* Shared with /prep-kit — renders nothing when the upcoming session has
+          no testimonials yet, so this is safe to leave in regardless. */}
+      {session && <TestimonialsSection session={session} />}
 
       {/* About Dr. Angad + recent interview */}
       <section id="about" className="border-b border-border bg-background py-20">
@@ -317,12 +330,12 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
           <h2 className="font-display text-3xl font-semibold leading-tight md:text-4xl">Ready to start preparing smarter?</h2>
           <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed opacity-80">
             {live && session
-              ? `Join Dr. Angad Rai live ${checkoutUrl ? "— date to be announced" : `${session.days.length > 1 ? `over ${session.days.length} days, from` : "on"} ${dateLabel(session.startsAt)}`}.${session.included.length ? " The revision planner comes with your seat." : ""}`
+              ? `Join Dr. Angad Rai live ${checkoutUrl || !session.startsAt ? "— date to be announced" : `${session.days.length > 1 ? `over ${session.days.length} days, from` : "on"} ${dateLabel(session.startsAt)}`}.${session.included.length ? " The revision planner comes with your seat." : ""}`
               : "Follow JSMF so you hear about the next live session the moment it opens."}
           </p>
           <div className="mt-9 flex justify-center">
             {live ? (
-              <Button size="lg" onClick={reserve}>Reserve Your Spot Now <ArrowRight size={17} /></Button>
+              <Button size="lg" onClick={reserve}>Book Your Spot Now <ArrowRight size={17} /></Button>
             ) : (
               <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ size: "lg" })}><Send size={16} /> Join Telegram</a>
             )}
@@ -428,13 +441,19 @@ export function SessionCard({
   return (
     <div className="rounded-3xl border border-border bg-card p-7 text-foreground shadow-editorial">
       <div className="grid gap-4">
-        <Detail icon={<CalendarDays size={18} />} label="Date" value={external ? "To be announced" : sessionDateLabel(session)} />
+        <Detail
+          icon={<CalendarDays size={18} />}
+          label="Date"
+          value={external ? TO_BE_ANNOUNCED : sessionDateLabel(session)}
+        />
         <Detail
           icon={<Clock size={18} />}
           label="Time"
           value={
-            external ? (
-              "To be announced"
+            // No days at all means the schedule has not been fixed yet, the
+            // same thing the external-checkout phase shows.
+            external || session.days.length === 0 ? (
+              TO_BE_ANNOUNCED
             ) : session.days.length === 1 ? (
               timeLabel(session.days[0].startsAt, session.days[0].durationMinutes)
             ) : (
@@ -476,20 +495,16 @@ export function SessionCard({
       {external && <ExternalSeatsLine seats={session.displaySeats} capacity={session.capacity} />}
 
       {session.registrationOpen ? (
-        external ? (
-          <button
-            type="button"
-            onClick={onRegister}
-            className="cta-spot mt-4 flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base text-white"
-          >
-            <span className="cta-shine" aria-hidden />
-            Book Your Spot Now <ArrowRight size={18} strokeWidth={2.4} className="cta-arrow" />
-          </button>
-        ) : (
-          <Button size="lg" className="mt-4 w-full" onClick={onRegister}>
-            Reserve for {price} <ArrowRight size={16} />
-          </Button>
-        )
+        // One call to action either way. Which checkout it opens is ours to
+        // know, not something the wording should change under someone.
+        <button
+          type="button"
+          onClick={onRegister}
+          className="cta-spot mt-4 flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base text-white"
+        >
+          <span className="cta-shine" aria-hidden />
+          Book Your Spot Now <ArrowRight size={18} strokeWidth={2.4} className="cta-arrow" />
+        </button>
       ) : (
         <Button size="lg" className="mt-4 w-full" disabled>
           {session.seatsRemaining === 0 ? "This session is full" : "Registration closed"}
@@ -509,6 +524,19 @@ export function SessionCard({
       <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "ghost", size: "sm", className: "mt-2 w-full" })}>
         <Send size={14} /> Join Telegram for updates
       </a>
+
+      {/* What someone is agreeing to by paying, where they are about to pay. */}
+      <p className="mt-3 text-center text-[11px] leading-relaxed text-muted-foreground">
+        By proceeding with payment, you agree to the JSMF{" "}
+        <Link href="/terms" className="font-medium text-primary hover:underline">
+          Terms &amp; Conditions
+        </Link>{" "}
+        and{" "}
+        <Link href="/refund-policy" className="font-medium text-primary hover:underline">
+          Refund &amp; Cancellation Policy
+        </Link>
+        .
+      </p>
     </div>
   );
 }

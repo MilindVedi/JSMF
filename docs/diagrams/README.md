@@ -17,4 +17,12 @@ Any of these work without installing anything locally:
 | [`roadmap-phases.puml`](./roadmap-phases.puml) | The full stage sequence from [Roadmap](../06-roadmap.md) — mock UI through production deployment — with the mock UI stage's internal build → deploy → share → iterate loop expanded. |
 | [`mock-ui-feedback-loop.puml`](./mock-ui-feedback-loop.puml) | A closer, activity-diagram view of that same mock UI feedback loop specifically — useful when the question is "what exactly happens in one round of feedback," rather than where that loop sits in the overall roadmap. |
 
+## Diagrams kept elsewhere
+
+A product with enough flows of its own keeps its diagrams beside its prose rather than here. Render them exactly as above.
+
+| Folder | Describes |
+|---|---|
+| [`../pyq/diagrams/`](../pyq/diagrams/) | The PYQ practice app: the student journey, a practice session's request sequence, the subscription purchase and renewal path, the mock/api data-source switch, the admin content lifecycle, and an ERD of the `pyq` Postgres schema. All six are walked through in [PYQ user flows](../pyq/user-flows.md). |
+
 Add new diagrams here as flows are worth visualizing (e.g. once a real backend/API sequence exists, a request/data flow diagram would belong here too) — keep each one referenced from the prose doc it illustrates, the way both diagrams above are linked from [Roadmap](../06-roadmap.md).

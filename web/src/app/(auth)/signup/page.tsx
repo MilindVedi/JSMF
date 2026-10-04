@@ -16,6 +16,11 @@ import { EXAMS } from "@/data/mock/exams";
 import { DEMO_USER } from "@/data/mock/demo-user";
 import { getPlanById } from "@/data/mock/plans";
 import type { ExamId } from "@/types";
+import { GoogleSignIn } from "@/components/auth/google-sign-in";
+import { DATA_SOURCE_KIND } from "@/lib/data-source";
+
+const IS_API = DATA_SOURCE_KIND === "api";
+const MIN_PASSWORD = IS_API ? 8 : 6;
 
 // Every new mock signup is seeded onto DEMO_USER's plan (see auth-store.signup).
 // The exam question is only a real *choice* when that plan unlocks more than
@@ -29,7 +34,7 @@ const ACCESSIBLE_EXAMS = EXAMS.filter((exam) => ACCESSIBLE_EXAM_IDS.includes(exa
 const schema = z.object({
   name: z.string().min(2, "Enter your full name"),
   email: z.string().email("Enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: z.string().min(MIN_PASSWORD, `Password must be at least ${MIN_PASSWORD} characters`),
   targetExamId: REQUIRES_EXAM_CHOICE
     ? z.enum(["neet-pg", "fmge", "inicet"], {
         error: "Select which exam you're preparing for",
@@ -47,6 +52,7 @@ export default function SignupPage() {
     handleSubmit,
     watch,
     setValue,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -56,8 +62,13 @@ export default function SignupPage() {
   });
   const targetExamId = watch("targetExamId");
 
-  function onSubmit(values: FormValues) {
-    signup(values.name, values.email, values.targetExamId ?? "neet-pg");
+  async function onSubmit(values: FormValues) {
+    try {
+      await signup(values.name, values.email, values.password, values.targetExamId ?? "neet-pg");
+    } catch (error) {
+      setError("root", { message: error instanceof Error ? error.message : "Could not create your account." });
+      return;
+    }
     toast.success("Account created — welcome to JSMF!");
     router.push("/dashboard");
   }
@@ -75,6 +86,7 @@ export default function SignupPage() {
         </span>
       }
     >
+      <GoogleSignIn next="/dashboard" />
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="name">Full name</Label>
@@ -88,7 +100,7 @@ export default function SignupPage() {
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="password">Password</Label>
-          <Input id="password" type="password" placeholder="At least 6 characters" {...register("password")} />
+          <Input id="password" type="password" placeholder={`At least ${MIN_PASSWORD} characters`} {...register("password")} />
           {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
         </div>
         {REQUIRES_EXAM_CHOICE && (
@@ -116,12 +128,15 @@ export default function SignupPage() {
             {errors.targetExamId && <p className="text-xs text-destructive">{errors.targetExamId.message}</p>}
           </div>
         )}
+        {errors.root && <p className="text-sm text-destructive">{errors.root.message}</p>}
         <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
-          Create account
+          {isSubmitting ? "Creating account…" : "Create account"}
         </Button>
-        <p className="text-center text-xs text-muted-foreground">
-          This is a prototype — no real account is created.
-        </p>
+        {!IS_API && (
+          <p className="text-center text-xs text-muted-foreground">
+            This is a prototype — no real account is created.
+          </p>
+        )}
       </form>
     </AuthCard>
   );

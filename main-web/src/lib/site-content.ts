@@ -3,7 +3,13 @@
  * facts about Dr. Angad Rai. Session details (date, price, seats) are NOT here
  * — they come from the API, managed in the admin panel at /admin/sessions.
  */
-export const supportEmail = "support@jsmf.me";
+/**
+ * Where "Contact us" and every mailto link on the site reaches. Kept in
+ * configuration (NEXT_PUBLIC_SUPPORT_EMAIL) so a different brand or a staging
+ * deploy can route it elsewhere without a code change. The default is the
+ * production address, so an unset variable is a no-op rather than a surprise.
+ */
+export const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@jsmf.me";
 
 /** The registered/operating address shown on Contact Us and About Us, for payment-provider verification. */
 export const businessAddress = {

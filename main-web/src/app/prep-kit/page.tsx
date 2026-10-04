@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { BookPage } from "@/components/book-page";
 import { externalCheckoutUrl } from "@/lib/external-checkout";
@@ -11,5 +12,11 @@ export const metadata: Metadata = {
 };
 
 export default function BookRoute() {
-  return <BookPage checkoutUrl={externalCheckoutUrl()} />;
+  // Suspense because BookPage reads `?register=1` (set when Google sign-in
+  // returns someone mid-registration), and search params suspend in Next.
+  return (
+    <Suspense>
+      <BookPage checkoutUrl={externalCheckoutUrl()} />
+    </Suspense>
+  );
 }

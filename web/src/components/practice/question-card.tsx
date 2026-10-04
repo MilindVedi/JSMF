@@ -1,12 +1,14 @@
-import type { Question } from "@/types";
+"use client";
+
+import type { SessionQuestion } from "@/types";
 import { FigurePlaceholder } from "@/components/common/figure-placeholder";
 import { SubjectBadge } from "@/components/common/subject-badge";
 import { ExamBadge } from "@/components/common/exam-badge";
 import { OptionButton } from "./option-button";
-import { getTopicById } from "@/data/mock/topics";
+import { useTaxonomyLookup } from "@/hooks/pyq";
 import { cn } from "@/lib/utils";
 
-const DIFFICULTY_LABEL: Record<Question["difficulty"], string> = {
+const DIFFICULTY_LABEL: Record<SessionQuestion["difficulty"], string> = {
   easy: "Easy",
   medium: "Moderate",
   hard: "Hard",
@@ -18,12 +20,12 @@ export function QuestionCard({
   selectedOptionId,
   onSelect,
 }: {
-  question: Question;
+  question: SessionQuestion;
   submitted: boolean;
   selectedOptionId: string | null;
   onSelect: (optionId: string) => void;
 }) {
-  const topic = getTopicById(question.topicId);
+  const topic = useTaxonomyLookup().topic(question.topicId);
 
   return (
     <div className="space-y-5">

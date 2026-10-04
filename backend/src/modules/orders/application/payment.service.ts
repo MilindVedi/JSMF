@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  BundleDeliveryMode,
   EntitlementSource,
   OrderStatus,
   PaymentStatus,
@@ -13,11 +14,13 @@ import {
   WebhookEventStatus,
 } from '@prisma/client';
 import { AppConfig } from '../../../config/config.module';
+import { activity } from '../../../shared/logging/activity';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { MailService } from '../../../shared/mail/application/mail.service';
 import { WhatsAppService } from '../../../shared/whatsapp/application/whatsapp.service';
 import { purchaseConfirmation } from '../../../shared/mail/templates/mail-templates';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
+import { extendedExpiry, readPyqPlan } from '../../../shared/pyq-plan';
 import { OrderEvents, type OrderPaidEvent } from './order-events';
 import {
   PaymentProvider,
@@ -90,6 +93,13 @@ function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] || name;
 }
 
+/**
+ * A provider order this application did not create — a Razorpay Payment Page
+ * or payment link on the same account. Distinct from a real failure so the
+ * webhook can acknowledge it rather than fail it.
+ */
+export class ForeignProviderOrderError extends Error {}
+
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
@@ -121,9 +131,12 @@ export class PaymentService {
     });
 
     if (!valid) {
-      this.logger.warn(
-        `Invalid checkout signature for provider order ${request.providerOrderId}`,
-      );
+      activity(this.logger, 'payment.verify_rejected', {
+        userId: request.userId,
+        providerOrderId: request.providerOrderId,
+        providerPaymentId: request.providerPaymentId,
+        reason: 'invalid checkout signature',
+      }, 'warn');
       throw new BadRequestException('Payment signature verification failed.');
     }
 
@@ -132,12 +145,15 @@ export class PaymentService {
       include: { order: { include: { items: true } } },
     });
 
-    if (!payment) throw new NotFoundException('No payment found for that order.');
-
     // A valid signature proves the payment is genuine; it does not prove the
     // caller is the buyer. Without this check, anyone holding a signature could
     // settle someone else's order.
-    if (payment.order.userId !== request.userId) {
+    if (!payment || payment.order.userId !== request.userId) {
+      activity(this.logger, 'payment.verify_rejected', {
+        userId: request.userId,
+        providerOrderId: request.providerOrderId,
+        reason: payment ? 'order belongs to another user' : 'no payment for that provider order',
+      }, 'warn');
       throw new NotFoundException('No payment found for that order.');
     }
 
@@ -176,6 +192,13 @@ export class PaymentService {
 
     const event = verification.event;
 
+    activity(this.logger, 'webhook.received', {
+      eventId: event.eventId,
+      eventType: event.eventType,
+      providerOrderId: event.providerOrderId,
+      providerPaymentId: event.providerPaymentId,
+    });
+
     try {
       await this.prisma.paymentWebhookEvent.create({
         data: {
@@ -188,11 +211,31 @@ export class PaymentService {
         },
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) {
+        throw error;
+      }
+
+      // Seen before. Only a *processed* event is a true duplicate: one that
+      // failed (or crashed mid-way and was left RECEIVED) must be retried,
+      // because Razorpay's redelivery is the retry. Treating every repeat as
+      // a duplicate meant a single transient failure — a database blip during
+      // settlement — turned a paid order into one that was never settled, with
+      // every redelivery politely answered "already handled".
+      //
+      // Reprocessing is safe: every handler below is idempotent.
+      const seen = await this.prisma.paymentWebhookEvent.findUnique({
+        where: { providerEventId: event.eventId },
+        select: { status: true },
+      });
+
+      if (seen?.status === WebhookEventStatus.PROCESSED) {
         this.logger.debug(`Duplicate webhook ${event.eventId} ignored`);
         return { processed: false, duplicate: true };
       }
-      throw error;
+
+      this.logger.warn(
+        `Webhook ${event.eventId} (${event.eventType}) redelivered after status ${seen?.status ?? 'unknown'} — retrying it`,
+      );
     }
 
     try {
@@ -200,20 +243,27 @@ export class PaymentService {
 
       await this.prisma.paymentWebhookEvent.update({
         where: { providerEventId: event.eventId },
-        data: { status: WebhookEventStatus.PROCESSED, processedAt: new Date() },
+        data: { status: WebhookEventStatus.PROCESSED, processedAt: new Date(), processingError: null },
       });
 
       return { processed: true, duplicate: false };
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+
       // The event row stays, marked FAILED with the reason, so a failure is
-      // visible and replayable rather than vanishing into a log line.
+      // visible and replayable rather than vanishing into a log line — and
+      // Razorpay's next redelivery retries it (see above).
       await this.prisma.paymentWebhookEvent.update({
         where: { providerEventId: event.eventId },
-        data: {
-          status: WebhookEventStatus.FAILED,
-          processingError: error instanceof Error ? error.message : String(error),
-        },
+        data: { status: WebhookEventStatus.FAILED, processingError: reason },
       });
+
+      activity(
+        this.logger,
+        'webhook.failed',
+        { eventId: event.eventId, eventType: event.eventType, providerOrderId: event.providerOrderId, reason },
+        'error',
+      );
 
       throw error;
     }
@@ -222,27 +272,60 @@ export class PaymentService {
   private async process(event: PaymentWebhookEvent): Promise<void> {
     switch (event.normalizedType) {
       case 'PAYMENT_CAPTURED':
-        if (!event.providerOrderId || !event.providerPaymentId) {
-          throw new Error('Capture event is missing order or payment id');
+        if (!event.providerOrderId) {
+          // A payment with no order at all was not made through our checkout
+          // (every JSMF checkout creates a Razorpay order first).
+          activity(this.logger, 'webhook.foreign_payment_ignored', {
+            eventId: event.eventId,
+            providerPaymentId: event.providerPaymentId,
+            reason: 'no order id on the payment',
+          }, 'warn');
+          break;
         }
-        await this.settle({
-          providerOrderId: event.providerOrderId,
-          providerPaymentId: event.providerPaymentId,
-          method: event.method,
-          amountMinor: event.amountMinor,
-          raw: event.payload,
-          source: 'webhook',
-        });
+        if (!event.providerPaymentId) {
+          throw new Error('Capture event is missing its payment id');
+        }
+        try {
+          await this.settle({
+            providerOrderId: event.providerOrderId,
+            providerPaymentId: event.providerPaymentId,
+            method: event.method,
+            amountMinor: event.amountMinor,
+            raw: event.payload,
+            source: 'webhook',
+          });
+        } catch (error) {
+          // The same Razorpay account also receives Payment Page / payment
+          // link payments (the external-checkout phase), and every one of
+          // them is sent to this webhook. They belong to no JSMF order, so
+          // there is nothing to settle — answering 5xx would only make
+          // Razorpay retry it, and repeated failures can get the whole
+          // webhook disabled, which would take real settlements down with it.
+          if (error instanceof ForeignProviderOrderError) {
+            activity(this.logger, 'webhook.foreign_payment_ignored', {
+              eventId: event.eventId,
+              providerOrderId: event.providerOrderId,
+              providerPaymentId: event.providerPaymentId,
+              amountMinor: event.amountMinor,
+              reason: error.message,
+            }, 'warn');
+            break;
+          }
+          throw error;
+        }
         break;
 
       case 'PAYMENT_FAILED':
         await this.markFailed(event);
         break;
 
+      case 'REFUND_PROCESSED':
+        await this.applyProviderRefund(event);
+        break;
+
       // Authorized-but-not-captured grants nothing: the money has only been
       // held, not taken. Capture is the event that means paid.
       case 'PAYMENT_AUTHORIZED':
-      case 'REFUND_PROCESSED':
       case 'IGNORED':
       default:
         this.logger.debug(`No action for event type ${event.eventType}`);
@@ -279,6 +362,8 @@ export class PaymentService {
     // announce; the rest are no-ops and must stay silent.
     let confirmation: PurchaseConfirmationContext | null = null;
     let paidEvent: OrderPaidEvent | null = null;
+    let settledOrder: { orderNumber: string; userId: string; amountMinor: bigint } | null = null;
+    const planPurchases: Array<{ productId: string; expiresAt: Date; renewal: boolean }> = [];
 
     await this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.findFirst({
@@ -296,6 +381,11 @@ export class PaymentService {
                         select: { childProductId: true },
                         orderBy: { sortOrder: 'asc' },
                       },
+                      // A live session may hold its included items back until
+                      // after it has ended — see the grant loop below.
+                      liveSession: { select: { bundleDeliveryMode: true } },
+                      // A PYQ plan's duration lives here — see applyPlanTerm.
+                      metadata: true,
                     },
                   },
                 },
@@ -320,6 +410,26 @@ export class PaymentService {
         );
       }
 
+      // Refunded already: a capture event replayed after the refund (a
+      // redelivery, or the reconciliation sweep) must neither flip the payment
+      // back to CAPTURED nor re-grant the access the refund took away.
+      if (
+        payment.status === PaymentStatus.REFUNDED ||
+        payment.order.status === OrderStatus.REFUNDED ||
+        payment.order.status === OrderStatus.PARTIALLY_REFUNDED
+      ) {
+        this.logger.warn(
+          `Ignoring settlement of ${input.providerOrderId} via ${input.source}: order ${payment.order.orderNumber} is already refunded`,
+        );
+        return;
+      }
+
+      settledOrder = {
+        orderNumber: payment.order.orderNumber,
+        userId: payment.order.userId,
+        amountMinor: payment.amountMinor,
+      };
+
       if (payment.status !== PaymentStatus.CAPTURED) {
         await tx.payment.update({
           where: { id: payment.id },
@@ -334,12 +444,22 @@ export class PaymentService {
         });
       }
 
-      if (payment.order.status !== OrderStatus.PAID) {
-        await tx.order.update({
-          where: { id: payment.orderId },
-          data: { status: OrderStatus.PAID, paidAt: new Date() },
-        });
+      // Conditional, and the row count decides who announces the purchase. The
+      // webhook and the browser callback routinely arrive within milliseconds
+      // of each other; reading the status first and updating after let both
+      // see "not paid yet" and both send a confirmation. `updateMany` with the
+      // status in its WHERE takes the row lock, so the second transaction
+      // waits, re-evaluates against the committed PAID row, and matches 0.
+      // A REFUNDED order is never moved back to PAID by a late capture event.
+      const transitioned = await tx.order.updateMany({
+        where: {
+          id: payment.orderId,
+          status: { notIn: [OrderStatus.PAID, OrderStatus.REFUNDED, OrderStatus.PARTIALLY_REFUNDED] },
+        },
+        data: { status: OrderStatus.PAID, paidAt: new Date() },
+      });
 
+      if (transitioned.count === 1) {
         confirmation = {
           // The order's snapshot, not the user's current address: a buyer who
           // later changes their email should not retroactively change where a
@@ -377,7 +497,7 @@ export class PaymentService {
       }
 
       for (const item of payment.order.items) {
-        await this.entitlements.grant(
+        const granted = await this.entitlements.grant(
           {
             userId: payment.order.userId,
             productId: item.productId,
@@ -386,6 +506,26 @@ export class PaymentService {
           },
           tx,
         );
+
+        // Only the call that moved the order to PAID may extend a plan, so a
+        // redelivered webhook or the racing browser callback never adds days twice.
+        if (transitioned.count === 1) {
+          const term = await this.applyPlanTerm(tx, granted, item.product.metadata, payment.orderId);
+          if (term) planPurchases.push({ productId: item.productId, ...term });
+        }
+
+        // A session whose included items are delivered after it ends grants
+        // nothing here: the PDF frequently does not exist yet when seats go on
+        // sale, and granting an entitlement to an unfinished product would put
+        // a broken row in someone's library. LiveSessionNotifications releases
+        // these later — on its own, or when an admin sends them.
+        //
+        // Only sessions can defer: `liveSession` is null for every other kind
+        // of bundle, and those still grant immediately as they always have.
+        const session = item.product.liveSession;
+        if (session && session.bundleDeliveryMode !== BundleDeliveryMode.IMMEDIATE) {
+          continue;
+        }
 
         // Products included with this one — a live session's free revision
         // planner. Carrying `sourceOrderId` is what makes a refund take them
@@ -407,7 +547,33 @@ export class PaymentService {
       }
     });
 
-    this.logger.log(`Settled ${input.providerOrderId} via ${input.source}`);
+    if (!settledOrder) return;
+    // TypeScript narrows `let` bindings assigned inside a callback to `never`;
+    // re-read through a typed alias so the fields are usable.
+    const settled = settledOrder as { orderNumber: string; userId: string; amountMinor: bigint };
+
+    activity(this.logger, 'payment.settled', {
+      orderNumber: settled.orderNumber,
+      userId: settled.userId,
+      amountMinor: settled.amountMinor,
+      providerOrderId: input.providerOrderId,
+      providerPaymentId: input.providerPaymentId,
+      method: input.method,
+      via: input.source,
+      // false = another caller (the webhook or the browser callback) already
+      // moved this order to PAID; this one changed nothing.
+      firstSettlement: Boolean(confirmation),
+    });
+
+    for (const plan of planPurchases) {
+      activity(this.logger, 'pyq.plan_purchased', {
+        orderNumber: settled.orderNumber,
+        userId: settled.userId,
+        productId: plan.productId,
+        expiresAt: plan.expiresAt.toISOString(),
+        renewal: plan.renewal,
+      });
+    }
 
     // After the commit, never inside it: an open transaction holds a database
     // connection, and this makes an HTTP call to the mail provider. It is also
@@ -417,6 +583,38 @@ export class PaymentService {
       const { confirmationHandled } = await this.events.paid(paidEvent);
       if (!confirmationHandled) await this.sendPurchaseConfirmation(confirmation);
     }
+  }
+
+  /**
+   * The subscription hook: when the product just paid for is a PYQ plan, set
+   * the entitlement's expiry to `durationDays` from the later of now and its
+   * current expiry (renewing early keeps the remaining days). The grant itself
+   * stays the ordinary idempotent one; this only stamps a term on it.
+   *
+   * The renewed row is re-pointed at this order, so refunding the latest order
+   * revokes the plan (refunds are all-or-nothing, as for every product).
+   * A perpetual grant from elsewhere (an admin gift, expiresAt null on a row
+   * this order did not create) is never shortened. Returns null for any
+   * non-plan product, which is every product before subscriptions existed.
+   */
+  private async applyPlanTerm(
+    tx: Prisma.TransactionClient,
+    entitlement: { id: string; expiresAt: Date | null; sourceOrderId: string | null },
+    metadata: unknown,
+    orderId: string,
+  ): Promise<{ expiresAt: Date; renewal: boolean } | null> {
+    const plan = readPyqPlan(metadata);
+    if (!plan) return null;
+
+    const fresh = entitlement.sourceOrderId === orderId && entitlement.expiresAt === null;
+    if (!fresh && entitlement.expiresAt === null) return null;
+
+    const expiresAt = extendedExpiry(fresh ? null : entitlement.expiresAt, plan.durationDays);
+    await tx.entitlement.update({
+      where: { id: entitlement.id },
+      data: { expiresAt, sourceOrderId: orderId },
+    });
+    return { expiresAt, renewal: !fresh };
   }
 
   /**
@@ -559,8 +757,8 @@ export class PaymentService {
     const localOrderId = providerOrder.notes?.jsmf_order_id;
 
     if (!localOrderId) {
-      throw new NotFoundException(
-        `Provider order ${providerOrderId} carries no jsmf_order_id and cannot be matched to an order`,
+      throw new ForeignProviderOrderError(
+        `Provider order ${providerOrderId} carries no jsmf_order_id — not created by JSMF checkout`,
       );
     }
 
@@ -645,9 +843,12 @@ export class PaymentService {
 
     const stale = await this.prisma.payment.findMany({
       where: {
-        // Anything not yet terminal. CAPTURED, FAILED and REFUNDED are all
-        // settled questions.
-        status: { in: [PaymentStatus.CREATED, PaymentStatus.AUTHORIZED] },
+        // Anything not captured or refunded. FAILED is included on purpose:
+        // Razorpay lets the buyer retry within the same order, so "the first
+        // attempt failed" is followed by "the retry was captured" more often
+        // than not — and if that capture's webhook never arrives and the
+        // buyer closed the tab, this sweep is the only thing that notices.
+        status: { in: [PaymentStatus.CREATED, PaymentStatus.AUTHORIZED, PaymentStatus.FAILED] },
         providerOrderId: { not: null },
         // Old enough that a webhook would normally have arrived, recent enough
         // that the provider still has it and a human would still care. Without
@@ -657,7 +858,7 @@ export class PaymentService {
           lt: new Date(now - options.staleAfterMinutes * 60_000),
           gt: new Date(now - options.giveUpAfterHours * 3_600_000),
         },
-        order: { status: { in: [OrderStatus.CREATED, OrderStatus.AWAITING_PAYMENT] } },
+        order: { status: { in: [OrderStatus.CREATED, OrderStatus.AWAITING_PAYMENT, OrderStatus.FAILED] } },
       },
       orderBy: { createdAt: 'asc' },
       take: options.batchSize,
@@ -711,6 +912,104 @@ export class PaymentService {
     return { checked: stale.length, settled, errors };
   }
 
+  /**
+   * A refund the provider carried out that this application did not initiate.
+   *
+   * `refund()` below already revokes access in the same transaction as the
+   * refund it starts, so this exists for the other door: a refund issued
+   * directly in the Razorpay dashboard, which support will reach for because it
+   * is right there. Without this, the money goes back and the buyer keeps the
+   * content — the one outcome that costs twice.
+   *
+   * Partial refunds deliberately revoke nothing. Access here is all-or-nothing,
+   * so taking it away for a partial return would leave someone who is still out
+   * of pocket with less than they paid for; only refunds that together cover
+   * the captured amount remove it.
+   */
+  private async applyProviderRefund(event: PaymentWebhookEvent): Promise<void> {
+    if (!event.providerRefundId || !event.providerPaymentId) {
+      throw new Error('Refund event is missing its refund or payment id');
+    }
+
+    const payment = await this.prisma.payment.findFirst({
+      where: { providerPaymentId: event.providerPaymentId },
+      select: { id: true, orderId: true, amountMinor: true },
+    });
+
+    if (!payment) {
+      // Every captured JSMF payment has its provider payment id recorded at
+      // settlement, so an unknown one is a Payment Page / payment link refund
+      // on the same account — nothing here to revoke. See process().
+      activity(this.logger, 'webhook.foreign_refund_ignored', {
+        eventId: event.eventId,
+        providerPaymentId: event.providerPaymentId,
+        providerRefundId: event.providerRefundId,
+      }, 'warn');
+      return;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // `provider_refund_id` is UNIQUE, so this is what makes a redelivered
+      // event — or the webhook for a refund `refund()` already recorded — a
+      // no-op rather than a second revocation.
+      const already = await tx.refund.findUnique({
+        where: { providerRefundId: event.providerRefundId },
+        select: { id: true },
+      });
+
+      if (already) return;
+
+      await tx.refund.create({
+        data: {
+          paymentId: payment.id,
+          orderId: payment.orderId,
+          providerRefundId: event.providerRefundId,
+          // The refund's own amount, never the payment's — see
+          // `refundAmountMinor` on the port for why those differ here.
+          amountMinor: event.refundAmountMinor ?? payment.amountMinor,
+          status: RefundStatus.PROCESSED,
+          reason: 'Refunded in the Razorpay dashboard',
+          // No `initiatedById`: nobody signed in here did this, and naming an
+          // admin who did not would make the audit trail wrong rather than full.
+          rawResponse: event.payload as Prisma.InputJsonValue,
+          processedAt: new Date(),
+        },
+      });
+
+      // Everything returned so far, including refunds `refund()` recorded, so a
+      // purchase refunded in two parts still ends with access removed.
+      const returned = await tx.refund.aggregate({
+        where: { paymentId: payment.id, status: RefundStatus.PROCESSED },
+        _sum: { amountMinor: true },
+      });
+
+      if ((returned._sum.amountMinor ?? 0n) < payment.amountMinor) {
+        this.logger.log(
+          `Partial refund recorded on order ${payment.orderId}; access left in place`,
+        );
+        return;
+      }
+
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: { status: PaymentStatus.REFUNDED },
+      });
+
+      await tx.order.update({
+        where: { id: payment.orderId },
+        data: { status: OrderStatus.REFUNDED, cancelledAt: new Date() },
+      });
+
+      await this.entitlements.revokeForOrder(
+        payment.orderId,
+        'Refunded in the Razorpay dashboard',
+        tx,
+      );
+    });
+
+    this.logger.log(`Applied provider-initiated refund ${event.providerRefundId}`);
+  }
+
   private async markFailed(event: PaymentWebhookEvent): Promise<void> {
     if (!event.providerOrderId) return;
 
@@ -718,7 +1017,9 @@ export class PaymentService {
       where: { providerOrderId: event.providerOrderId },
     });
 
-    if (!payment || payment.status === PaymentStatus.CAPTURED) return;
+    if (!payment || payment.status === PaymentStatus.CAPTURED || payment.status === PaymentStatus.REFUNDED) {
+      return;
+    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.payment.update({
@@ -732,13 +1033,25 @@ export class PaymentService {
         },
       });
 
-      // The order stays FAILED rather than being deleted, so the user can see
-      // the attempt and retry produces a new order rather than mutating this one.
-      await tx.order.update({
-        where: { id: payment.orderId },
+      // Recorded, not final. Razorpay lets the buyer retry inside the same
+      // checkout window — same Razorpay order — so a failed card is often
+      // followed seconds later by a captured UPI payment. `settle` moves a
+      // FAILED order to PAID when that capture arrives, and reconciliation
+      // still checks FAILED orders for exactly that reason. Conditional so a
+      // failure event delivered *after* the capture cannot undo it.
+      await tx.order.updateMany({
+        where: { id: payment.orderId, status: { in: [OrderStatus.CREATED, OrderStatus.AWAITING_PAYMENT] } },
         data: { status: OrderStatus.FAILED },
       });
     });
+
+    activity(this.logger, 'payment.failed', {
+      orderId: payment.orderId,
+      providerOrderId: event.providerOrderId,
+      providerPaymentId: event.providerPaymentId,
+      errorCode: event.errorCode,
+      errorDescription: event.errorDescription,
+    }, 'warn');
   }
 
   /**

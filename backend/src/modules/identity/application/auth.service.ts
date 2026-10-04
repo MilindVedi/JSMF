@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -8,6 +9,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { RefreshTokenRevokedReason, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
+import { activity } from '../../../shared/logging/activity';
 import { AppConfig } from '../../../config/config.module';
 import { PasswordHasher } from '../domain/password-hasher.port';
 import { TokenService } from './token.service';
@@ -120,6 +122,8 @@ export class AuthService implements OnModuleInit {
 
     const authenticated: AuthenticatedUser = toAuthenticatedUser(user);
 
+    activity(this.logger, 'auth.signup', { method: 'password', userId: user.id, ip: context.ip });
+
     return { user: authenticated, tokens: await this.startSession(authenticated, context) };
   }
 
@@ -141,10 +145,17 @@ export class AuthService implements OnModuleInit {
     const passwordMatches = await this.hasher.verify(storedHash, input.password);
 
     if (!user || !user.passwordHash || !passwordMatches) {
+      activity(this.logger, 'auth.login_failed', {
+        method: 'password',
+        email,
+        reason: !user ? 'no such account' : !user.passwordHash ? 'account has no password (Google-only)' : 'wrong password',
+        ip: context.ip,
+      }, 'warn');
       throw new UnauthorizedException('Invalid email or password');
     }
 
     if (user.status !== UserStatus.ACTIVE) {
+      activity(this.logger, 'auth.login_failed', { method: 'password', userId: user.id, reason: `account ${user.status}` }, 'warn');
       throw new UnauthorizedException('This account is not active');
     }
 
@@ -163,6 +174,80 @@ export class AuthService implements OnModuleInit {
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
+
+    const authenticated: AuthenticatedUser = toAuthenticatedUser(user);
+
+    activity(this.logger, 'auth.login', { method: 'password', userId: user.id, ip: context.ip });
+
+    return { user: authenticated, tokens: await this.startSession(authenticated, context) };
+  }
+
+  /**
+   * Changes the password of an already signed-in account.
+   *
+   * The current password is required even though the caller already holds a
+   * valid access token. A token is a bearer credential — anyone who steals one
+   * could otherwise set a new password and lock the real owner out of their own
+   * account permanently. Asking for the existing password means a stolen token
+   * grants only what it already grants, and never escalates into ownership.
+   *
+   * Distinct from the reset flow, which proves control of the *address*
+   * instead because the password is, by definition, unavailable there.
+   *
+   * Every other session is revoked, on the assumption that a deliberate
+   * password change may well be a response to a suspected compromise — the
+   * point of changing it is that the old one stops working everywhere. The
+   * caller gets a fresh pair back so the session they are sitting in survives.
+   */
+  async changePassword(
+    userId: string,
+    input: { currentPassword: string; newPassword: string },
+    context: RequestContext,
+  ): Promise<{ user: AuthenticatedUser; tokens: SessionTokens }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { roles: { include: { role: true } } },
+    });
+
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('This account is not active');
+    }
+
+    // A Google-only account has no password to change. Saying so plainly is
+    // safe here — the caller is already authenticated as this very account, so
+    // nothing is revealed that they could not already see.
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This account signs in with Google and has no password to change.',
+      );
+    }
+
+    if (!(await this.hasher.verify(user.passwordHash, input.currentPassword))) {
+      activity(
+        this.logger,
+        'auth.password_change_failed',
+        { userId: user.id, reason: 'wrong current password', ip: context.ip },
+        'warn',
+      );
+      throw new UnauthorizedException('Your current password is incorrect');
+    }
+
+    if (await this.hasher.verify(user.passwordHash, input.newPassword)) {
+      throw new BadRequestException('Choose a password different from your current one.');
+    }
+
+    const passwordHash = await this.hasher.hash(input.newPassword);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+      await tx.refreshToken.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date(), revokedReason: RefreshTokenRevokedReason.PASSWORD_CHANGED },
+      });
+    });
+
+    this.logger.warn(`Password changed for user ${user.id}; all sessions revoked`);
 
     const authenticated: AuthenticatedUser = toAuthenticatedUser(user);
 

@@ -1,0 +1,115 @@
+@startuml student-journey
+!theme plain
+title PYQ Student Journey — first visit to the revision loop (see docs/pyq/user-flows.md)
+
+start
+
+:Land on the marketing pages
+web/src/app — the marketing route group;
+note right
+  Public. `GET /api/pyq/taxonomy` is the only
+  PYQ endpoint reachable without a token.
+end note
+
+if (Signed in?) then (no)
+  :Sign up or sign in
+  (/signup, /login, or Google);
+  note right
+    Shared JSMF account (identity module).
+    Google returns to /auth/callback, which must be
+    in the backend's OAUTH_ALLOWED_REDIRECTS.
+    Access token in memory, refresh token in
+    localStorage["jsmf.refreshToken"].
+  end note
+else (yes)
+endif
+
+:Dashboard (/dashboard)
+useAccess + useStreak + useStats;
+note right
+  `GET pyq/access` decides what the page shows:
+  subscribed, or N of PYQ_FREE_DAILY_QUESTIONS left today.
+end note
+
+repeat
+  :Browse the bank (/question-bank)
+  useQuestions -> GET pyq/questions;
+  note right: Never returns answers or explanations,\nwhatever the filters.
+
+  :Pick a mode;
+  split
+    :Practice the filtered set;
+  split again
+    :Timed custom test
+    (/custom-test/new);
+  split again
+    :Bookmarks / wrong questions /
+    revision / reinforce list;
+  end split
+
+  :useStartSession -> POST pyq/sessions;
+
+  if (Free allowance already spent?) then (yes)
+    :403 PYQ_DAILY_LIMIT_REACHED;
+    :notifyDailyLimit() toast
+    with a "See plans" action;
+    :/subscription
+    (see subscription-purchase.puml);
+    if (Paid?) then (yes)
+      :Entitlement with expiresAt;
+      note right: pyq/access now reports\nsubscribed, no daily limit.
+    else (no)
+      :Wait for midnight India time
+      — the allowance resets;
+      stop
+    endif
+  else (no)
+  endif
+
+  :Practice screen (/practice/[sessionId])
+  answer, flag, navigate
+  (see practice-session.puml);
+  note right
+    PRACTICE/CUSTOM: correctness and explanation
+    come back with each answer.
+    TEST: answers are stored only; the palette
+    shows "answered" and nothing more.
+  end note
+
+  if (Free allowance runs out mid-session?) then (yes)
+    :The next first answer is refused with 403;
+    note right: Already-answered questions and the\nsubmit still work — the session is not lost.
+  else (no)
+  endif
+
+  :Submit — POST pyq/sessions/:id/submit;
+  :Results (/practice/[sessionId]/results)
+  then Review (.../review)
+  GET pyq/sessions/:id/review;
+
+  :Save what is worth coming back to:
+  bookmark (PUT pyq/bookmarks/:qid) or
+  add to a collection
+  (PUT pyq/collections/:id/questions/:qid);
+
+  if (Question looks wrong?) then (yes)
+    :Report it
+    POST pyq/questions/:id/reports;
+    note right: Goes to the admin queue —\nsee admin-content-lifecycle.puml.
+  else (no)
+  endif
+
+  :Revision loop
+  /revision (due items), /reinforce,
+  /wrong-questions, /statistics;
+  note right
+    Derived from attempts on every read —
+    nothing about streaks, due-ness or
+    reinforcement is stored.
+  end note
+
+repeat while (Keep practising?) is (yes) not (no)
+
+stop
+
+@enduml

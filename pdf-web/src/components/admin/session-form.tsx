@@ -7,9 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { adminApi, type AdminSession, type SessionInput } from "@/lib/api/admin";
+import {
+  adminApi,
+  type AdminSession,
+  type BundleDeliveryMode,
+  type SessionInput,
+} from "@/lib/api/admin";
 import type { ProductListItem } from "@/lib/api/types";
 
 /** Sessions are announced in IST; the picker edits IST wall-clock time whatever the admin's own zone. */
@@ -65,12 +77,17 @@ export function SessionForm({
     showSeats: session?.showSeats ?? true,
     displaySeats:
       session?.displaySeats !== null && session?.displaySeats !== undefined ? String(session.displaySeats) : "",
+    bundleDeliveryMode: (session?.bundleDeliveryMode ?? "IMMEDIATE") as BundleDeliveryMode,
     price: paiseToRupees(session?.priceAmountMinor ?? null),
     compareAt: paiseToRupees(session?.compareAtAmountMinor ?? null),
     joinUrl: session?.joinUrl ?? "",
     recordingUrl: session?.recordingUrl ?? "",
     highlights: (session?.highlights ?? []).join("\n"),
     perkText: session?.perkText ?? "",
+    audienceText: session?.audienceText ?? "",
+    testimonialsHeading: session?.testimonialsHeading ?? "",
+    testimonialsSubheading: session?.testimonialsSubheading ?? "",
+    testimonialsTag: session?.testimonialsTag ?? "",
   });
   const [days, setDays] = useState<DayRow[]>(
     session?.days.map((day) => ({
@@ -125,6 +142,7 @@ export function SessionForm({
         capacity: values.capacity ? Number(values.capacity) : null,
         showSeats: values.showSeats,
         displaySeats: values.displaySeats.trim() === "" ? null : Number(values.displaySeats),
+        bundleDeliveryMode: values.bundleDeliveryMode,
         priceAmountMinor: price,
         compareAtAmountMinor: rupeesToPaise(values.compareAt),
         joinUrl: values.joinUrl.trim() || null,
@@ -134,6 +152,10 @@ export function SessionForm({
           .map((line) => line.trim())
           .filter(Boolean),
         perkText: values.perkText.trim() || null,
+        audienceText: values.audienceText.trim() || null,
+        testimonialsHeading: values.testimonialsHeading.trim() || null,
+        testimonialsSubheading: values.testimonialsSubheading.trim() || null,
+        testimonialsTag: values.testimonialsTag.trim() || null,
         includedProductIds: included,
       });
     } catch (error) {
@@ -162,6 +184,41 @@ export function SessionForm({
           <Field label="Perk line" hint="Shown in the session card, e.g. the free planner.">
             <Input value={values.perkText} onChange={set("perkText")} maxLength={300} />
           </Field>
+          <Field
+            label="Who is this session for?"
+            hint="One paragraph naming the exams and who it suits. Leave blank to hide the section."
+          >
+            <Textarea
+              value={values.audienceText}
+              onChange={set("audienceText")}
+              rows={3}
+              maxLength={600}
+              placeholder="Designed for medical students and graduates preparing for FMGE, NEET-PG, or INI-CET…"
+            />
+          </Field>
+          <Field
+            label="Testimonials heading"
+            hint='Shown above the testimonials section. Leave blank for "What students said after the last session."'
+          >
+            <Input value={values.testimonialsHeading} onChange={set("testimonialsHeading")} maxLength={150} />
+          </Field>
+          <Field
+            label="Testimonials subheading"
+            hint="One line under the heading. Leave blank for a generic line about a previous session."
+          >
+            <Textarea
+              value={values.testimonialsSubheading}
+              onChange={set("testimonialsSubheading")}
+              rows={2}
+              maxLength={300}
+            />
+          </Field>
+          <Field
+            label="Testimonials tag"
+            hint='Small label to the right of the heading, e.g. "Previous FMGE session". Leave blank to hide it.'
+          >
+            <Input value={values.testimonialsTag} onChange={set("testimonialsTag")} maxLength={80} />
+          </Field>
           <div className="grid gap-2">
             <Label>Included with a seat</Label>
             <p className="text-xs text-muted-foreground">
@@ -183,6 +240,33 @@ export function SessionForm({
                   {pdf.title}
                 </label>
               ))}
+            </div>
+
+            <div className="mt-2 grid gap-2">
+              <Label>When buyers get it</Label>
+              <Select
+                value={values.bundleDeliveryMode}
+                onValueChange={(value: string | null) =>
+                  setValues((current) => ({
+                    ...current,
+                    bundleDeliveryMode: (value ?? "IMMEDIATE") as BundleDeliveryMode,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="IMMEDIATE">Straight away, with the confirmation email</SelectItem>
+                  <SelectItem value="AUTO_AFTER_SESSION">Automatically, once the session ends</SelectItem>
+                  <SelectItem value="MANUAL">Manually — I&apos;ll send it myself</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {values.bundleDeliveryMode === "IMMEDIATE"
+                  ? "Granted the moment someone pays, and named in their confirmation email."
+                  : "Nothing is granted at payment. Buyers get it once the session is over and the PDF is published — use this while the PDF is still being prepared."}
+              </p>
             </div>
           </div>
         </CardContent>
@@ -220,13 +304,23 @@ export function SessionForm({
                     variant="ghost"
                     size="icon"
                     aria-label={`Remove day ${index + 1}`}
-                    disabled={days.length === 1}
                     onClick={() => setDays((current) => current.filter((d) => d.key !== day.key))}
                   >
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
               ))}
+
+              {days.length === 0 && (
+                <div className="rounded-md border border-dashed p-4">
+                  <p className="text-sm font-medium">Dates to be announced</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    The website shows &ldquo;To be announced&rdquo; for the date and time, and booking stays
+                    open. Add a date whenever it is fixed.
+                  </p>
+                </div>
+              )}
+
               <Button
                 type="button"
                 variant="outline"
@@ -240,10 +334,15 @@ export function SessionForm({
                   ])
                 }
               >
-                <Plus className="size-4" /> Add another day
+                <Plus className="size-4" /> {days.length === 0 ? "Add a date" : "Add another day"}
               </Button>
               <p className="text-xs text-muted-foreground">
                 One seat covers every day, with the same joining link. Each day gets its own reminder email.
+                Remove every date to go back to &ldquo;to be announced&rdquo;.
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Saving a date does not email existing attendees. Use the &ldquo;Notify attendees&rdquo; card
+                below to tell them the schedule is confirmed.
               </p>
             </div>
             <Field label="Platform" className="sm:col-span-2">

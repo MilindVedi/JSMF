@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, UnauthorizedException } from '
 import { OAuthProvider, UserStatus, VerificationPurpose } from '@prisma/client';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { AppConfig } from '../../../config/config.module';
+import { activity } from '../../../shared/logging/activity';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { GoogleOAuthClient, type GoogleIdentity } from '../infrastructure/google-oauth.client';
 import { AdminInvitationService } from './admin-invitation.service';
@@ -206,6 +207,7 @@ export class OAuthService {
         data: { lastLoginAt: new Date() },
       });
 
+      activity(this.logger, 'auth.login', { method: 'google', userId: linked.userId });
       return toAuthenticated(linked.user);
     }
 
@@ -234,7 +236,7 @@ export class OAuthService {
         },
       });
 
-      this.logger.log(`Linked Google identity to existing account ${existing.email}`);
+      activity(this.logger, 'auth.login', { method: 'google', userId: existing.id, linkedGoogleToExistingAccount: true });
       return toAuthenticated(existing);
     }
 
@@ -260,7 +262,7 @@ export class OAuthService {
       include: { roles: { include: { role: true } } },
     });
 
-    this.logger.log(`Created account ${created.email} from Google sign-in`);
+    activity(this.logger, 'auth.signup', { method: 'google', userId: created.id, email: created.email });
     return toAuthenticated(created);
   }
 

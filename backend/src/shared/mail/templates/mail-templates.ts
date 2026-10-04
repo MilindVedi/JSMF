@@ -402,6 +402,58 @@ export function liveSessionConfirmation(input: {
 }
 
 /**
+ * Sent when a session's included material reaches its buyers after the event
+ * rather than at payment — the ordinary case when the PDF is still being
+ * written while seats are already selling.
+ *
+ * Deliberately says nothing about the wait. The recipient has no idea the
+ * material was ever meant to arrive sooner, and explaining a delay they did
+ * not notice invents a problem; what they need is that it is here and where to
+ * find it.
+ */
+export function liveSessionBundleReady(input: {
+  attendeeName: string;
+  sessionTitle: string;
+  includedTitles: string[];
+  libraryUrl: string;
+}): RenderedMail {
+  const { attendeeName, sessionTitle, includedTitles, libraryUrl } = input;
+
+  const text = [
+    `Hi ${attendeeName},`,
+    ``,
+    `The material included with your seat for ${sessionTitle} is now in your`,
+    `JSMF library:`,
+    ``,
+    ...includedTitles.map((title) => `  ${title}`),
+    ``,
+    `${libraryUrl}`,
+    ``,
+    emailSignatureText(),
+  ].join('\n');
+
+  const html = layout(
+    'Your material is ready',
+    `
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Hi ${escapeHtml(attendeeName)},</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">The material included with your seat for <strong>${escapeHtml(sessionTitle)}</strong> is now in your JSMF library.</p>
+    <div style="margin:0 0 24px;padding:16px;background:#fafafa;border-radius:8px;">
+      ${includedTitles
+        .map(
+          (title) =>
+            `<p style="margin:0 0 6px;font-size:15px;line-height:1.45;font-weight:600;">${escapeHtml(title)}</p>`,
+        )
+        .join('')}
+    </div>
+    ${button(libraryUrl, 'Open my library')}
+    <p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">You can open it any time from your JSMF account — you do not need this email.</p>
+    `,
+  );
+
+  return { subject: `JSMF - Your ${sessionTitle} material is ready`, text, html };
+}
+
+/**
  * Sent shortly before each day of a session starts, to everyone holding a
  * seat. A multi-day session sends one per day, marked "Day 2 of 3".
  */
@@ -448,4 +500,60 @@ export function liveSessionReminder(input: {
   );
 
   return { subject: `JSMF - Starting soon: ${heading}`, text, html };
+}
+
+/**
+ * Sent when an admin announces dates for a session that was sold as "date to
+ * be announced". Deliberately phrased as a confirmation of dates, not as a
+ * correction of something missing — the buyer simply learns the schedule now.
+ */
+export function liveSessionDatesAnnounced(input: {
+  attendeeName: string;
+  sessionTitle: string;
+  /** One line per day, in order (from sessionWhenLines). */
+  whenLines: string[];
+  platformLabel: string;
+  joinUrl: string | null;
+}): RenderedMail {
+  const { attendeeName, sessionTitle, whenLines, platformLabel, joinUrl } = input;
+
+  const linkLine = joinUrl
+    ? `Join here: ${joinUrl}`
+    : `We will email you the joining link before the session starts.`;
+
+  const text = [
+    `Hi ${attendeeName},`,
+    ``,
+    `The date${whenLines.length > 1 ? 's' : ''} for ${sessionTitle} ${whenLines.length > 1 ? 'are' : 'is'} confirmed.`,
+    ``,
+    `  ${sessionTitle}`,
+    ...whenLines.map((line) => `  ${line}`),
+    `  ${platformLabel}`,
+    ``,
+    linkLine,
+    ``,
+    emailSignatureText(),
+  ].join('\n');
+
+  const html = layout(
+    'Dates confirmed',
+    `
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Hi ${escapeHtml(attendeeName)},</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">The date${whenLines.length > 1 ? 's' : ''} for your session ${whenLines.length > 1 ? 'are' : 'is'} confirmed:</p>
+    <div style="margin:0 0 20px;padding:16px;background:#fafafa;border-radius:8px;">
+      <p style="margin:0 0 10px;font-size:15px;line-height:1.45;font-weight:600;">${escapeHtml(sessionTitle)}</p>
+      ${detailTable([
+        ...whenLines.map((line, index): [string, string] => [index === 0 ? 'When' : '', line]),
+        ['Where', platformLabel],
+      ])}
+    </div>
+    ${
+      joinUrl
+        ? button(joinUrl, 'Join the session')
+        : `<p style="margin:0 0 20px;font-size:15px;line-height:1.55;">We will email you the joining link before the session starts.</p>`
+    }
+    `,
+  );
+
+  return { subject: `JSMF - Dates confirmed: ${sessionTitle}`, text, html };
 }

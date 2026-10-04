@@ -1,4 +1,4 @@
-import type { BookmarkEntry, Collection, Question, Subject, TestSession } from "@/types";
+import type { BookmarkEntry, Collection, Question, Subject, TestSession, PublicQuestion } from "@/types";
 
 /**
  * Every sort a question list can offer across the app. Not every page shows
@@ -193,6 +193,45 @@ export function buildQuestionSortContext(
   return { subjectNameById, lastAttemptedAt, lastWrongAt, incorrectCount, lastCorrectAt, bookmarkedAt, collectedAt };
 }
 
+/** The same context from data-source revision items (works in api mode). */
+export function buildQuestionSortContextFromRevision(
+  items: {
+    question: { id: string };
+    lastAttemptedAt?: string;
+    lastWrongAt?: string;
+    lastCorrectAt?: string;
+    incorrectCount: number;
+    bookmarkedAt?: string;
+  }[],
+  collections: Collection[],
+  subjects: { id: string; name: string }[]
+): QuestionSortContext {
+  const ctx: QuestionSortContext = {
+    subjectNameById: new Map(subjects.map((s) => [s.id, s.name] as const)),
+    lastAttemptedAt: new Map(),
+    lastWrongAt: new Map(),
+    incorrectCount: new Map(),
+    lastCorrectAt: new Map(),
+    bookmarkedAt: new Map(),
+    collectedAt: new Map(),
+  };
+  for (const item of items) {
+    const id = item.question.id;
+    if (item.lastAttemptedAt) ctx.lastAttemptedAt.set(id, item.lastAttemptedAt);
+    if (item.lastWrongAt) ctx.lastWrongAt.set(id, item.lastWrongAt);
+    if (item.lastCorrectAt) ctx.lastCorrectAt.set(id, item.lastCorrectAt);
+    if (item.incorrectCount) ctx.incorrectCount.set(id, item.incorrectCount);
+    if (item.bookmarkedAt) ctx.bookmarkedAt.set(id, item.bookmarkedAt);
+  }
+  for (const c of collections) {
+    for (const questionId of c.questionIds) {
+      const prev = ctx.collectedAt.get(questionId);
+      if (!prev || c.createdAt > prev) ctx.collectedAt.set(questionId, c.createdAt);
+    }
+  }
+  return ctx;
+}
+
 /** ISO timestamps compare correctly as plain strings, so recency sorts don't
  *  need to parse dates. Missing values always sort last, in either direction
  *  — a question with no attempt/bookmark/etc. isn't "the oldest", it just
@@ -208,11 +247,11 @@ function compareRecency(aId: string, bId: string, map: Map<string, string>, dire
   return direction === "desc" ? -cmp : cmp;
 }
 
-export function sortQuestions(
-  questions: Question[],
+export function sortQuestions<T extends PublicQuestion = Question>(
+  questions: T[],
   sort: QuestionSortOption,
   ctx: QuestionSortContext
-): Question[] {
+): T[] {
   const arr = [...questions];
   switch (sort) {
     case "recently-attempted":

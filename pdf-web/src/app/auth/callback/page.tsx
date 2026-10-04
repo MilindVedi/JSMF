@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { googleAuth } from "@/lib/api/auth";
@@ -51,6 +52,16 @@ function CallbackHandler() {
         // Google, e.g. "Sign in to buy" on a product page — otherwise this is
         // a plain sign-in with nowhere in particular to go back to.
         const next = googleAuth.consumeNext();
+
+        // Admin login round-tripped a non-admin. Say so plainly — the admin
+        // layout would otherwise just bounce them back to the sign-in page
+        // without a word, which reads like a broken button.
+        if (next?.startsWith("/admin") && !isAdmin(user)) {
+          toast.error("That Google account does not have admin access.");
+          router.replace("/library");
+          return;
+        }
+
         router.replace(next ?? (isAdmin(user) ? "/admin/products" : "/library"));
       })
       .catch((caught: unknown) =>

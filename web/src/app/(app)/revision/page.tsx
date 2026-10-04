@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Bookmark, CheckCircle2, ChevronDown, ChevronRight, Library, Loader2, Search, XCircle } from "lucide-react";
+import { Bookmark, CheckCircle2, ChevronDown, ChevronRight, Library, Search, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { SubjectBadge } from "@/components/common/subject-badge";
@@ -15,32 +15,32 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usePracticeStore } from "@/store/practice-store";
-import { useBookmarksStore } from "@/store/bookmarks-store";
-import { useCollectionsStore } from "@/store/collections-store";
-import { QUESTIONS, getQuestionById } from "@/data/mock/questions";
-import { SUBJECTS } from "@/data/mock/subjects";
-import { EXAMS } from "@/data/mock/exams";
+import { PageLoading, QueryError } from "@/components/pyq/query-states";
+import { useCollections, useRevision, useTaxonomyLookup } from "@/hooks/pyq";
+import type { RevisionItem } from "@/lib/data-source";
 import {
   getCollectionStats,
-  getLatestAttemptByQuestion,
   getQuestionsInCollections,
-  getQuestionStatusMap,
-  getWrongQuestionFacets,
+  getWrongFacetsFromRevision,
   type DayRange,
+  type QuestionStatus,
 } from "@/lib/selectors";
 import {
   REVISION_SECTION_SORT_OPTIONS,
   QUESTION_SORT_LABELS,
   QUESTION_SORT_GROUPS,
-  buildQuestionSortContext,
+  buildQuestionSortContextFromRevision,
   sortQuestions,
   type QuestionSortOption,
 } from "@/lib/question-sort";
 import { useClientSnapshot } from "@/lib/use-client-snapshot";
 import { useStartSession } from "@/lib/use-start-session";
 import { cn } from "@/lib/utils";
-import type { BookmarkEntry, ExamId, Question } from "@/types";
+import type { Collection, ExamId, PublicQuestion } from "@/types";
+
+type Question = PublicQuestion;
+const NO_ITEMS: RevisionItem[] = [];
+const NO_COLLECTIONS: Collection[] = [];
 
 const MAX_ROWS = 50;
 
@@ -167,6 +167,8 @@ function ExamYearFilterRow({
   years: number[];
   onYearsChange: (years: number[]) => void;
 }) {
+  const { taxonomy } = useTaxonomyLookup();
+  const EXAMS = taxonomy.exams;
   return (
     <div className="flex flex-wrap items-center gap-2">
       <MultiSelectPopover
@@ -290,12 +292,11 @@ function CollapsibleSection({
 }
 
 export default function RevisionPage() {
-  const practiceHydrated = usePracticeStore((s) => s.hasHydrated);
-  const bookmarksHydrated = useBookmarksStore((s) => s.hasHydrated);
-  const collectionsHydrated = useCollectionsStore((s) => s.hasHydrated);
-  const sessions = usePracticeStore((s) => s.sessions);
-  const bookmarks = useBookmarksStore((s) => s.bookmarks);
-  const collections = useCollectionsStore((s) => s.collections);
+  const revision = useRevision();
+  const collectionsQuery = useCollections();
+  const { taxonomy } = useTaxonomyLookup();
+  const items = revision.data ?? NO_ITEMS;
+  const collections = collectionsQuery.data ?? NO_COLLECTIONS;
   const startSession = useStartSession();
 
   const [mode, setMode] = useState<Mode>("wrong");
@@ -400,42 +401,51 @@ export default function RevisionPage() {
     "Every question saved in the selected collection(s)."
   );
 
-  const hasHydrated = practiceHydrated && bookmarksHydrated && collectionsHydrated;
-  const sessionList = useMemo(() => Object.values(sessions), [sessions]);
+  const hasHydrated = Boolean(revision.data && collectionsQuery.data);
+  const loadError = revision.error ?? collectionsQuery.error;
+  const factsById = useMemo(() => new Map(items.map((item) => [item.question.id, item] as const)), [items]);
+  const allQuestions = useMemo(() => items.map((item) => item.question), [items]);
+  const bookmarkCount = useMemo(() => items.filter((item) => item.bookmarkedAt).length, [items]);
 
   const sortContext = useMemo(
-    () => buildQuestionSortContext(sessionList, bookmarks, collections, SUBJECTS),
-    [sessionList, bookmarks, collections]
+    () => buildQuestionSortContextFromRevision(items, collections, taxonomy.subjects),
+    [items, collections, taxonomy.subjects]
   );
 
   const wrongExamPool = useMemo(
     () =>
-      QUESTIONS.filter(
+      allQuestions.filter(
         (q) =>
           (wrongExamIds.length === 0 || wrongExamIds.includes(q.examId)) &&
           (wrongYears.length === 0 || wrongYears.includes(q.year))
       ),
-    [wrongExamIds, wrongYears]
+    [allQuestions, wrongExamIds, wrongYears]
   );
   const facets = useMemo(
-    () => getWrongQuestionFacets(sessionList, wrongExamPool, recentWrongRange),
-    [sessionList, wrongExamPool, recentWrongRange]
+    () => getWrongFacetsFromRevision(factsById, wrongExamPool, recentWrongRange),
+    [factsById, wrongExamPool, recentWrongRange]
   );
-  const statusMap = useMemo(() => getQuestionStatusMap(sessionList), [sessionList]);
-  const latestAttemptByQuestion = useMemo(() => getLatestAttemptByQuestion(sessionList), [sessionList]);
+  const statusMap = useMemo(() => {
+    const map = new Map<string, QuestionStatus>();
+    for (const item of items) {
+      if (item.latestCorrect !== null) map.set(item.question.id, item.latestCorrect ? "correct" : "incorrect");
+    }
+    return map;
+  }, [items]);
 
   // Exam/Year filtering (but not the date range) mirrors `facets.all` above:
   // it's the pool "By subject" groups from, and what the top stat tile counts.
   const bookmarkedPool = useMemo(() => {
-    return bookmarks
-      .map((b) => ({ bookmark: b, question: getQuestionById(b.questionId) }))
-      .filter((x): x is { bookmark: BookmarkEntry; question: Question } => Boolean(x.question))
+    return items
+      .filter((item) => item.bookmarkedAt)
+      .sort((a, b) => b.bookmarkedAt!.localeCompare(a.bookmarkedAt!))
+      .map((item) => ({ bookmark: { createdAt: item.bookmarkedAt! }, question: item.question }))
       .filter(
         ({ question }) =>
           (bookmarkedExamIds.length === 0 || bookmarkedExamIds.includes(question.examId)) &&
           (bookmarkedYears.length === 0 || bookmarkedYears.includes(question.year))
       );
-  }, [bookmarks, bookmarkedExamIds, bookmarkedYears]);
+  }, [items, bookmarkedExamIds, bookmarkedYears]);
   const bookmarkedBySubject = useMemo(
     () => groupBySubject(bookmarkedPool.map(({ question }) => question)),
     [bookmarkedPool]
@@ -454,16 +464,15 @@ export default function RevisionPage() {
   // Correctly-answered pool, filtered by Exam/Year — the reinforce-section
   // analogue of `wrongExamPool`, using each question's latest attempt date.
   const reinforcePool = useMemo(() => {
-    return QUESTIONS.map((q) => ({ question: q, attempt: latestAttemptByQuestion.get(q.id) }))
-      .filter((x): x is { question: Question; attempt: NonNullable<typeof x.attempt> } =>
-        Boolean(x.attempt?.isCorrect)
-      )
+    return items
+      .filter((item) => item.latestCorrect === true && item.lastAttemptedAt)
+      .map((item) => ({ question: item.question, attempt: { answeredAt: item.lastAttemptedAt! } }))
       .filter(
         ({ question }) =>
           (reinforceExamIds.length === 0 || reinforceExamIds.includes(question.examId)) &&
           (reinforceYears.length === 0 || reinforceYears.includes(question.year))
       );
-  }, [latestAttemptByQuestion, reinforceExamIds, reinforceYears]);
+  }, [items, reinforceExamIds, reinforceYears]);
   const reinforceBySubject = useMemo(
     () => groupBySubject(reinforcePool.map(({ question }) => question)),
     [reinforcePool]
@@ -499,13 +508,13 @@ export default function RevisionPage() {
     [selectedCollectionIds, defaultCollectionId]
   );
   const collectionsPool = useMemo(() => {
-    const inCollections = getQuestionsInCollections(collections, effectiveCollectionIds, QUESTIONS);
+    const inCollections = getQuestionsInCollections(collections, effectiveCollectionIds, allQuestions);
     return inCollections.filter(
       (q) =>
         (collectionsExamIds.length === 0 || collectionsExamIds.includes(q.examId)) &&
         (collectionsYears.length === 0 || collectionsYears.includes(q.year))
     );
-  }, [collections, effectiveCollectionIds, collectionsExamIds, collectionsYears]);
+  }, [collections, allQuestions, effectiveCollectionIds, collectionsExamIds, collectionsYears]);
   const collectionsBySubject = useMemo(() => groupBySubject(collectionsPool), [collectionsPool]);
   // Mock data only timestamps a collection as a whole, not each question's
   // individual add date — so "added in the last N days" filters the whole
@@ -527,13 +536,19 @@ export default function RevisionPage() {
     collections.find((c) => c.id === effectiveCollectionIds[0])?.name ?? "Collection"
   }`;
 
-  if (!hasHydrated) {
+  if (loadError) {
     return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
+      <QueryError
+        error={loadError}
+        onRetry={() => {
+          void revision.refetch();
+          void collectionsQuery.refetch();
+        }}
+        title="Couldn't load your revision lists"
+      />
     );
   }
+  if (!hasHydrated) return <PageLoading />;
 
   // "All wrong" and "Recently wrong" used to be separate tabs; they've been
   // consolidated into this one "Wrong" tab, filtered by the always-visible
@@ -874,9 +889,9 @@ export default function RevisionPage() {
           ) : bookmarkedQuestions.length === 0 ? (
             <EmptyState
               icon={Bookmark}
-              title={bookmarks.length === 0 ? "No bookmarks yet" : "No bookmarks match these filters"}
+              title={bookmarkCount === 0 ? "No bookmarks yet" : "No bookmarks match these filters"}
               description={
-                bookmarks.length === 0
+                bookmarkCount === 0
                   ? "Save questions while practising to revisit them here."
                   : "Try a different search term, exam/year, or date range."
               }
@@ -900,12 +915,12 @@ export default function RevisionPage() {
                   />
                 ))}
               </div>
-              {bookmarks.length > 5 && (
+              {bookmarkCount > 5 && (
                 <Link
                   href="/bookmarks"
                   className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline"
                 >
-                  View all {bookmarks.length} bookmarks
+                  View all {bookmarkCount} bookmarks
                   <ChevronRight className="size-4" />
                 </Link>
               )}
@@ -942,7 +957,7 @@ export default function RevisionPage() {
             <EmptyState
               icon={Library}
               title="No collections yet"
-              description="Curated question sets will show up here once collections are added."
+              description="Use the collection button on any question to start one."
             />
           ) : (
             <>

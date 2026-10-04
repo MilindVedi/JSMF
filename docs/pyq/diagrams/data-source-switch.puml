@@ -1,0 +1,84 @@
+@startuml data-source-switch
+!theme plain
+title PYQ data source — one env var decides where the data comes from (see docs/pyq/user-flows.md)
+
+skinparam componentStyle rectangle
+
+package "web/ (Next.js)" {
+
+  package "Screens — web/src/app" {
+    component "/dashboard" as Dashboard
+    component "/question-bank" as Bank
+    component "/practice/{sessionId}" as Practice
+    component "/revision, /reinforce,\n/bookmarks, /wrong-questions" as Revision
+    component "/subscription" as Sub
+  }
+
+  package "Hooks — web/src/hooks/pyq" {
+    component "index.ts\nuseTaxonomy, useAccess, useQuestions,\nuseStartSession, useAnswer, useSubmitSession,\nuseRevision, useStreak, useCollections …" as Hooks
+    component "plans.ts\nusePlans, usePlanCheckout" as PlansHook
+  }
+
+  interface "PyqDataSource\nlib/data-source/types.ts" as Port
+
+  package "lib/data-source" {
+    component "index.ts\n(the switch)" as Switch
+    component "mock-adapter.ts" as Mock
+    component "api-adapter.ts" as Api
+    component "kind.ts\nDATA_SOURCE_KIND" as Kind
+  }
+
+  component "data/mock + zustand stores" as MockData
+  component "lib/api/client" as Client
+  component "middleware.ts\n/api/* proxy" as Middleware
+}
+
+node "backend (NestJS)" {
+  component "questions module\n/api/pyq/*, /api/admin/pyq/*" as Questions
+  component "orders module\n/api/orders, /api/payments/verify,\n/api/webhooks/razorpay" as Orders
+  database "Postgres\nschema pyq + public" as DB
+}
+
+Dashboard --> Hooks
+Bank --> Hooks
+Practice --> Hooks
+Revision --> Hooks
+Sub --> PlansHook
+Sub --> Hooks
+
+Hooks ..> Port : react-query wrappers\naround every call
+PlansHook ..> Port
+
+Port -- Switch
+Kind --> Switch : NEXT_PUBLIC_DATA_SOURCE\n"api" | anything else
+Switch --> Mock : default
+Switch --> Api : when "api"
+
+Mock --> MockData : browser only, no backend
+Api --> Client
+Client --> Middleware : relative /api/* +\nbearer access token
+Middleware --> Questions : BACKEND_API_URL
+Middleware --> Orders
+Questions --> DB
+Orders --> DB
+
+note right of Port
+  The port is the only contract. Screens never import
+  mock data or the API client — swapping data source is
+  one env var and a rebuild, because Next inlines
+  NEXT_PUBLIC_* at build time.
+
+  Shapes on the port are the UI's, not the wire's; the
+  api adapter translates, and maps 403
+  PYQ_DAILY_LIMIT_REACHED to a DailyLimitError the hooks
+  can show as an upgrade prompt.
+end note
+
+note bottom of Mock
+  `capabilities` on the port tells screens what an
+  adapter cannot do — free-text search and smart
+  custom-test ordering are mock-only, and those
+  controls are hidden in api mode.
+end note
+
+@enduml

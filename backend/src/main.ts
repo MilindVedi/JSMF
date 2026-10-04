@@ -4,7 +4,10 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { requestLogger } from './common/middleware/request-logger';
+import { requireHttps } from './common/middleware/require-https';
 import { AppConfig } from './config/config.module';
+import { StructuredLogger } from './shared/logging/structured-logger';
 
 /**
  * Money is stored as BigInt (minor units) throughout, and JSON.stringify throws
@@ -19,11 +22,22 @@ import { AppConfig } from './config/config.module';
 };
 
 async function bootstrap(): Promise<void> {
+  // Built before the app, from the environment directly, because it has to
+  // exist before dependency injection does — the config module's own boot
+  // messages are logged through it. Both values are also declared in
+  // config/env.ts so they are validated and documented with everything else.
+  const production = process.env.NODE_ENV === 'production';
+  const structuredLogger = new StructuredLogger(
+    (process.env.LOG_FORMAT ?? (production ? 'json' : 'text')) === 'json' ? 'json' : 'text',
+    process.env.LOG_DEBUG === 'true',
+  );
+
   const app = await NestFactory.create(AppModule, {
     // The raw body is required to verify payment webhook signatures: the HMAC is
     // computed over the exact bytes the provider sent, and any re-serialisation
     // of the parsed object would change them.
     rawBody: true,
+    logger: structuredLogger,
   });
 
   const config = app.get(AppConfig);
@@ -40,6 +54,10 @@ async function bootstrap(): Promise<void> {
   // empty configuration is asking for.
   app.getHttpAdapter().getInstance().set('trust proxy', trustedProxies.length > 0 ? trustedProxies : false);
 
+  app.use(requestLogger);
+  // Before anything reads a cookie or a bearer token: in production, a request
+  // the proxy says arrived over plain HTTP is refused rather than served.
+  if (config.isProduction) app.use(requireHttps);
   app.use(helmet());
   app.enableCors({
     origin: config.get('CORS_ORIGINS'),

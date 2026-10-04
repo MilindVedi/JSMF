@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { adminOrderApi } from "@/lib/api/admin";
+import { adminSettingsApi } from "@/lib/api/settings";
 import type { AdminOrder, OrderStatus } from "@/lib/api/types";
 import { formatMoney } from "@/lib/money";
 
@@ -45,6 +46,24 @@ export default function OrdersPage() {
   const [status, setStatus] = useState<OrderStatus | "ALL">("ALL");
   const [q, setQ] = useState("");
   const [refundingId, setRefundingId] = useState<string | null>(null);
+  /**
+   * Whether this deployment permits admin refunds, asked of the server rather
+   * than hardcoded here — the two drifted apart once already, leaving the
+   * button disabled on a server that would happily have honoured it.
+   *
+   * Starts false so the button never looks actionable before the answer
+   * arrives, and stays false if the request fails: the backend refuses with a
+   * 409 regardless, and a button that does nothing is worse than one that is
+   * visibly unavailable.
+   */
+  const [refundsEnabled, setRefundsEnabled] = useState(false);
+
+  useEffect(() => {
+    adminSettingsApi
+      .get()
+      .then((settings) => setRefundsEnabled(settings.refundsEnabled))
+      .catch(() => undefined);
+  }, []);
 
   const load = useCallback(() => {
     adminOrderApi
@@ -189,7 +208,12 @@ export default function OrdersPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={refundingId === order.id}
+                          disabled={!refundsEnabled || refundingId === order.id}
+                          title={
+                            refundsEnabled
+                              ? undefined
+                              : "Refunds are temporarily disabled. Issue it in the Razorpay dashboard instead — access is still revoked automatically."
+                          }
                           onClick={() => handleRefund(order)}
                         >
                           {refundingId === order.id ? (

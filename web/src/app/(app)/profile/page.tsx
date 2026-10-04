@@ -15,8 +15,9 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
-import { useStreakStore } from "@/store/streak-store";
-import { EXAMS } from "@/data/mock/exams";
+import { usePreferences, useTaxonomyLookup, useUpdatePreferences } from "@/hooks/pyq";
+import { useStreakState } from "@/lib/use-streak-state";
+import { QueryError } from "@/components/pyq/query-states";
 import { getPlanById } from "@/data/mock/plans";
 import type { ExamId, UserProfile } from "@/types";
 
@@ -40,10 +41,18 @@ export default function ProfilePage() {
   const hydrated = useAuthStore((s) => s.hasHydrated);
   const logout = useAuthStore((s) => s.logout);
   const updateProfile = useAuthStore((s) => s.updateProfile);
-  const bestStreak = useStreakStore((s) => Math.max(s.bestStreak, profile.streakDays));
+  const streak = useStreakState();
+  const preferences = usePreferences();
+  const { exam: getExamById } = useTaxonomyLookup();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (!hydrated) {
+  if (preferences.error) {
+    return (
+      <QueryError error={preferences.error} onRetry={() => preferences.refetch()} title="Couldn't load your profile" />
+    );
+  }
+
+  if (!hydrated || !preferences.data) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -51,7 +60,8 @@ export default function ProfilePage() {
     );
   }
 
-  const targetExam = EXAMS.find((e) => e.id === profile.targetExamId);
+  const targetExamId = preferences.data.targetExamId ?? profile.targetExamId;
+  const targetExam = getExamById(targetExamId);
   const currentPlan = getPlanById(profile.currentPlanId);
 
   function handleLogout() {
@@ -125,7 +135,7 @@ export default function ProfilePage() {
             <p className="font-heading text-lg font-semibold text-foreground">{profile.name}</p>
             <p className="text-sm text-muted-foreground">{profile.email}</p>
             <p className="text-sm text-muted-foreground">
-              Preparing for {targetExam?.shortName ?? profile.targetExamId}
+              Preparing for {targetExam?.shortName ?? targetExamId}
             </p>
           </div>
           <div className="flex flex-col items-start gap-2 sm:items-end">
@@ -140,13 +150,13 @@ export default function ProfilePage() {
           <div className="flex items-center gap-2">
             <Flame className="size-4 text-accent-foreground" strokeWidth={2} />
             <span className="text-sm text-muted-foreground">
-              Current streak <span className="font-semibold text-foreground">{profile.streakDays}d</span>
+              Current streak <span className="font-semibold text-foreground">{streak.currentStreak}d</span>
             </span>
           </div>
           <div className="flex items-center gap-2">
             <Trophy className="size-4 text-muted-foreground" strokeWidth={2} />
             <span className="text-sm text-muted-foreground">
-              Best streak <span className="font-semibold text-foreground">{bestStreak}d</span>
+              Best streak <span className="font-semibold text-foreground">{streak.bestStreak}d</span>
             </span>
           </div>
         </CardContent>
@@ -154,7 +164,7 @@ export default function ProfilePage() {
 
       {/* Keyed by profile.id so the form's local state re-initializes if the
           underlying profile identity ever changes. */}
-      <ProfileForm key={profile.id} profile={profile} />
+      <ProfileForm key={`${profile.id}:${targetExamId}`} profile={profile} targetExamId={targetExamId} />
 
       <Separator />
 
@@ -168,19 +178,32 @@ export default function ProfilePage() {
   );
 }
 
-function ProfileForm({ profile }: { profile: UserProfile }) {
+function ProfileForm({ profile, targetExamId: savedExamId }: { profile: UserProfile; targetExamId: ExamId }) {
   const updateProfile = useAuthStore((s) => s.updateProfile);
+  const updatePreferences = useUpdatePreferences();
+  const { taxonomy } = useTaxonomyLookup();
 
   const [name, setName] = useState(profile.name);
   const [email, setEmail] = useState(profile.email);
-  const [targetExamId, setTargetExamId] = useState<ExamId>(profile.targetExamId);
+  const [targetExamId, setTargetExamId] = useState<ExamId>(savedExamId);
 
   const isDirty =
-    name.trim() !== profile.name || email.trim() !== profile.email || targetExamId !== profile.targetExamId;
+    name.trim() !== profile.name || email.trim() !== profile.email || targetExamId !== savedExamId;
 
   function handleSave() {
     updateProfile({ name: name.trim(), email: email.trim(), targetExamId });
-    toast.success("Profile updated");
+    if (targetExamId === savedExamId) {
+      toast.success("Profile updated");
+      return;
+    }
+    // The exam preference lives with the PYQ data (server-side in api mode).
+    updatePreferences.mutate(
+      { targetExamId },
+      {
+        onSuccess: () => toast.success("Profile updated"),
+        onError: (error) => toast.error(error.message || "Could not save your target exam."),
+      }
+    );
   }
 
   return (
@@ -206,7 +229,7 @@ function ProfileForm({ profile }: { profile: UserProfile }) {
         <div className="space-y-1.5">
           <Label>Target exam</Label>
           <div className="grid grid-cols-3 gap-2">
-            {EXAMS.map((exam) => (
+            {taxonomy.exams.map((exam) => (
               <button
                 key={exam.id}
                 type="button"
@@ -224,7 +247,10 @@ function ProfileForm({ profile }: { profile: UserProfile }) {
           </div>
         </div>
         <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={!isDirty || !name.trim() || !email.trim()}>
+          <Button
+            onClick={handleSave}
+            disabled={!isDirty || !name.trim() || !email.trim() || updatePreferences.isPending}
+          >
             Save changes
           </Button>
         </div>

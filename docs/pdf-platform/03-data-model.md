@@ -221,7 +221,7 @@ A separate table from `orders` because one order can have several payment attemp
 
 `id` uuid PK, `payment_id` FK→payments, `order_id` FK→orders, `provider_refund_id` varchar(120) UNIQUE, `amount_minor` bigint, `status` enum (`PENDING`, `PROCESSED`, `FAILED`), `reason` text, `initiated_by` FK→users NULL, `raw_response` jsonb, `created_at`, `processed_at`.
 
-A refund sets the related entitlement to `REVOKED` — which is exactly why entitlements are their own table rather than being inferred from "does a paid order exist".
+A refund covering the **full** captured amount sets the related entitlement to `REVOKED` — which is exactly why entitlements are their own table rather than being inferred from "does a paid order exist". `provider_refund_id` is nullable but unique so more than one row can exist per payment (a partial refund followed by a second one) without a redelivered webhook creating a duplicate; `PaymentService.applyProviderRefund()` sums every `PROCESSED` row for the payment and only revokes once that sum reaches the payment's own `amount_minor`. See `docs/main-website/README.md` §3a for the live-session Razorpay integration this was added for, and `02-architecture.md`'s refunds section for the admin-triggered path (currently gated by `REFUNDS_ENABLED`).
 
 ---
 

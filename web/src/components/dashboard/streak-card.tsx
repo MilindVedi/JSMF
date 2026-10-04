@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Flame, Trophy } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useStreakState } from "@/lib/use-streak-state";
+import { isApiDataSource, useRefreshStreak } from "@/hooks/pyq";
 import { useStreakStore } from "@/store/streak-store";
 import { useAuthStore } from "@/store/auth-store";
 import { useStreakAnimationStore } from "@/store/streak-animation-store";
@@ -25,6 +26,7 @@ export function StreakCard() {
   const markCelebrated = useStreakAnimationStore((s) => s.markCelebrated);
   const beginPending = useStreakAnimationStore((s) => s.beginPending);
   const triggerFly = useStreakAnimationStore((s) => s.trigger);
+  const refreshStreak = useRefreshStreak();
 
   // Lazy initializer instead of an effect-driven setState: if today is
   // already celebrated (real, non-demo path), start at the target with
@@ -38,7 +40,9 @@ export function StreakCard() {
 
   function completeToday() {
     const today = streak.lastCompletedDate ?? new Date().toISOString().slice(0, 10);
-    const newStreak = streak.currentStreak + 1;
+    // Live data already counts today; the mock demo extends the streak here.
+    const fromStreak = isApiDataSource ? Math.max(streak.currentStreak - 1, 0) : streak.currentStreak;
+    const newStreak = fromStreak + 1;
 
     setBurst(true);
     setTimeout(() => setBurst(false), 900);
@@ -50,13 +54,16 @@ export function StreakCard() {
     // badgeRef so a missing badge (should never happen while mounted) can't
     // leave the freeze stuck on with no flight to ever clear it.
     if (badgeRef.current) {
-      beginPending(streak.currentStreak);
+      beginPending(fromStreak);
     }
 
     // The count updates immediately and independently of the animation, so
     // it's correct even if the fly/land sequence never plays.
-    updateProfile({ streakDays: newStreak });
-    recordStreak(newStreak);
+    if (!isApiDataSource) {
+      updateProfile({ streakDays: newStreak });
+      recordStreak(newStreak);
+      void refreshStreak();
+    }
     markCelebrated(today);
 
     if (badgeRef.current) {
@@ -70,6 +77,16 @@ export function StreakCard() {
   }
 
   useEffect(() => {
+    if (!isApiDataSource) return;
+    // Live: celebrate once the real count reaches the goal, no simulated ramp.
+    if (!streak.loaded || !streak.todayDone || streak.celebratedToday || hasCompletedRef.current) return;
+    hasCompletedRef.current = true;
+    completeToday();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streak.loaded, streak.todayDone, streak.celebratedToday]);
+
+  useEffect(() => {
+    if (isApiDataSource || !streak.loaded) return;
     if (streak.celebratedToday || hasCompletedRef.current) return;
 
     let cancelled = false;
@@ -102,10 +119,12 @@ export function StreakCard() {
     // happens (rather than only on mount) is an acceptable, barely-visible
     // side effect of the same fix.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streak.celebratedToday, streak.todayProgress]);
+  }, [streak.loaded, streak.celebratedToday, streak.todayProgress]);
+
+  const shown = isApiDataSource ? Math.min(streak.todayProgress, streak.dailyTarget) : displayed;
 
   const level = getStreakLevel(streak.currentStreak);
-  const percent = Math.min(Math.round((displayed / streak.dailyTarget) * 100), 100);
+  const percent = Math.min(Math.round((shown / streak.dailyTarget) * 100), 100);
   const isComplete = percent >= 100;
 
   return (
@@ -121,7 +140,7 @@ export function StreakCard() {
             Today&apos;s streak progress
           </p>
           <p className="mt-1 font-heading text-2xl font-semibold text-foreground">
-            {displayed}{" "}
+            {shown}{" "}
             <span className="text-base font-medium text-muted-foreground">
               / {streak.dailyTarget} questions
             </span>
@@ -165,7 +184,7 @@ export function StreakCard() {
       ) : (
         <div className="mt-3 flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            {streak.dailyTarget - displayed} more to reach today&apos;s goal.
+            {streak.dailyTarget - shown} more to reach today&apos;s goal.
           </p>
           <p className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
             <Trophy className="size-3.5" />

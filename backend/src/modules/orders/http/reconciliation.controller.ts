@@ -1,7 +1,8 @@
-import { Controller, HttpCode, Post } from '@nestjs/common';
+import { Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { Public } from '../../../common/decorators/public.decorator';
+import { InternalOnlyGuard } from '../../../common/guards/internal-only.guard';
 import { PaymentReconciliationService } from '../application/reconciliation.service';
 
 /**
@@ -18,12 +19,19 @@ import { PaymentReconciliationService } from '../application/reconciliation.serv
  * application itself to check. A caller without the right service account
  * never gets here to receive a 401 — Cloud Run answers 403 before NestJS runs.
  *
+ * That alone was not enough, though. The frontends are an admitted identity
+ * *and* proxy every `/api/*` request for the public, attaching their token —
+ * so this route was reachable from the internet through them.
+ * `InternalOnlyGuard` closes that: anything that came through a frontend is
+ * refused, and the frontends also refuse `/api/internal/*` before proxying.
+ *
  * `@SkipThrottle` because this is a trusted, IAM-verified caller on a fixed
  * schedule, and a sweep refused for rate limiting would be a sweep that did
  * not happen — which is the failure this endpoint exists to prevent.
  */
 @ApiExcludeController()
 @Controller('internal')
+@UseGuards(InternalOnlyGuard)
 export class ReconciliationController {
   constructor(private readonly reconciliation: PaymentReconciliationService) {}
 

@@ -1,5 +1,5 @@
 import { CheckCircle2, Circle, XCircle } from "lucide-react";
-import type { Question } from "@/types";
+import type { SessionQuestion } from "@/types";
 import { FigurePlaceholder } from "@/components/common/figure-placeholder";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +12,7 @@ export function ReviewExplanationPanel({
   question,
   status,
 }: {
-  question: Question;
+  question: SessionQuestion;
   status: "correct" | "incorrect" | "unattempted";
 }) {
   return (

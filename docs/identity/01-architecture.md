@@ -23,6 +23,13 @@ The identity module is implemented in `backend/src/modules/identity/` and verifi
 | `POST /api/auth/register` | public | Create an account without verification (assigned `STUDENT`) and start a session |
 | `POST /api/auth/signup/start` | public | Send a signup code. Creates nothing. 503 + `alternatives` if undeliverable |
 | `POST /api/auth/signup/verify` | public | Exchange the code for the account and a session |
+| `PATCH /api/auth/me/password` | signed in | Change own password. Requires `currentPassword`; revokes all sessions and returns a fresh token pair |
+| `GET /api/auth/me/profile` | signed in | Own profile answers (name, mobile, exam, stage) |
+| `PATCH /api/auth/me/profile` | signed in | Save them — the third signup step. Validated against the same exam/stage lists as seat registration |
+
+**Changing a password vs. resetting one.** Two different proofs, so two different routes. `PATCH /auth/me/password` is for someone who *knows* their password and is signed in — the current password is required, because an access token is a bearer credential and a stolen one must not be able to seize the account. `POST /auth/password/forgot` + `/reset` is for someone who has *lost* it, where control of the email address is the only proof available. Both revoke every existing session on success (`PASSWORD_CHANGED`) and hand back a fresh token pair, so the caller stays signed in while every other device is signed out. The change-password UI lives in the admin Settings page (pdf-web); the endpoint itself is generic and available to any JSMF app.
+
+**Web email signup is three screens** (main-web and pdf-web alike): (1) email + password + confirm password → `signup/start` (name is now optional there; the account defaults to the email's local part); (2) the code → `signup/verify`, which signs in; (3) name, mobile number, preparing for, current stage → `PATCH me/profile`. The mobile number is stored unverified in `users.contact_phone`, never in `users.phone` (the verified sign-in number). The seat registration form prefills from this profile.
 | `POST /api/auth/password/forgot` | public | Send a reset code. Identical response for an unknown address |
 | `POST /api/auth/password/reset` | public | Set a new password, revoke every session, sign in |
 | `POST /api/auth/login` | public | Exchange credentials for an access + refresh pair |

@@ -1,8 +1,9 @@
-import { Controller, HttpCode, Logger, Post, Req } from '@nestjs/common';
+import { Controller, HttpCode, Logger, Post, Req, UseGuards } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ApiExcludeController } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { Public } from '../../../common/decorators/public.decorator';
+import { WebhookIpGuard } from '../../../common/guards/webhook-ip.guard';
 import { PaymentService } from '../application/payment.service';
 
 /**
@@ -24,6 +25,9 @@ export class WebhookController {
   @Post('razorpay')
   @Public()
   @SkipThrottle()
+  // Defence in depth over the signature check, not a replacement for it, and
+  // inert unless RAZORPAY_WEBHOOK_IPS is configured. See WebhookIpGuard.
+  @UseGuards(WebhookIpGuard)
   // 200 on a duplicate as well as on a fresh event: providers retry until they
   // get a success, so answering anything else for an event we have already
   // handled just invites the same delivery again.

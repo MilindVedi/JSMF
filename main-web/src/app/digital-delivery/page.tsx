@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage, LegalSection } from "@/components/legal-page";
+import { supportEmail } from "@/lib/site-content";
 
 export const metadata: Metadata = { title: "Digital Delivery Policy — JSMF" };
 
@@ -15,8 +16,8 @@ export default function DigitalDeliveryPage() {
         <p>No physical products are shipped.</p>
         <p>
           If you have completed payment but cannot access your purchase, contact{" "}
-          <a href="mailto:support@jsmf.me" className="font-semibold text-primary">
-            support@jsmf.me
+          <a href={`mailto:${supportEmail}`} className="font-semibold text-primary">
+            {supportEmail}
           </a>{" "}
           with your registered email address and order/payment details.
         </p>

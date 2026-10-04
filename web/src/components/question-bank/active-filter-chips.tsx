@@ -1,10 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { EXAMS } from "@/data/mock/exams";
-import { getSubjectById } from "@/data/mock/subjects";
-import { getTopicById } from "@/data/mock/topics";
-import { useCollectionsStore } from "@/store/collections-store";
+import { useCollections, useTaxonomyLookup } from "@/hooks/pyq";
 import { EMPTY_QUESTION_FILTERS, type QuestionFiltersState } from "./filter-panel";
 
 /**
@@ -18,11 +15,12 @@ export function ActiveFilterChips({
   value: QuestionFiltersState;
   onChange: (value: QuestionFiltersState) => void;
 }) {
-  const collections = useCollectionsStore((s) => s.collections);
+  const { data: collections = [] } = useCollections();
+  const { exam: getExamById, subject: getSubjectById, topic: getTopicById } = useTaxonomyLookup();
   const chips: { key: string; label: string; remove: () => void }[] = [];
 
   for (const examId of value.examIds) {
-    const exam = EXAMS.find((e) => e.id === examId);
+    const exam = getExamById(examId);
     chips.push({
       key: `exam-${examId}`,
       label: exam?.shortName ?? examId,

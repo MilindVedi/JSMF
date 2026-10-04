@@ -625,3 +625,167 @@ describe('reconciliation', () => {
     expect(order.status).toBe(OrderStatus.AWAITING_PAYMENT);
   });
 });
+
+/**
+ * Go-live hardening. Each test here is a way a real buyer could pay and not
+ * get their seat (or get it taken back wrongly) that the suites above did not
+ * cover.
+ */
+describe('go-live hardening', () => {
+  it('retries a webhook that failed on its first delivery instead of treating the redelivery as a duplicate', async () => {
+    await clearEntitlement();
+    const checkout = await startCheckout();
+    const eventId = `evt_retry_${randomUUID()}`;
+    const providerPaymentId = `pay_stub_${randomUUID().replace(/-/g, '').slice(0, 14)}`;
+
+    // A transient failure during the first settlement — a database blip, a
+    // redeploy mid-request. Razorpay will redeliver the same event id.
+    const target = payments as unknown as { settle: (...args: unknown[]) => Promise<void> };
+    const original = target.settle;
+    target.settle = () => Promise.reject(new Error('transient failure'));
+    try {
+      await expect(
+        deliver({ providerOrderId: checkout.providerOrderId, amountMinor: PRICE, eventId, providerPaymentId }),
+      ).rejects.toThrow('transient failure');
+    } finally {
+      target.settle = original;
+    }
+
+    const failed = await prisma.paymentWebhookEvent.findUniqueOrThrow({ where: { providerEventId: eventId } });
+    expect(failed.status).toBe('FAILED');
+
+    const redelivered = await deliver({
+      providerOrderId: checkout.providerOrderId,
+      amountMinor: PRICE,
+      eventId,
+      providerPaymentId,
+    });
+
+    expect(redelivered.processed).toBe(true);
+    expect(redelivered.duplicate).toBe(false);
+
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: checkout.orderId } });
+    expect(order.status).toBe(OrderStatus.PAID);
+    expect(await entitlements.findActive(userId, productId)).not.toBeNull();
+
+    const processed = await prisma.paymentWebhookEvent.findUniqueOrThrow({ where: { providerEventId: eventId } });
+    expect(processed.status).toBe('PROCESSED');
+    expect(processed.processingError).toBeNull();
+  });
+
+  it('acknowledges a capture on a Razorpay order JSMF did not create (Payment Page) instead of failing the webhook', async () => {
+    const foreignOrderId = `order_foreign_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    // A Payment Page order on the same account: no jsmf_order_id in its notes.
+    (provider as unknown as { orders: Map<string, unknown> }).orders.set(foreignOrderId, {
+      receipt: 'payment-page',
+      notes: {},
+      amountMinor: 79900n,
+      currency: 'INR',
+    });
+    const eventId = `evt_foreign_${randomUUID()}`;
+
+    const result = await deliver({ providerOrderId: foreignOrderId, amountMinor: 79900n, eventId });
+
+    expect(result.processed).toBe(true);
+    const event = await prisma.paymentWebhookEvent.findUniqueOrThrow({ where: { providerEventId: eventId } });
+    expect(event.status).toBe('PROCESSED');
+    expect(await prisma.payment.count({ where: { providerOrderId: foreignOrderId } })).toBe(0);
+  });
+
+  it('sends exactly one confirmation when the webhook and the browser callback race', async () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await clearEntitlement();
+      sentMail.length = 0;
+      mailOutcome = 'delivered';
+
+      const checkout = await startCheckout();
+      const providerPaymentId = `pay_stub_${randomUUID().replace(/-/g, '').slice(0, 14)}`;
+      const delivery = provider.simulateWebhook({
+        providerOrderId: checkout.providerOrderId,
+        amountMinor: PRICE,
+        providerPaymentId,
+      });
+
+      await Promise.all([
+        payments.handleWebhook(delivery.rawBody, delivery.headers),
+        payments.verifyCheckout({
+          userId,
+          providerOrderId: checkout.providerOrderId,
+          providerPaymentId,
+          signature: provider.signCheckout(checkout.providerOrderId, providerPaymentId),
+        }),
+      ]);
+
+      expect(sentMail.filter((mail) => mail.tag === 'purchase-confirmation')).toHaveLength(1);
+    }
+  });
+
+  it('does not restore access when a capture event is replayed after a refund', async () => {
+    await clearEntitlement();
+    const checkout = await startCheckout();
+    const providerPaymentId = await pay(checkout);
+
+    await payments.refund(checkout.orderId, userId, 'spec refund');
+    expect(await entitlements.findActive(userId, productId)).toBeNull();
+
+    // The same capture, redelivered under a new event id (or picked up by
+    // the reconciliation sweep) after the refund went through.
+    await deliver({ providerOrderId: checkout.providerOrderId, amountMinor: PRICE, providerPaymentId });
+
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: checkout.orderId } });
+    expect(order.status).toBe(OrderStatus.REFUNDED);
+    const payment = await prisma.payment.findFirstOrThrow({ where: { orderId: checkout.orderId } });
+    expect(payment.status).toBe(PaymentStatus.REFUNDED);
+    expect(await entitlements.findActive(userId, productId)).toBeNull();
+  });
+
+  it('settles a retry that succeeded after a failed first attempt on the same order', async () => {
+    await clearEntitlement();
+    const checkout = await startCheckout();
+
+    await deliver({ providerOrderId: checkout.providerOrderId, amountMinor: PRICE, eventType: 'payment.failed' });
+    const afterFailure = await prisma.order.findUniqueOrThrow({ where: { id: checkout.orderId } });
+    expect(afterFailure.status).toBe(OrderStatus.FAILED);
+
+    await deliver({ providerOrderId: checkout.providerOrderId, amountMinor: PRICE });
+
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: checkout.orderId } });
+    expect(order.status).toBe(OrderStatus.PAID);
+    expect(await entitlements.findActive(userId, productId)).not.toBeNull();
+  });
+
+  it('a late payment.failed event does not undo a capture that already settled', async () => {
+    await clearEntitlement();
+    const checkout = await startCheckout();
+    await pay(checkout);
+
+    await deliver({ providerOrderId: checkout.providerOrderId, amountMinor: PRICE, eventType: 'payment.failed' });
+
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: checkout.orderId } });
+    expect(order.status).toBe(OrderStatus.PAID);
+    expect(await entitlements.findActive(userId, productId)).not.toBeNull();
+  });
+
+  it('reconciliation finds a capture on an order whose first attempt failed and whose capture webhook was lost', async () => {
+    await clearEntitlement();
+    const checkout = await startCheckout();
+
+    await deliver({ providerOrderId: checkout.providerOrderId, amountMinor: PRICE, eventType: 'payment.failed' });
+
+    // The retry is captured at the provider, but that webhook never arrives
+    // and the buyer closed the tab.
+    provider.simulateWebhook({ providerOrderId: checkout.providerOrderId, amountMinor: PRICE });
+
+    await prisma.payment.updateMany({
+      where: { orderId: checkout.orderId },
+      data: { createdAt: new Date(Date.now() - 30 * 60_000) },
+    });
+
+    const summary = await payments.reconcile({ staleAfterMinutes: 10, giveUpAfterHours: 72, batchSize: 50 });
+    expect(summary.errors).toBe(0);
+
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: checkout.orderId } });
+    expect(order.status).toBe(OrderStatus.PAID);
+    expect(await entitlements.findActive(userId, productId)).not.toBeNull();
+  });
+});

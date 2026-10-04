@@ -54,6 +54,16 @@ export interface PaymentWebhookEvent {
   providerPaymentId?: string;
   providerRefundId?: string;
   amountMinor?: bigint;
+  /**
+   * The amount of *this refund*, which is not `amountMinor`.
+   *
+   * A refund event carries both the refund and the payment it came from, and
+   * `amountMinor` reports the payment — the full sum originally captured. A
+   * partial refund is the case that makes the difference load-bearing: reading
+   * the payment's amount there would look like the whole purchase had been
+   * returned and would revoke access the buyer has still paid for.
+   */
+  refundAmountMinor?: bigint;
   currency?: string;
   method?: string;
   errorCode?: string;

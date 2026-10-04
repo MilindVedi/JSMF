@@ -11,10 +11,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/store/auth-store";
+import { GoogleSignIn, safeNext } from "@/components/auth/google-sign-in";
+import { DATA_SOURCE_KIND } from "@/lib/data-source";
+
+const IS_API = DATA_SOURCE_KIND === "api";
+
+function nextParam() {
+  return typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("next");
+}
 
 const schema = z.object({
   email: z.string().email("Enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  // The real API deliberately has no minimum at login (it would leak policy).
+  password: IS_API
+    ? z.string().min(1, "Enter your password")
+    : z.string().min(6, "Password must be at least 6 characters"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -25,13 +36,19 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
-  function onSubmit(values: FormValues) {
-    login(values.email);
+  async function onSubmit(values: FormValues) {
+    try {
+      await login(values.email, values.password);
+    } catch (error) {
+      setError("root", { message: error instanceof Error ? error.message : "Could not log in." });
+      return;
+    }
     toast.success("Welcome back!");
-    router.push("/dashboard");
+    router.push(safeNext(nextParam()));
   }
 
   return (
@@ -47,6 +64,7 @@ export default function LoginPage() {
         </span>
       }
     >
+      <GoogleSignIn next={safeNext(nextParam())} />
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
@@ -63,12 +81,15 @@ export default function LoginPage() {
           <Input id="password" type="password" placeholder="••••••••" {...register("password")} />
           {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
         </div>
+        {errors.root && <p className="text-sm text-destructive">{errors.root.message}</p>}
         <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
-          Log in
+          {isSubmitting ? "Logging in…" : "Log in"}
         </Button>
-        <p className="text-center text-xs text-muted-foreground">
-          This is a prototype — any email and password will work.
-        </p>
+        {!IS_API && (
+          <p className="text-center text-xs text-muted-foreground">
+            This is a prototype — any email and password will work.
+          </p>
+        )}
       </form>
     </AuthCard>
   );

@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { RefreshTokenRevokedReason, UserStatus, VerificationPurpose } from '@prisma/client';
+import { activity } from '../../../shared/logging/activity';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { PasswordHasher } from '../domain/password-hasher.port';
 import type { VerificationChannelName } from '../domain/verification-channel.port';
@@ -71,11 +72,15 @@ export class AccountRecoveryService {
    * second request, so the buyer types it once.
    */
   async startSignup(
-    input: { email: string; name: string; password: string },
+    input: { email: string; name?: string; password: string },
     context: RequestContext,
     channel: VerificationChannelName = 'email',
   ): Promise<CodeIssued> {
     const email = input.email.trim().toLowerCase();
+    // The web signup asks for the name after the code, on the profile step.
+    // Until then the account carries the address's local part — the same
+    // fallback a Google sign-in without a display name gets.
+    const name = (input.name?.trim() || email.split('@')[0]).slice(0, 120);
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -90,7 +95,7 @@ export class AccountRecoveryService {
       subject: email,
       ttlMinutes: SIGNUP_CODE_TTL_MINUTES,
       sentToEmail: email,
-      metadata: { name: input.name.trim(), passwordHash: await this.hasher.hash(input.password) },
+      metadata: { name, passwordHash: await this.hasher.hash(input.password) },
       ip: context.ip ?? null,
       format: 'digits',
     });
@@ -103,7 +108,8 @@ export class AccountRecoveryService {
       code,
       destination: email,
       addressKind: 'email',
-      name: input.name.trim(),
+      // Only greet by name when one was actually given.
+      name: input.name?.trim() || undefined,
       expiresInMinutes: SIGNUP_CODE_TTL_MINUTES,
     });
 
@@ -159,7 +165,7 @@ export class AccountRecoveryService {
 
     const authenticated: AuthenticatedUser = toAuthenticatedUser(user);
 
-    this.logger.log(`Account created for ${email} after email verification`);
+    activity(this.logger, 'auth.signup', { method: 'email', userId: user.id, email, ip: context.ip });
 
     return { user: authenticated, tokens: await this.auth.startSessionFor(authenticated, context) };
   }

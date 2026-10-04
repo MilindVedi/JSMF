@@ -18,6 +18,7 @@ This `docs/` folder is the single source of truth for what is being built, why, 
 | [Diagrams](./diagrams/) | PlantUML flowcharts of the roadmap and the mock-UI feedback loop, kept in sync with the prose in [06 — Roadmap](./06-roadmap.md) — useful for a quick visual read rather than the full write-up. |
 | [PDF Platform](./pdf-platform/) | The JSMF PDF & digital-content storefront — a **separate product** from the PYQ question bank, shipping before it, and the first part of JSMF with a real backend, payments, and accounts. Has its own scope, architecture, and data model. |
 | [Main website](./main-website/) | jsmf.me — paid live sessions with Dr. Angad Rai. Same backend and database as the PDF platform (a session is a product), its own Next.js app `main-web/`. |
+| [PYQ app](./pyq/) | `web/` — the question bank and practice app. Real backend module `questions` in its own `pyq` Postgres schema, mock/api data source switch, phase status. Includes a full [feature inventory](./pyq/features.md) and the [end-to-end user flows](./pyq/user-flows.md) with diagrams. |
 | [Identity](./identity/) | The centralized login, account, and role system shared by **every** JSMF application — not a feature of any one product. Has its own architecture and data model. |
 
 ## How this documentation is split

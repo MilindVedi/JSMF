@@ -68,6 +68,7 @@ export const metadata: Metadata = {
   },
   description:
     "PYQ compilations, notes and guides for NEET-PG, FMGE and INI-CET, from JSMF.",
+  icons: { icon: "/favicon.png" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

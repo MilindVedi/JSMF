@@ -13,6 +13,10 @@ These tables are owned by the `identity` module (`backend/src/modules/identity/`
 | `phone_verified_at` | timestamptz NULL | Set only when a code sent to `phone` came back. Mirrors `email_verified_at`, and records the invariant rather than leaving it implied. |
 | `name` | varchar(120) NOT NULL | |
 | `avatar_storage_provider`, `avatar_object_key` | enum / text, both NULL | An avatar is a file we host, addressed the same way as every other stored file — never a raw URL column. Both null together when no avatar is set. Two plain columns rather than a `product_assets`-style row: an avatar is single, unversioned, and owned 1:1 by a user, so that table's extra machinery (kind, version, is_current) would be unused weight here. |
+| `contact_phone` | varchar(20) NULL | An unverified mobile number collected during signup (the third screen). **Not `phone`**, which is the verified sign-in identifier set only by a code sent to that number. Stored so the seat-registration form can prefill it, and so a future OTP-verify popup can promote it to `phone`. |
+| `preparing_for` | varchar(100) NULL | Which exam the student is preparing for (e.g. `NEET-PG`, `FMGE`). Collected on signup, validated against the same option list as seat registration. |
+| `current_stage` | varchar(100) NULL | Where the student is in their preparation (e.g. `Intern`, `Final Year`). Same validation. |
+| `profile_completed_at` | timestamptz NULL | Set once when the student submits the third signup screen (`PATCH /auth/me/profile`). Null means the profile step was skipped or hasn't happened yet. |
 | `password_hash` | text NULL | Nullable — an OAuth-only account has no password. Argon2id. |
 | `status` | enum | `ACTIVE`, `SUSPENDED`, `DELETED` |
 | `last_login_at` | timestamptz NULL | |

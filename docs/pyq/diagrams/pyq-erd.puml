@@ -1,0 +1,217 @@
+@startuml pyq-erd
+!theme plain
+title Postgres schema `pyq` — tables and the single link out to `public.users` (see docs/pyq/user-flows.md)
+
+hide circle
+skinparam linetype ortho
+
+package "public" {
+  entity "users" as users {
+    * id : uuid <<PK>>
+    --
+    (identity module owns this table)
+  }
+}
+
+package "pyq — content" {
+
+  entity "exams" as exams {
+    * id : uuid <<PK>>
+    --
+    * slug : varchar(60) <<unique>>
+    * name : varchar(120)
+    * short_name : varchar(40)
+      description : text
+    * sort_order : int
+    * created_at / updated_at : timestamptz
+  }
+
+  entity "subjects" as subjects {
+    * id : uuid <<PK>>
+    --
+    * slug : varchar(80) <<unique>>
+    * name : varchar(120)
+    * group : varchar(40)  -- pre-clinical | para-clinical | clinical
+      description : text
+    * sort_order : int
+    * created_at / updated_at : timestamptz
+  }
+
+  entity "topics" as topics {
+    * id : uuid <<PK>>
+    --
+    * subject_id : uuid <<FK subjects>>
+    * slug : varchar(160) <<unique>>  -- "{subject}--{topic}"
+    * name : varchar(160)
+    * sort_order : int
+    * created_at / updated_at : timestamptz
+  }
+
+  entity "questions" as questions {
+    * id : uuid <<PK>>
+    --
+    * external_key : varchar(160) <<unique>>  -- import upserts on this
+    * exam_id : uuid <<FK exams>>
+    * subject_id : uuid <<FK subjects>>
+      topic_id : uuid <<FK topics, SetNull>>
+    * year : smallint
+    * stem : text
+      stem_image_url : text
+      stem_figure : jsonb
+    * explanation : text
+      explanation_image_url : text
+      explanation_figure : jsonb
+    * difficulty : Difficulty  -- EASY | MEDIUM | HARD
+    * status : QuestionStatus  -- DRAFT | PUBLISHED
+    * created_at / updated_at : timestamptz
+      deleted_at : timestamptz  -- soft delete
+  }
+
+  entity "question_options" as options {
+    * id : uuid <<PK>>
+    --
+    * question_id : uuid <<FK questions, Cascade>>
+    * label : varchar(4)  -- A..D
+    * text : text
+      image_url : text
+    * is_correct : boolean  -- never serialised before reveal
+    * sort_order : int  <<unique with question_id>>
+    * created_at / updated_at : timestamptz
+  }
+}
+
+package "pyq — practice" {
+
+  entity "practice_sessions" as sessions {
+    * id : uuid <<PK>>
+    --
+    * user_id : uuid <<FK public.users, Cascade>>
+    * mode : PracticeMode  -- PRACTICE | TEST | CUSTOM
+    * label : varchar(200)
+    * config : jsonb  -- the filters/source, for history only
+      time_limit_sec : int
+    * status : PracticeSessionStatus  -- IN_PROGRESS | SUBMITTED
+    * started_at : timestamptz
+      submitted_at : timestamptz
+    * total_questions : int
+      correct_count / incorrect_count : int
+      unattempted_count : int
+      accuracy : int  -- 0..100, written once at submit
+    * created_at / updated_at : timestamptz
+  }
+
+  entity "session_questions" as sq {
+    * session_id : uuid <<PK, FK sessions, Cascade>>
+    * question_id : uuid <<PK, FK questions, Restrict>>
+    --
+    * position : int  <<unique with session_id>>
+  }
+
+  entity "attempts" as attempts {
+    * id : uuid <<PK>>
+    --
+    * session_id : uuid <<FK sessions, Cascade>>
+    * question_id : uuid <<FK questions, Restrict>>
+    * user_id : uuid <<FK public.users>>  -- denormalised for stats/allowance
+      selected_option_id : uuid
+      is_correct : boolean
+    * time_spent_ms : int
+    * flagged : boolean  -- a row may exist with no answer
+      answered_at : timestamptz
+    * created_at / updated_at : timestamptz
+    --
+    unique (session_id, question_id)
+  }
+}
+
+package "pyq — the student's own data" {
+
+  entity "bookmarks" as bookmarks {
+    * id : uuid <<PK>>
+    --
+    * user_id : uuid <<FK public.users, Cascade>>
+    * question_id : uuid <<FK questions, Cascade>>
+    * created_at : timestamptz
+    --
+    unique (user_id, question_id)
+  }
+
+  entity "collections" as collections {
+    * id : uuid <<PK>>
+    --
+    * user_id : uuid <<FK public.users, Cascade>>
+    * name : varchar(120)
+      description : varchar(500)
+    * created_at / updated_at : timestamptz
+  }
+
+  entity "collection_questions" as ci {
+    * collection_id : uuid <<PK, FK collections, Cascade>>
+    * question_id : uuid <<PK, FK questions, Cascade>>
+    --
+    * added_at : timestamptz
+  }
+
+  entity "question_reports" as reports {
+    * id : uuid <<PK>>
+    --
+    * user_id : uuid <<FK public.users, Cascade>>
+    * question_id : uuid <<FK questions, Cascade>>
+    * reason : QuestionReportReason
+    details : varchar(2000)
+    * status : QuestionReportStatus  -- OPEN | RESOLVED | DISMISSED
+      resolved_at : timestamptz
+      admin_note : varchar(2000)
+      resolved_by_id : uuid <<FK public.users, SetNull>>
+    * created_at / updated_at : timestamptz
+  }
+
+  entity "user_preferences" as prefs {
+    * user_id : uuid <<PK, FK public.users, Cascade>>
+    --
+      target_exam : varchar(60)  -- an exam slug, not a FK
+    * daily_target : smallint
+    * created_at / updated_at : timestamptz
+  }
+}
+
+subjects ||--o{ topics
+exams ||--o{ questions
+subjects ||--o{ questions
+topics ||--o{ questions
+questions ||--o{ options
+
+sessions ||--o{ sq
+questions ||--o{ sq
+sessions ||--o{ attempts
+questions ||--o{ attempts
+
+questions ||--o{ bookmarks
+questions ||--o{ reports
+collections ||--o{ ci
+questions ||--o{ ci
+
+users ||--o{ sessions
+users ||--o{ attempts
+users ||--o{ bookmarks
+users ||--o{ collections
+users ||--o{ reports
+users ||--o{ prefs
+
+note bottom of users
+  The only cross-schema reference. Everything else about a
+  subscription lives in `public` (products, orders, entitlements)
+  and is reached through EntitlementService, never by a join from
+  here — which is what makes moving `pyq` to its own database
+  later a data copy plus a connection string, not a rewrite.
+end note
+
+note right of questions
+  Nothing is ever hard-deleted: session_questions and attempts
+  reference a question with onDelete: Restrict, so `deleted_at`
+  is what "deleted" means. Streaks, due-for-revision and
+  reinforcement are computed from `attempts` on every read and
+  have no tables of their own.
+end note
+
+@enduml

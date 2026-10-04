@@ -99,6 +99,19 @@ services:
     ports:
       - "3002:3002"
 
+  # The PYQ app (previous-year questions). Same backend, same accounts.
+  web:
+    build:
+      context: ./web
+    container_name: jsmf-web
+    restart: unless-stopped
+    environment:
+      BACKEND_API_URL: http://api:4000
+    depends_on:
+      - api
+    ports:
+      - "3003:3003"
+
   # Simulates Google Cloud Scheduler locally for development parity.
   # Hits the reconciliation endpoint every 5 minutes (300s).
   cron:

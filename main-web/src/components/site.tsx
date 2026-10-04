@@ -11,7 +11,7 @@ function Brand() {
   return (
     <Link href="/" className="flex items-center gap-2.5 font-display text-base font-semibold text-brand-deep" aria-label="JSMF home">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/jsmf-badge.png" alt="" width={40} height={40} className="size-10 shrink-0 object-contain" />
+      <img src="/favicon.png" alt="" width={40} height={40} className="size-10 shrink-0 object-contain" />
       <span>JSMF</span>
     </Link>
   );
