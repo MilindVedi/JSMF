@@ -7,8 +7,9 @@ This document covers how the PDF platform is built. It sits underneath the platf
 ```
 JSMF/
   docs/                      Product, architecture, planning
-  web/                       Next.js app — the PYQ mock UI            (port 3000)
+  main-web/                  Next.js app — jsmf.me, live sessions     (port 3002)
   pdf-web/                   Next.js app — PDF storefront + admin     (port 3001)
+  web/                       Next.js app — PYQ question bank          (port 3003)
   backend/                   NestJS API  ← created for this product   (port 4000)
   mobile/                    (not yet created) Flutter
 ```
@@ -263,6 +264,14 @@ Verified: **42 assertions** on the stub driver, plus **12 against the live Razor
 
 **One manual step before going live:** `RAZORPAY_WEBHOOK_SECRET` is still a placeholder, and `PAYMENT_DRIVER` is still `stub`. Create a webhook in the Razorpay dashboard (Settings → Webhooks) pointing at `POST /api/webhooks/razorpay`, subscribe to `payment.captured` and `payment.failed`, and put the secret it generates into `.env` — it is not the API key secret. Razorpay must be able to reach the endpoint, so testing locally needs a tunnel (`cloudflared tunnel --url http://localhost:4000`). Boot refuses the placeholder once `PAYMENT_DRIVER=razorpay`, so this cannot be forgotten silently.
 
+#### Three hardening items from Razorpay's integration checklist
+
+Added after auditing the integration against Razorpay's published security checklist. The first is the one that could have cost money; the other two are defence in depth.
+
+- **Capture is instructed per order, not left to the Dashboard.** `createOrder` now sends `payment_capture: 1`. Auto-capture was already enabled in the Dashboard, but that is a UI setting one click away from being off, and nothing in this code would notice: without a capture the buyer is charged, `payment.captured` never arrives, settlement never runs, and Razorpay auto-refunds days later. A buyer who paid and got nothing, with no recovery path — reconciliation cannot help, because there is no capture to find. Stating it per order removes the dependency on a setting nobody re-checks.
+- **Plain HTTP is refused in production.** `requireHttps` (`backend/src/common/middleware/require-https.ts`) rejects a request the proxy reports as `x-forwarded-proto: http` with a 403, before anything reads a cookie or a bearer token. Two deliberate narrowings keep it from being able to take the site down by itself: it acts only when the header is present (so container-internal health probes and local development, which have none, are untouched) and only in production. It does not redirect — these are API calls, and redirecting a POST invites the client to replay the body, credentials and all, instead of failing loudly.
+- **An optional webhook IP allowlist**, `RAZORPAY_WEBHOOK_IPS`, enforced by `WebhookIpGuard`. Chosen over Cloud Armor, which needs an External Application Load Balancer at $18–$30/month fixed plus policy fees — real cost for a control the HMAC largely already provides, since an attacker calling from a permitted address still cannot forge a signature. **Off by default**, because the failure it causes is worse than the one it prevents: a list that misses an address Razorpay later sends from refuses genuine notifications. Two things keep that recoverable — a refusal is a 403, so Razorpay retries for roughly a day while the env var is corrected on the running service, and reconciliation settles captured payments the webhook never delivered. The addresses live in configuration rather than code precisely so a Razorpay IP change is an env var edit, not a rebuild and deploy while payments are failing. The guard compares `req.ip`, which is the true client only because `trust proxy` is configured; verify with `GET /api/health/client-ip` before switching it on.
+
 ### Status: built
 
 `backend/src/modules/payments/` — the `PaymentProvider` port plus `RAZORPAY` and `STUB` adapters. The port covers order creation, checkout-signature verification, webhook verification, payment lookup and refunds. The orders/checkout *flow* described above is not built yet; these are the pieces it will be assembled from.
@@ -303,7 +312,10 @@ pdf-web/src/app/            port 3001
       taxonomy/               manage categories and terms
       orders/                 order management
 
-web/src/app/                port 3000 — unchanged, still the PYQ mock
+main-web/src/app/           port 3002 — jsmf.me, live sessions
+  (marketing)/ (app)/ (auth)/
+
+web/src/app/                port 3003 — PYQ question bank
   (marketing)/ (app)/ (auth)/
 ```
 
@@ -346,7 +358,7 @@ was 1.7 MB and the served JPEG is ~107 KB at the same dimensions.
 
 ### Status: built — the admin panel
 
-`pdf-web/src/app/(admin)/admin/` with supporting pieces in `pdf-web/src/lib/api/`, `pdf-web/src/store/session-store.ts` and `pdf-web/src/components/admin/`. Routes: `/admin/login`, `/admin/products`, `/admin/products/new`, `/admin/products/[id]`, `/admin/taxonomy`, `/admin/orders`.
+`pdf-web/src/app/(admin)/admin/` with supporting pieces in `pdf-web/src/lib/api/`, `pdf-web/src/store/session-store.ts` and `pdf-web/src/components/admin/`. Routes: `/admin/login`, `/admin/accept-invite`, `/admin/products`, `/admin/products/new`, `/admin/products/[id]`, `/admin/featured`, `/admin/sessions`, `/admin/sessions/[id]` (live sessions sold on jsmf.me — see `docs/main-website/README.md`), `/admin/taxonomy`, `/admin/orders`, `/admin/team`, `/admin/settings` (platform-wide toggles shared with jsmf.me, `docs/main-website/README.md` §7).
 
 This is the **first part of the frontend that talks to the real backend** — everything else under `web/` is still the PYQ mock over hardcoded data. The two are deliberately not merged: `session-store.ts` (real) is separate from `auth-store.ts` (mock), because a mock login must never be able to put the app into a state the real backend never issued.
 
@@ -405,6 +417,30 @@ subject filters over two resources, ending in "Nothing here yet", says *we have
 a huge library and none of it is for you*. The fix is to lead with the educator
 rather than the inventory.
 
+**Cross-site consistency with jsmf.me.** The storefront and the main website
+are two deployments, but a visitor landing on either should feel they are
+inside one JSMF, not an educator site and an unrelated storefront.
+`pdf-web/src/components/store/doctor-portrait.tsx` now exports both the
+original `DoctorPortrait` (photo-or-fallback, kept for the compact slot on
+each product page) and a new `DoctorPortraitCard` — the richer framed
+composition with a yellow rank badge, floating credential chips and three
+social orbs — redrawn in pdf-web rather than imported from `main-web/` so
+the two apps stay independent. The storefront home page's hero now renders
+this card instead of the previous bare photo plus hand-rolled chip
+assembly. `pdf-web/src/components/store/store-footer.tsx` mirrors jsmf.me's
+footer verbatim: a Contact Us button that opens the same ContactDialog
+(copied as `pdf-web/src/components/store/contact-dialog.tsx`, with the same
+support email, address and social links), the six legal links (About,
+Privacy, Terms & Conditions, Refund & Cancellation, Digital Delivery,
+Disclaimer), and the "not affiliated with NBEMS/AIIMS/..." disclaimer. The
+legal pages themselves live only on jsmf.me — one canonical copy, so the
+About/Privacy/Terms text can never drift between the two sites — and the
+footer links to them as absolute URLs built from `NEXT_PUBLIC_MAIN_SITE_URL`
+(`docs/gcp/03-secrets-and-env.md`). The storefront header carries one more
+cross-site link, "Visit our main website," pointing at the same URL — a
+visitor who came looking for live sessions and landed on the store needs the
+crossover visible straight away rather than hidden below the fold.
+
 | Route | Was | Now |
 |---|---|---|
 | `/` | redirect to `/pdfs` | landing page — headline, Dr. Angad Rai, featured resources, YouTube/Instagram |
@@ -448,7 +484,28 @@ pre-existing header bug where the full wordmark plus both auth buttons pushed
 
 The admin Orders page (`pdf-web/src/app/(admin)/admin/orders/page.tsx`) now shows every customer's orders with a status filter, a search box (order number or email), and a Refund button on any `PAID` order, which confirms the amount and customer before calling the API.
 
-Not yet done: this has been typechecked but not run against a live Razorpay refund, and there is no partial-refund support (a refund is always for the full captured amount).
+**This admin-triggered path is currently disabled** (`REFUNDS_ENABLED=false`
+by default, added alongside the real live-session Razorpay integration — see
+`docs/main-website/README.md` §3a): the endpoint answers `409` without calling
+Razorpay, and the Orders page shows the Refund button disabled with that
+reason. The functionality above is unchanged and intact, just switched off
+until that path has been exercised on the real integration; flip the backend
+env var — the admin Orders page reads `refundsEnabled` from the backend's
+`GET /admin/settings` response, so there is no frontend constant to keep in sync.
+
+**A refund issued directly in the Razorpay dashboard is never gated by the
+above**, and is the only refund path currently live: the `refund.processed`
+webhook (`PaymentService.applyProviderRefund()`) records a `Refund` row keyed
+on the provider's unique refund id (redelivery-safe) and revokes the
+entitlement — but only once every `Refund` recorded against that payment sums
+to the full captured amount, so a **partial** refund is recorded and leaves
+access in place. This is the partial-refund support that did not exist when
+this section was first written; it only covers provider-initiated refunds,
+since the admin-triggered path above is still always a refund for the full
+amount.
+
+Not yet done: neither path has been run against a live (non-test-mode)
+Razorpay refund yet.
 
 ### Status: built — the public storefront
 
@@ -531,10 +588,10 @@ Admin, and no horizontal overflow at 390px.
 
 ## Status: built — full-stack Docker
 
-Everything is now containerized: Postgres, Redis, the NestJS API, and `pdf-web`. Root-level `docker-compose.yml` (not `backend/docker-compose.yml`, which still exists separately for the lighter "just the database" workflow used by `npm run start:dev`) brings up all four.
+Everything is now containerized: Postgres, Redis, the NestJS API, `pdf-web`, `main-web` and `web` (PYQ). Root-level `docker-compose.yml` (not `backend/docker-compose.yml`, which still exists separately for the lighter "just the database" workflow used by `npm run start:dev`) brings up all six services.
 
 - **`backend/Dockerfile`** — multi-stage: builds with dev dependencies, ships only production ones. `docker-entrypoint.sh` runs `prisma migrate deploy` on every container start before the API boots, so a fresh database is never a manual step — this is idempotent, so restarts are harmless.
-- **`pdf-web/Dockerfile`** — multi-stage using `next.config.ts`'s `output: "standalone"`, so the runtime image needs no `node_modules` install, just the traced dependency set Next.js produces. `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_MAX_UPLOAD_MB` are build args, not runtime env vars — they're inlined into the browser bundle at build time, so setting them at container start would do nothing.
+- **`pdf-web/Dockerfile`** — multi-stage using `next.config.ts`'s `output: "standalone"`, so the runtime image needs no `node_modules` install, just the traced dependency set Next.js produces. `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_MAX_UPLOAD_MB` are build args, not runtime env vars — they're inlined into the browser bundle at build time, so setting them at container start would do nothing. `main-web/Dockerfile` and `web/Dockerfile` follow the same pattern.
 - **Uploaded files get their own named volume (`jsmf_storage` on `/app/.storage`).** Under `STORAGE_DRIVER=local` every uploaded PDF and cover is written inside the container. Without a volume those files live only in the container's writable layer, so `docker compose down` would delete all of them while Postgres — which *does* have a volume — survives intact, leaving product rows pointing at assets that no longer exist. The failure is silent and only shows up later as a broken download. Production uses `STORAGE_DRIVER=cloudinary` and is unaffected, but a dev catalogue that quietly breaks after a routine `down` is not acceptable either.
 - Inside the compose network, the API's `DATABASE_URL`/`REDIS_URL` are overridden to point at the other containers by service name (`postgres`, `redis`) rather than `localhost`, since `.env`'s values are written for running the API directly on the host.
 

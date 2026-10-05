@@ -116,8 +116,16 @@ export class MailService {
       .map((address) => address.email)
       .join(', ');
 
+    // Applied here rather than at each call site so no template can forget it:
+    // MAIL_FROM is a no-reply address, so without this a reply to any of our
+    // email reaches nobody. A caller that set its own is left alone.
+    const outgoing: SendMailRequest = {
+      ...request,
+      replyTo: request.replyTo ?? { email: this.config.get('MAIL_REPLY_TO'), name: 'JSMF Support' },
+    };
+
     try {
-      const result = await this.provider.send(request);
+      const result = await this.provider.send(outgoing);
 
       await this.record({
         recipient,

@@ -9,6 +9,8 @@ This document provides a reference for all environment variables, flags, and sec
 | Variable Name | Type | In V1 (Free / Low Cost) | Source / Secret Manager Key | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | `NODE_ENV` | String | `production` | Cloud Run Env Var | Controls logging, helmet, swagger disable. |
+| `LOG_FORMAT` | Enum | *(leave unset — `json` in production)* | Cloud Run Env Var | `json` writes one object per line with a Cloud Logging `severity`, so entries are filterable (`jsonPayload.activity`, `severity>=WARNING`). `text` = coloured terminal lines (the local default). See `docs/main-website/README.md` §8 for the queries. |
+| `LOG_DEBUG` | Boolean | `false` | Cloud Run Env Var | Include debug/verbose lines. Leave off in production; flip on temporarily when chasing a specific problem. |
 | `PORT` | Number | `4000` | Cloud Run Env Var | Cloud Run container listening port. |
 | `CORS_ORIGINS` | CSV String | `https://your-frontend-app.run.app` | Cloud Run Env Var | Allowed origins for browser credentials. |
 | `APP_PUBLIC_URL` | URL | `https://your-backend-app.run.app/api` | Cloud Run Env Var | API base URL for signed callbacks / public asset generation. |
@@ -93,6 +95,10 @@ This document provides a reference for all environment variables, flags, and sec
 | `PAYMENT_DRIVER` | Enum | `razorpay` | Cloud Run Env Var | Production payment gateway driver. |
 | `RAZORPAY_KEY_ID` | String | `<your-key-id>` | GCP Secret: `RAZORPAY_KEY_ID` | Razorpay public key. |
 | `RAZORPAY_KEY_SECRET` | String | `<your-key-secret>` | GCP Secret: `RAZORPAY_KEY_SECRET` | Razorpay private secret. |
+| `RAZORPAY_WEBHOOK_SECRET` | String | `<your-webhook-secret>` | GCP Secret: `RAZORPAY_WEBHOOK_SECRET` | From Razorpay Dashboard → Settings → Webhooks, set **when you create the webhook** — not the API key secret above, and not a value you invent. Boot fails if this still looks like a placeholder: a wrong secret rejects every notification Razorpay sends, so a buyer who closes the tab after paying would never be settled. |
+| `RAZORPAY_WEBHOOK_IPS` | CSV | *(leave unset — empty)* | Cloud Run Env Var | Addresses permitted to deliver a webhook (IPv4 and CIDR, comma-separated). Empty accepts delivery from anywhere, which is safe: the HMAC over the raw body is the authentication, and this list is only a second lock in front of it. **Leave it empty unless you will maintain it.** A list missing an address Razorpay later sends from refuses genuine notifications, and buyers who closed the tab wait for reconciliation instead. Refusals are 403, so Razorpay retries for about a day — long enough to correct this env var on the running service without a redeploy. Confirm `GET /api/health/client-ip` reports the real caller before switching it on, and take the addresses from Razorpay's documentation rather than from observed traffic. |
+| `PAYMENT_TEST_SESSION_SLUG` | string | `payment-test` *(or empty)* | Cloud Run Env Var | Slug of a cheap published session used by the main website's hidden `/testapayment` page to pay through the real checkout. That session is excluded from the homepage's "upcoming" pick. Empty turns the page off. See `docs/pdf-platform/03-razorpay-testing-and-go-live.md`. |
+| `REFUNDS_ENABLED` | Boolean | `false` | Cloud Run Env Var | Gates only the **admin-triggered** refund (`POST /admin/orders/:id/refund`, which calls Razorpay's refund API and moves money) — off by default while the real payment flow is new. A refund issued directly in the **Razorpay dashboard** is never gated and still revokes access automatically. See `docs/main-website/README.md` §3a. The admin Orders page reads `refundsEnabled` from `GET /admin/settings`, so flipping this one env var is all that's needed. |
 | `REDIS_ENABLED` | Boolean | `false` | Cloud Run Env Var | Keep `false` in V1 for lowest cost ($0). |
 | `RATE_LIMIT_PER_MINUTE` | Number | *(leave unset — 120)* | Cloud Run Env Var | Per-caller limit, counted per account when signed in. Tunable without a rebuild; the default is an estimate that real traffic should settle. |
 | `RATE_LIMIT_IP_CEILING_PER_MINUTE` | Number | *(leave unset — 3000)* | Cloud Run Env Var | Per-IP backstop. Must be >= `RATE_LIMIT_PER_MINUTE` or the app refuses to start. |
@@ -109,6 +115,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `MSG91_EMAIL_TEMPLATE_ID` | String | `jsmf_passthrough` | Cloud Run Env Var | Only when `MAIL_DRIVER=msg91` (with `MSG91_AUTH_KEY`). One MSG91 email template: subject `{{subject}}`, body `{{body}}`. |
 | `MSG91_EMAIL_DOMAIN` | String | `jsmf.me` | Cloud Run Env Var | Optional. Domain verified in MSG91 → Email → Domains; defaults to the `MAIL_FROM` domain. |
 | `MAIL_FROM` | String | `JSMF <no-reply@jsmf.me>` | Cloud Run Env Var | Verified domain in Resend (https://resend.com/domains). |
+| `MAIL_REPLY_TO` | Email | `support@jsmf.me` (default) | Cloud Run Env Var | Applied centrally to every outgoing mail (`MailService.attempt()`), so Reply on a receipt or a session confirmation reaches support rather than nothing. A caller that needs a different address still sets `replyTo` itself; this is only the fallback. |
 | `SMS_DRIVER` | Enum | `none` | Cloud Run Env Var | `none` is a **valid production value** — SMS is optional. `log` is refused in production (a one-time code in a log file is a plaintext credential). Set to `msg91` only once the DLT template is approved: it is also what decides whether buyers are *offered* a mobile route at all. |
 | `SMS_DEFAULT_COUNTRY_CODE` | Digits | `91` | Cloud Run Env Var | Assumed when a number is typed without a country code. |
 | `MSG91_AUTH_KEY` | String | `<auth key>` | GCP Secret: `MSG91_AUTH_KEY` | Required when `SMS_DRIVER=msg91`. |
@@ -127,6 +134,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `STOREFRONT_URL` | URL | `https://store.jsmf.me` | Cloud Run Env Var | The **buyer-facing site**, where purchase receipts link. Not `APP_PUBLIC_URL`, which is this API's own base URL and ends in `/api` — using it produced receipt links to `…/api/library`, a page that does not exist. |
 | `WHATSAPP_GRAPH_API_VERSION` | String | `v23.0` | Cloud Run Env Var | Meta retires Graph API versions roughly two years after release. |
 | `PAYMENT_RECONCILIATION_TRIGGER` | Enum | `http` | Cloud Run Env Var | `http` on Cloud Run: an in-process `cron` cannot fire at `--min-instances=0`. No app secret involved — Cloud Scheduler authenticates as an IAM identity granted `roles/run.invoker`, same as the frontend. See *Phase 9.2*. |
+| `SESSION_REMINDER_LEAD_MINUTES` | Number | *(leave unset — 60)* | Cloud Run Env Var | Live-session reminder email lead time, 5–1440 minutes before each day. The sweep runs every 5 minutes (same `/internal/session-reminders` trigger as the reconciliation job), so a reminder can land up to ~5 minutes later than the exact lead time. See `docs/main-website/README.md`. |
 
 ---
 
@@ -136,6 +144,7 @@ This document provides a reference for all environment variables, flags, and sec
 | :--- | :--- | :--- |
 | `BACKEND_API_URL` | URL of the NestJS backend API. Resolved at **runtime** by `middleware.ts` to dynamically reverse proxy requests. | `https://jsmf-backend-67890.a.run.app` |
 | `NEXT_PUBLIC_SITE_URL` | The one public address the site is published at. Drives `<link rel="canonical">` and absolute metadata URLs. **Must be set on every deployed environment** — see the note below. | `https://store.jsmf.me` |
+| `NEXT_PUBLIC_MAIN_SITE_URL` | The main JSMF website (jsmf.me). The storefront's "Visit our main website" link and the footer's legal links (About / Privacy / Terms / Refund / Digital Delivery / Disclaimer — all canonically hosted on jsmf.me, so pdf-web links out to avoid duplicating and letting them drift) both read from this. Unset falls back to `https://jsmf.me`. | `https://jsmf.me` |
 | `NEXT_PUBLIC_MAX_UPLOAD_MB`| Max client file size in MB | `10` |
 | `PORT` | Listening Port | `3001` |
 | `NODE_ENV` | Production Environment | `production` |
@@ -173,6 +182,30 @@ This document provides a reference for all environment variables, flags, and sec
 > change, not application code — and two of the five cannot be closed at all,
 > since Firebase does not allow its automatic `.web.app` and `.firebaseapp.com`
 > domains to be removed.
+
+---
+
+## 2a. Frontend (`main-web` Next.js) Configuration
+
+| Environment Variable | Description | Example Production Value |
+| :--- | :--- | :--- |
+| `BACKEND_API_URL` | Same as pdf-web — runtime proxy target. | `https://jsmf-backend-67890.a.run.app` |
+| `NEXT_PUBLIC_SITE_URL` | Canonical address. | `https://jsmf.me` |
+| `EXTERNAL_CHECKOUT_URL` | When set, the landing page links out to this URL instead of using the in-app registration/checkout. Clear it to enable the real flow. | *(empty to use in-app checkout)* |
+| `PORT` | Listening port. | `3002` |
+| `NODE_ENV` | Production environment. | `production` |
+
+## 2b. Frontend (`web` — PYQ) Configuration
+
+| Environment Variable | Description | Example Production Value |
+| :--- | :--- | :--- |
+| `BACKEND_API_URL` | Same as the other frontends — runtime proxy target. | `https://jsmf-backend-67890.a.run.app` |
+| `NEXT_PUBLIC_SITE_URL` | Canonical address. | `https://pyq.jsmf.me` |
+| `NEXT_PUBLIC_DATA_SOURCE` | `mock` (default) uses hardcoded data; `api` uses the real backend. | `api` |
+| `PORT` | Listening port. | `3003` |
+| `NODE_ENV` | Production environment. | `production` |
+
+> All three frontends share the same `middleware.ts` proxy pattern: `/api/*` is forwarded to `BACKEND_API_URL` with an IAM identity token on Cloud Run (skipped locally), and `/api/internal/*` is blocked before proxying (the confused deputy fix — see `docs/gcp/07-security-architecture-and-tradeoffs.md` Trade-off 6). Each frontend also sets the `x-jsmf-via-frontend` header on every proxied request.
 
 ---
 

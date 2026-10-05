@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BookOpen,
+  ExternalLink,
   Library,
   LogIn,
   LogOut,
@@ -14,8 +15,9 @@ import {
   X,
 } from "lucide-react";
 import { storeButton } from "@/components/store/store-button";
+import { StoreFooter } from "@/components/store/store-footer";
 import { cn } from "@/lib/utils";
-import { brand } from "@/lib/site-content";
+import { brand, mainWebsiteUrl } from "@/lib/site-content";
 import { isAdmin, useSessionStore } from "@/store/session-store";
 
 /**
@@ -53,6 +55,21 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     { href: "/admin/products", label: "Admin", icon: Shield, show: isAdmin(user) },
   ].filter((link) => link.show);
 
+  // Cross-site nav lives in the header, not the footer, because a visitor who
+  // came looking for live sessions and landed on the store needs the
+  // crossover visible straight away rather than hidden below the fold.
+  const mainSiteLink = (
+    <a
+      href={mainWebsiteUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="nav-link"
+      aria-label="Visit the main JSMF website in a new tab"
+    >
+      <ExternalLink className="size-4" /> Visit our main website
+    </a>
+  );
+
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-xl">
@@ -86,6 +103,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                   {link.label}
                 </Link>
               ))}
+              {mainSiteLink}
             </nav>
           </div>
 
@@ -161,6 +179,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                 {link.label}
               </Link>
             ))}
+            {mainSiteLink}
 
             {ready && !isAccountPage && (
               <>
@@ -196,12 +215,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
 
       <main className="flex-1">{children}</main>
 
-      <footer className="border-t border-border bg-card py-8">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-5 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between lg:px-8">
-          <p>{brand.subheadline}</p>
-          <p>{brand.disclaimer}</p>
-        </div>
-      </footer>
+      <StoreFooter />
     </div>
   );
 }

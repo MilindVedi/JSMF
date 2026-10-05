@@ -1,0 +1,115 @@
+@startuml subscription-purchase
+!theme plain
+title Buying a PYQ plan — verify is for the UI, the webhook is the authority (see docs/pyq/user-flows.md)
+
+actor Student
+participant "/subscription\napi-subscription.tsx" as Page
+participant "usePlans /\nusePlanCheckout" as Hooks
+participant "Razorpay\ncheckout.js + servers" as RZP
+participant "OrderController\nWebhookController" as HTTP
+participant "OrderService" as Orders
+participant "PaymentService\nsettle() / applyPlanTerm" as Pay
+participant "EntitlementService" as Ent
+database "Postgres\npublic schema" as DB
+
+== Showing the plans ==
+
+Student -> Page : open /subscription
+Page -> Hooks : usePlans()
+Hooks -> HTTP : GET pyq/plans   (public)
+HTTP -> DB : PUBLISHED products where\nmetadata->>'pyqSubscription' = true
+HTTP --> Page : id, title, price, durationDays, features
+Page -> Hooks : useAccess() — current plan + expiry
+
+== Checkout ==
+
+Student -> Page : Buy
+Page -> Hooks : pay(plan, buyer)
+Hooks -> HTTP : POST orders { productId }
+HTTP -> Orders : checkout(...)
+Orders -> DB : price the product server-side\n(the amount is never sent by the browser)
+note right of Orders
+  "You already own this" is skipped for a plan:
+  a plan is the one product you may buy again
+  while you still hold it.
+end note
+Orders -> RZP : create provider order
+Orders -> DB : INSERT orders (PENDING) + payments
+Orders --> Hooks : kind=PAYMENT_REQUIRED,\nproviderOrderId, checkoutKeyId, amountMinor
+Hooks -> RZP : open the checkout widget
+Student -> RZP : pay
+
+== Two settlement paths, one effect ==
+
+par browser callback (fast, for the UI)
+  RZP --> Hooks : handler(razorpay_order_id,\npayment_id, signature)
+  Hooks -> HTTP : POST payments/verify
+  HTTP -> Pay : verifyCheckout -> settle(source=verify)
+else webhook (the authority)
+  RZP -> HTTP : POST webhooks/razorpay\n(HMAC over the raw body)
+  HTTP -> Pay : handleWebhook -> settle(source=webhook)
+end
+
+note over Pay
+  Both call the same settle(). Order matters not at all:
+  whichever arrives first does the work. The webhook is
+  what guarantees access, because a buyer who closes the
+  tab after paying never calls verify.
+end note
+
+group settle() — one transaction
+  Pay -> DB : load payment + order + items + product.metadata
+  alt already REFUNDED
+    Pay -> Pay : log and return — a replayed capture\nnever re-grants revoked access
+  end
+  Pay -> DB : payments -> CAPTURED (if not already)
+  Pay -> DB : UPDATE orders SET PAID\nWHERE status NOT IN (PAID, REFUNDED, PARTIALLY_REFUNDED)
+  note right of Pay
+    `transitioned.count` is the race winner's flag.
+    The row lock makes the second caller re-evaluate
+    against the committed PAID row and match 0 rows.
+  end note
+  Pay -> Ent : grant(PURCHASE, sourceOrderId) — idempotent
+  Ent -> DB : UPSERT entitlements (ACTIVE)
+
+  alt transitioned.count == 1  (first settlement only)
+    Pay -> Pay : applyPlanTerm(entitlement, product.metadata, orderId)
+    Pay -> Pay : readPyqPlan(metadata) — null unless\npyqSubscription true and durationDays > 0
+    alt fresh purchase\n(sourceOrderId == this order and expiresAt is null)
+      Pay -> DB : expiresAt = now + durationDays
+    else renewal (an entitlement already exists)
+      Pay -> Pay : extendedExpiry(current, durationDays)
+      note right of Pay
+        base = current expiry if still in the future,
+        otherwise now. Renewing early loses no days;
+        renewing after expiry starts from today.
+      end note
+      Pay -> DB : expiresAt = base + durationDays,\nsourceOrderId = this order
+    else perpetual grant (expiresAt null, not this order)
+      Pay -> Pay : return null — an admin gift is never shortened
+    end
+  else redelivery, or the racing verify call
+    Pay -> Pay : applyPlanTerm is not called —\ndays are never added twice
+  end
+end
+
+Pay -> Pay : activity 'payment.settled' + 'pyq.plan_purchased'\n(orderNumber, userId, productId, expiresAt, renewal)
+Pay --> Hooks : settled
+Hooks -> Hooks : invalidate ["pyq","user","access"]
+Page -> HTTP : GET pyq/access
+HTTP --> Page : subscribed: true, plan { title, expiresAt }
+
+== Refund ==
+
+Student -> HTTP : (admin refunds the order)
+HTTP -> Ent : revokeForOrder(orderId)
+Ent -> DB : entitlements WHERE sourceOrderId = order\nAND ACTIVE -> REVOKED
+note right of Ent
+  All-or-nothing, like every product. Because a renewal
+  re-points the entitlement at the newest order, refunding
+  that order takes the whole plan (earlier days included),
+  while refunding an older, superseded order revokes nothing.
+end note
+Page -> HTTP : GET pyq/access -> subscribed: false
+
+@enduml

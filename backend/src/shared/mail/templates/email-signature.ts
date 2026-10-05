@@ -38,8 +38,8 @@ const SOCIALS = [
 
 const CONTACT = {
   email: 'support@jsmf.me',
-  website: 'www.jsmf.me',
-  websiteUrl: 'https://www.jsmf.me',
+  website: 'jsmf.me',
+  websiteUrl: 'https://jsmf.me',
   emailIcon: 'https://cdn-icons-png.flaticon.com/24/646/646094.png',
   webIcon: 'https://cdn-icons-png.flaticon.com/24/1006/1006771.png',
 } as const;

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage, LegalSection } from "@/components/legal-page";
-import { businessAddress } from "@/lib/site-content";
+import { businessAddress, supportEmail } from "@/lib/site-content";
 
 export const metadata: Metadata = { title: "About Us — JSMF" };
 
@@ -15,8 +15,8 @@ export default function AboutPage() {
         <p>JSMF is medically led by Dr. Angad Rai.</p>
         <p>
           Email:{" "}
-          <a href="mailto:support@jsmf.me" className="font-semibold text-primary">
-            support@jsmf.me
+          <a href={`mailto:${supportEmail}`} className="font-semibold text-primary">
+            {supportEmail}
           </a>
         </p>
         <p>

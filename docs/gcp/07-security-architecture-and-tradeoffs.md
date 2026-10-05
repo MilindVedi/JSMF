@@ -104,6 +104,8 @@ Every architecture involves trade-offs between **infrastructure cost**, **operat
   - Prisma ORM automatically parameterizes all SQL queries (zero risk of SQL injection).
   - Google Cloud Run infrastructure provides built-in Layer 3/4 DDoS protection.
   - NestJS ValidationPipes with `class-validator` strictly strip and reject unwhitelisted request fields.
+  - The one place an IP restriction was actually wanted — the payment webhook — has it in application code instead, via `RAZORPAY_WEBHOOK_IPS` and `WebhookIpGuard`, at no monthly cost. It is off by default; see `docs/pdf-platform/02-architecture.md` for why a stale allowlist is the more expensive failure.
+  - In production, a request the proxy reports as plain HTTP is refused before any credential is read (`requireHttps`).
 
 ---
 
@@ -119,6 +121,10 @@ Every architecture involves trade-offs between **infrastructure cost**, **operat
 
 * **The Reality:** The reconciliation sweep — the safety net that settles a payment whose webhook never arrived — is now driven by **Cloud Scheduler**, which POSTs `/api/internal/reconcile-payments` every five minutes. The endpoint's own code carries `@Public` (it skips JWT auth) but that is not what protects it: the same `roles/run.invoker` restriction described in Layer 1 applies here too, and Cloud Scheduler is added to it as a second permitted identity alongside the frontend's service account. A request without a valid OIDC token from one of those two service accounts is rejected by Cloud Run itself, before NestJS ever runs — the endpoint has no application-level secret to leak, rotate, or forget to check.
 * **The risk:** The blast radius of that service account being misused is small regardless — the sweep only ever *adds* a settlement the provider says is already owed, never removes or grants anything else — but this is now moot rather than a live exposure, since the identity is Google-issued and short-lived rather than a value sitting in an env var.
+* **The gap that IAM alone left open (fixed):** "Only two identities may call the backend" was true but not sufficient. One of those identities is the frontends' service account, and the frontends proxy *every* `/api/*` request for the public internet, attaching that token. So anyone could reach `/api/internal/reconcile-payments` and `/api/internal/session-reminders` through `https://<site>/api/internal/...`: a confused deputy. Both endpoints skip throttling, so repeated calls could exhaust Razorpay's API rate limit and the email quota. Two locks now close it:
+  1. **Every frontend** (`main-web`, `pdf-web`, `web`) returns 404 for `/api/internal/*` before proxying. It decodes the path and collapses repeated slashes first, so `/api//internal` or `/api/%69nternal` cannot slip past.
+  2. **The backend** (`InternalOnlyGuard`, on every `/internal` controller) returns 404 for any request carrying `x-jsmf-via-frontend`. Every frontend sets that header on everything it proxies, and a caller cannot remove it. Cloud Scheduler and the local `jsmf-cron` call the backend directly and never send it.
+* **Rule for any future `/internal` endpoint:** put it under `@Controller('internal')` **and** `@UseGuards(InternalOnlyGuard)`. IAM decides *who* may call the backend; it cannot tell a scheduler's own request apart from a member of the public riding through a frontend.
 
 > **Why this control mattered enough to fix urgently.** In its earlier
 > in-process `@Cron` form the sweep fired 8 times in 24 hours instead of ~288,

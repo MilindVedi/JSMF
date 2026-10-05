@@ -33,6 +33,14 @@ export class LiveSessionController {
     return { exams: EXAM_OPTIONS, stages: STAGE_OPTIONS };
   }
 
+  // Declared before ':slug', which would otherwise swallow this path.
+  @Public()
+  @Get('payment-test')
+  @ApiOperation({ summary: 'The cheap session used to test the real checkout end to end' })
+  paymentTest() {
+    return this.sessions.paymentTestSession();
+  }
+
   @Public()
   @Get(':slug')
   @ApiOperation({ summary: 'A session by its slug' })

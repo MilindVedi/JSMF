@@ -159,6 +159,22 @@ export interface CodeIssued {
   expiresInMinutes: number;
 }
 
+export interface ProfileInput {
+  name: string;
+  /** 10 digits, no country code. */
+  mobileNumber: string;
+  preparingFor: string;
+  currentStage: string;
+}
+
+export interface Profile {
+  name: string;
+  mobileNumber: string | null;
+  preparingFor: string | null;
+  currentStage: string | null;
+  completed: boolean;
+}
+
 /**
  * Signing up with a verified address, and recovering a lost password.
  *
@@ -167,11 +183,28 @@ export interface CodeIssued {
  * share the same delivery layer and the same failure shape.
  */
 export const accountApi = {
-  startSignup: (input: { email: string; name: string; password: string }) =>
+  startSignup: (input: { email: string; name?: string; password: string }) =>
     api.postAnonymous<CodeIssued>("/auth/signup/start", input),
+
+  profile: () => api.get<Profile>("/auth/me/profile"),
+
+  /** The questions asked once after signup. Returns the updated user. */
+  updateProfile: (input: ProfileInput) => api.patch<AuthUser>("/auth/me/profile", input),
+
+  /** Choices for "Preparing for" and "Current stage" — the same lists a seat registration uses. */
+  profileOptions: () =>
+    api.getAnonymous<{ exams: string[]; stages: string[] }>("/sessions/registration-options"),
 
   verifySignup: (input: { email: string; code: string }) =>
     api.postAnonymous<AuthSession>("/auth/signup/verify", input),
+
+  /**
+   * Changes the signed-in account's password. Returns a fresh session, because
+   * the change revokes every existing one — the caller must `adopt` the result
+   * or it is signed out moments later.
+   */
+  changePassword: (input: { currentPassword: string; newPassword: string }) =>
+    api.patch<AuthSession>("/auth/me/password", input),
 
   forgotPassword: (input: { email: string }) =>
     api.postAnonymous<CodeIssued>("/auth/password/forgot", input),

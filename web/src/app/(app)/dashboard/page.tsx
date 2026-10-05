@@ -1,11 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
 import {
   BookOpen,
   Bookmark,
   ClipboardList,
-  Loader2,
   Repeat,
   Sparkles,
   TrendingUp,
@@ -19,13 +17,11 @@ import { StreakCard } from "@/components/dashboard/streak-card";
 import { ContinuePracticeCard } from "@/components/dashboard/continue-practice-card";
 import { OnboardingDashboard } from "@/components/dashboard/onboarding-dashboard";
 import { TestSummaryCard } from "@/components/history/test-summary-card";
-import { usePracticeStore } from "@/store/practice-store";
-import { useBookmarksStore } from "@/store/bookmarks-store";
 import { useAuthStore } from "@/store/auth-store";
-import { QUESTIONS } from "@/data/mock/questions";
-import { getSessionSummary, getStatistics } from "@/lib/selectors";
 import { useClientSnapshot } from "@/lib/use-client-snapshot";
-import { useStartSession } from "@/lib/use-start-session";
+import { usePreferences, useSessionHistory, useStartSession, useStats } from "@/hooks/pyq";
+import { useStreakState } from "@/lib/use-streak-state";
+import { PageLoading, QueryError } from "@/components/pyq/query-states";
 
 function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
@@ -33,54 +29,42 @@ function greetingForHour(hour: number) {
   return "Good evening";
 }
 
-function sampleQuestions<T>(arr: T[], count: number): T[] {
-  const copy = [...arr];
-  const out: T[] = [];
-  for (let i = 0; i < count && copy.length > 0; i++) {
-    const idx = Math.floor(Math.random() * copy.length);
-    out.push(copy.splice(idx, 1)[0]);
-  }
-  return out;
-}
-
 export default function DashboardPage() {
-  const hasHydratedPractice = usePracticeStore((s) => s.hasHydrated);
-  const hasHydratedBookmarks = useBookmarksStore((s) => s.hasHydrated);
   const hasHydratedAuth = useAuthStore((s) => s.hasHydrated);
-  const sessions = usePracticeStore((s) => s.sessions);
-  const bookmarks = useBookmarksStore((s) => s.bookmarks);
   const profile = useAuthStore((s) => s.profile);
   const startSession = useStartSession();
-
-  const hasHydrated = hasHydratedPractice && hasHydratedBookmarks && hasHydratedAuth;
+  const stats = useStats();
+  const history = useSessionHistory(1, 100);
+  const { data: preferences } = usePreferences();
+  const streak = useStreakState();
+  const targetExamId = preferences?.targetExamId ?? profile.targetExamId;
 
   const greeting = useClientSnapshot(() => greetingForHour(new Date().getHours()), "Welcome back");
 
-  const statistics = useMemo(
-    () => (hasHydrated ? getStatistics(Object.values(sessions), QUESTIONS, bookmarks) : null),
-    [hasHydrated, sessions, bookmarks]
-  );
-
-  const sessionList = useMemo(() => (hasHydrated ? Object.values(sessions) : []), [hasHydrated, sessions]);
-
-  if (!hasHydrated || !statistics) {
+  const error = stats.error ?? history.error;
+  if (error) {
     return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
+      <QueryError
+        error={error}
+        title="Couldn't load your dashboard"
+        onRetry={() => {
+          void stats.refetch();
+          void history.refetch();
+        }}
+      />
     );
   }
 
-  // Most recently *started* unfinished session — not just the first one
-  // found — so if more than one session was ever left incomplete, "Continue
-  // where you left off" always resumes the one the user was actually in
-  // last, never an arbitrary older abandoned one.
-  const inProgress = sessionList
-    .filter((s) => !s.completedAt)
-    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
+  const statistics = stats.data;
+  const sessionList = history.data?.items;
+  if (!hasHydratedAuth || !statistics || !sessionList) return <PageLoading />;
+
+  // Most recently *started* unfinished session (the list is newest first), so
+  // "Continue where you left off" resumes the one the user was actually in.
+  const inProgress = sessionList.find((s) => !s.submitted);
   const completedByRecency = sessionList
-    .filter((s) => s.completedAt)
-    .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
+    .filter((s) => s.submitted && s.session.completedAt)
+    .sort((a, b) => b.session.completedAt!.localeCompare(a.session.completedAt!));
   const recentSessions = completedByRecency.slice(0, 4);
   const focusAreas = statistics.bySubject
     .filter((s) => s.attempted > 0)
@@ -93,25 +77,20 @@ export default function DashboardPage() {
   // progress right now." The onboarding dashboard replaces the whole page
   // rather than leaving a grid of zeroed-out stat cards and empty sections.
   if (sessionList.length === 0) {
-    const startFirstPractice = () => {
-      const examQuestions = QUESTIONS.filter((q) => q.examId === profile.targetExamId);
-      const easyExamQuestions = examQuestions.filter((q) => q.difficulty === "easy");
-      const pool =
-        easyExamQuestions.length >= 10
-          ? easyExamQuestions
-          : examQuestions.length >= 10
-            ? examQuestions
-            : QUESTIONS;
-      const picked = sampleQuestions(pool, Math.min(10, pool.length));
-      startSession({ mode: "browse", label: "Question Bank", questionIds: picked.map((q) => q.id) });
-    };
+    const startFirstPractice = () =>
+      startSession({
+        mode: "browse",
+        label: "Question Bank",
+        filters: { examIds: [targetExamId] },
+        count: 10,
+      });
 
     return (
       <OnboardingDashboard
         firstName={firstName}
-        targetExamId={profile.targetExamId}
-        hasBookmark={bookmarks.length > 0}
-        hasStreak={profile.streakDays > 0}
+        targetExamId={targetExamId}
+        hasBookmark={statistics.bookmarkCount > 0}
+        hasStreak={streak.currentStreak > 0}
         onStartFirstPractice={startFirstPractice}
       />
     );
@@ -136,11 +115,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
         <div className="h-full lg:col-span-2">
-          <ContinuePracticeCard
-            inProgress={inProgress}
-            lastCompleted={completedByRecency[0]}
-            questions={QUESTIONS}
-          />
+          <ContinuePracticeCard inProgress={inProgress} lastCompleted={completedByRecency[0]} />
         </div>
         <StreakCard />
       </div>
@@ -184,18 +159,15 @@ export default function DashboardPage() {
             </p>
           ) : (
             <div className="space-y-2">
-              {recentSessions.map((session) => {
-                const summary = getSessionSummary(session, QUESTIONS);
-                return (
-                  <TestSummaryCard
-                    key={session.id}
-                    session={session}
-                    accuracy={summary.accuracy}
-                    correct={summary.correct}
-                    incorrect={summary.incorrect}
-                  />
-                );
-              })}
+              {recentSessions.map((item) => (
+                <TestSummaryCard
+                  key={item.session.id}
+                  session={item.session}
+                  accuracy={item.accuracy}
+                  correct={item.correct}
+                  incorrect={item.incorrect}
+                />
+              ))}
             </div>
           )}
         </div>

@@ -3,12 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Circle, Loader2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, XCircle } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
-import { usePracticeStore } from "@/store/practice-store";
-import { getQuestionById } from "@/data/mock/questions";
 import { getSessionSubjectPerformance, getSessionSummary } from "@/lib/selectors";
-import { getSubjectById } from "@/data/mock/subjects";
+import { useSessionDetail, useTaxonomyLookup } from "@/hooks/pyq";
+import { PageLoading, QueryError } from "@/components/pyq/query-states";
+import { NotFoundError } from "@/lib/data-source";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -54,23 +54,26 @@ type ResultFilter = "all" | "correct" | "incorrect" | "unattempted";
 export default function ResultsPage() {
   const params = useParams<{ sessionId: string }>();
   const router = useRouter();
-  const session = usePracticeStore((s) => s.sessions[params.sessionId]);
-  const hasHydrated = usePracticeStore((s) => s.hasHydrated);
+  const { data: detail, error, isPending, refetch } = useSessionDetail(params.sessionId);
+  const { subject: getSubjectById } = useTaxonomyLookup();
+  const session = detail?.session;
   const [filter, setFilter] = useState<ResultFilter>("all");
 
   function toggleFilter(next: ResultFilter) {
     setFilter((prev) => (prev === next ? "all" : next));
   }
 
-  if (!hasHydrated) {
+  if (isPending) return <PageLoading />;
+
+  if (error && !(error instanceof NotFoundError)) {
     return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      <div className="mx-auto max-w-lg py-16">
+        <QueryError error={error} onRetry={() => refetch()} title="Couldn't load these results" />
       </div>
     );
   }
 
-  if (!session) {
+  if (!session || !detail) {
     return (
       <div className="mx-auto max-w-lg py-16">
         <EmptyState
@@ -83,9 +86,7 @@ export default function ResultsPage() {
     );
   }
 
-  const questions = session.questionIds
-    .map((id) => getQuestionById(id))
-    .filter((q): q is NonNullable<typeof q> => Boolean(q));
+  const questions = detail.questions;
   const summary = getSessionSummary(session, questions);
   const subjectPerformance = getSessionSubjectPerformance(session, questions);
   const isTimed = Boolean(session.config.timed && session.config.durationSec);

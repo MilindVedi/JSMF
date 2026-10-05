@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import {
@@ -19,22 +19,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { SortDropdown } from "@/components/common/sort-dropdown";
-import { getQuestions } from "@/lib/data/questions";
-import { useStartSession } from "@/lib/use-start-session";
-import { getQuestionStatusMap, getQuestionsInCollections } from "@/lib/selectors";
+import { ListSkeleton, QueryError } from "@/components/pyq/query-states";
+import { pyqCapabilities, useQuestions, useStartSession } from "@/hooks/pyq";
+import type { QuestionListItem, QuestionQuery } from "@/lib/data-source";
 import {
   QUESTION_BANK_SORT_OPTIONS,
   QUESTION_SORT_LABELS,
   QUESTION_SORT_GROUPS,
-  buildQuestionSortContext,
-  sortQuestions,
   type QuestionSortOption,
 } from "@/lib/question-sort";
-import { usePracticeStore } from "@/store/practice-store";
-import { useBookmarksStore } from "@/store/bookmarks-store";
-import { useCollectionsStore } from "@/store/collections-store";
-import { SUBJECTS } from "@/data/mock/subjects";
-import type { Question } from "@/types";
+
+const PAGE_SIZE = 50;
+/** The most a single session can hold (backend MAX_SESSION_QUESTIONS). */
+const MAX_SESSION_QUESTIONS = 200;
 
 const QUESTION_BANK_SORT_DROPDOWN_OPTIONS = QUESTION_BANK_SORT_OPTIONS.map((value) => ({
   value,
@@ -42,81 +39,69 @@ const QUESTION_BANK_SORT_DROPDOWN_OPTIONS = QUESTION_BANK_SORT_OPTIONS.map((valu
   group: QUESTION_SORT_GROUPS[value],
 }));
 
+function toQuery(
+  filters: QuestionFiltersState,
+  status: QuestionStatusFilter,
+  search: string,
+  sort: QuestionSortOption
+): QuestionQuery {
+  const pick = <T,>(list: T[]) => (list.length ? list : undefined);
+  return {
+    examIds: pick(filters.examIds),
+    years: pick(filters.years),
+    subjectIds: pick(filters.subjectIds),
+    topicIds: pick(filters.topicIds),
+    collectionIds: pyqCapabilities.collections ? pick(filters.collectionIds) : undefined,
+    status: status === "all" ? undefined : status,
+    search: pyqCapabilities.search && search.trim() ? search.trim() : undefined,
+    sort: pyqCapabilities.sort ? sort : undefined,
+  };
+}
+
 export default function QuestionBankPage() {
-  const [filters, setFilters] = useState<QuestionFiltersState>(EMPTY_QUESTION_FILTERS);
-  const [status, setStatus] = useState<QuestionStatusFilter>("all");
-  const [search, setSearch] = useState("");
-  const [results, setResults] = useState<Question[]>([]);
+  const [filters, setFiltersState] = useState<QuestionFiltersState>(EMPTY_QUESTION_FILTERS);
+  const [status, setStatusState] = useState<QuestionStatusFilter>("all");
+  const [search, setSearchState] = useState("");
   const [sort, setSort] = useState<QuestionSortOption>("newest-exam-year");
+  const [page, setPage] = useState(1);
   const startSession = useStartSession();
 
-  const sessions = usePracticeStore((s) => s.sessions);
-  const bookmarks = useBookmarksStore((s) => s.bookmarks);
-  const collections = useCollectionsStore((s) => s.collections);
+  // Any change to what matches starts again from the first page.
+  const setFilters = (next: QuestionFiltersState) => {
+    setFiltersState(next);
+    setPage(1);
+  };
+  const setStatus = (next: QuestionStatusFilter) => {
+    setStatusState(next);
+    setPage(1);
+  };
+  const setSearch = (next: string) => {
+    setSearchState(next);
+    setPage(1);
+  };
 
-  const statusMap = useMemo(() => getQuestionStatusMap(Object.values(sessions)), [sessions]);
-  const bookmarkedIds = useMemo(() => new Set(bookmarks.map((b) => b.questionId)), [bookmarks]);
-  const sortContext = useMemo(
-    () => buildQuestionSortContext(Object.values(sessions), bookmarks, collections, SUBJECTS),
-    [sessions, bookmarks, collections]
-  );
-
-  const collectionFiltered = useMemo(
-    () => getQuestionsInCollections(collections, filters.collectionIds, results),
-    [collections, filters.collectionIds, results]
-  );
-
-  const statusFiltered = useMemo(() => {
-    if (status === "all") return collectionFiltered;
-    return collectionFiltered.filter((q) => {
-      if (status === "bookmarked") return bookmarkedIds.has(q.id);
-      const current = statusMap.get(q.id) ?? "unattempted";
-      return current === status;
-    });
-  }, [collectionFiltered, status, statusMap, bookmarkedIds]);
-
-  const visible = useMemo(
-    () => sortQuestions(statusFiltered, sort, sortContext),
-    [statusFiltered, sort, sortContext]
-  );
-
-  useEffect(() => {
-    let active = true;
-    getQuestions({
-      examIds: filters.examIds.length ? filters.examIds : undefined,
-      years: filters.years.length ? filters.years : undefined,
-      subjectIds: filters.subjectIds.length ? filters.subjectIds : undefined,
-      topicIds: filters.topicIds.length ? filters.topicIds : undefined,
-      search,
-    }).then((qs) => {
-      if (active) setResults(qs);
-    });
-    return () => {
-      active = false;
-    };
-  }, [filters, search]);
+  const query = useMemo(() => toQuery(filters, status, search, sort), [filters, status, search, sort]);
+  const { data, error, isPending, isFetching, refetch } = useQuestions(query, page, PAGE_SIZE);
+  const total = data?.total ?? 0;
+  const items = data?.items ?? [];
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const offset = (page - 1) * PAGE_SIZE;
 
   function practiceAll() {
     startSession({
       mode: "browse",
       label: "Question Bank",
-      questionIds: visible.map((q) => q.id),
-      filters: {
-        examIds: filters.examIds.length ? filters.examIds : undefined,
-        years: filters.years.length ? filters.years : undefined,
-        subjectIds: filters.subjectIds.length ? filters.subjectIds : undefined,
-        topicIds: filters.topicIds.length ? filters.topicIds : undefined,
-        collectionIds: filters.collectionIds.length ? filters.collectionIds : undefined,
-      },
+      filters: query,
+      count: Math.min(total, MAX_SESSION_QUESTIONS),
     });
   }
 
-  function practiceFrom(question: Question) {
-    const startIndex = visible.findIndex((q) => q.id === question.id);
+  function practiceFrom(question: QuestionListItem) {
+    const startIndex = items.findIndex((q) => q.id === question.id);
     startSession({
       mode: "browse",
       label: "Question Bank",
-      questionIds: visible.map((q) => q.id),
+      questionIds: items.map((q) => q.id),
       startIndex: Math.max(startIndex, 0),
     });
   }
@@ -132,32 +117,42 @@ export default function QuestionBankPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <FilterPanel value={filters} onChange={setFilters} />
-        <div className="flex items-center gap-2">
-          <div className="relative w-full sm:w-64">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search questions"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8"
-            />
+        {(pyqCapabilities.search || pyqCapabilities.sort) && (
+          <div className="flex items-center gap-2">
+            {pyqCapabilities.search && (
+              <div className="relative w-full sm:w-64">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search questions"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+            )}
+            {pyqCapabilities.sort && (
+              <SortDropdown value={sort} options={QUESTION_BANK_SORT_DROPDOWN_OPTIONS} onChange={setSort} />
+            )}
           </div>
-          <SortDropdown value={sort} options={QUESTION_BANK_SORT_DROPDOWN_OPTIONS} onChange={setSort} />
-        </div>
+        )}
       </div>
 
       <ActiveFilterChips value={filters} onChange={setFilters} />
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {visible.length} question{visible.length === 1 ? "" : "s"} match your filters
+          {isPending ? "Loading questions…" : `${total} question${total === 1 ? "" : "s"} match your filters`}
         </p>
-        <Button onClick={practiceAll} disabled={visible.length === 0}>
+        <Button onClick={practiceAll} disabled={total === 0 || startSession.isPending}>
           Practice these questions
         </Button>
       </div>
 
-      {visible.length === 0 ? (
+      {error ? (
+        <QueryError error={error} onRetry={() => refetch()} title="Couldn't load questions" />
+      ) : isPending ? (
+        <ListSkeleton />
+      ) : items.length === 0 ? (
         <EmptyState
           icon={Search}
           title="No questions match these filters"
@@ -168,19 +163,36 @@ export default function QuestionBankPage() {
           }
         />
       ) : (
-        <Card className="p-0">
-          <div className="divide-y divide-border">
-            {visible.slice(0, 100).map((q, i) => (
-              <QuestionListRow
-                key={q.id}
-                question={q}
-                number={i + 1}
-                status={statusMap.get(q.id) ?? "unattempted"}
-                onClick={() => practiceFrom(q)}
-              />
-            ))}
-          </div>
-        </Card>
+        <>
+          <Card className={`p-0 transition-opacity ${isFetching ? "opacity-70" : ""}`}>
+            <div className="divide-y divide-border">
+              {items.map((q, i) => (
+                <QuestionListRow
+                  key={q.id}
+                  question={q}
+                  number={offset + i + 1}
+                  status={q.userStatus}
+                  onClick={() => practiceFrom(q)}
+                />
+              ))}
+            </div>
+          </Card>
+          {pageCount > 1 && (
+            <div className="flex items-center justify-between gap-3">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                <ChevronLeft className="size-4" />
+                Previous
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Page {page} of {pageCount}
+              </p>
+              <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage(page + 1)}>
+                Next
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -37,8 +37,13 @@ export function shortDateLabel(iso: string): string {
   }).format(new Date(iso));
 }
 
+/** What the site shows wherever a session has no dates fixed yet. */
+export const TO_BE_ANNOUNCED = "To be announced";
+
 /** "Sunday, 12 October 2026", or "3 days, from Sunday, 12 October 2026". */
-export function sessionDateLabel(session: { startsAt: string; days: unknown[] }): string {
+export function sessionDateLabel(session: { startsAt: string | null; days: unknown[] }): string {
+  if (!session.startsAt) return TO_BE_ANNOUNCED;
+
   const first = dateLabel(session.startsAt);
   return session.days.length > 1 ? `${session.days.length} days, from ${first}` : first;
 }

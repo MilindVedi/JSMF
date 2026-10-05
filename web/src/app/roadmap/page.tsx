@@ -196,7 +196,7 @@ export default function RoadmapPage() {
               </div>
 
               <div className="rounded-xl border border-border/80 bg-muted/20 p-4">
-                <h4 className="font-heading text-xs font-semibold uppercase tracking-wider text-foreground">Simran's Authority & Rubric</h4>
+                <h4 className="font-heading text-xs font-semibold uppercase tracking-wider text-foreground">Simran&apos;s Authority & Rubric</h4>
                 <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-muted-foreground">
                   <li>Medical review, final authoring/approval, and scientific accuracy</li>
                   <li>Clear Easy / Medium / Hard rubric calibration</li>

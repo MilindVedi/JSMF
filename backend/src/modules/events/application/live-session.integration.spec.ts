@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   AccessType,
+  BundleDeliveryMode,
   EntitlementSource,
+  EntitlementStatus,
   ProductStatus,
   ProductType,
   UserStatus,
@@ -56,8 +58,12 @@ const events = new OrderEvents();
 const products = new ProductService(prisma, audit);
 const orders = new OrderService(prisma, provider, entitlements);
 const payments = new PaymentService(prisma, provider, entitlements, mail, whatsapp, config, events);
-const sessions = new LiveSessionService(prisma, products, orders, entitlements, audit);
-const notifications = new LiveSessionNotifications(prisma, mail, config, events);
+/** Testimonials are the only thing here that touches storage, and none of these tests upload one. */
+const storage = {
+  getSignedDownloadUrl: () => Promise.resolve('https://example.test/testimonial.png'),
+} as never;
+const sessions = new LiveSessionService(prisma, products, orders, entitlements, audit, storage, config);
+const notifications = new LiveSessionNotifications(prisma, mail, config, events, entitlements);
 notifications.onModuleInit();
 
 const created = { userIds: [] as string[], productIds: [] as string[] };
@@ -84,7 +90,11 @@ const HOUR = 3600_000;
 const inHours = (hours: number) => new Date(Date.now() + hours * HOUR).toISOString();
 
 async function createSession(
-  overrides: { capacity?: number | null; days?: Array<{ startsAt: string; durationMinutes: number }> } = {},
+  overrides: {
+    capacity?: number | null;
+    days?: Array<{ startsAt: string; durationMinutes: number }>;
+    bundleDeliveryMode?: BundleDeliveryMode;
+  } = {},
 ) {
   const session = await sessions.create(
     {
@@ -93,6 +103,7 @@ async function createSession(
       days: overrides.days ?? [{ startsAt: inHours(48), durationMinutes: 90 }],
       platformLabel: 'Live on Zoom',
       capacity: overrides.capacity ?? null,
+      bundleDeliveryMode: overrides.bundleDeliveryMode,
       priceAmountMinor: PRICE.toString(),
       highlights: ['One', 'Two'],
       perkText: 'Free planner',
@@ -140,6 +151,8 @@ beforeAll(async () => {
 afterAll(async () => {
   const productIds = created.productIds;
   await prisma.sessionDayReminder.deleteMany({ where: { day: { liveSessionId: { in: productIds } } } });
+  await prisma.sessionBundleDelivery.deleteMany({ where: { liveSessionId: { in: productIds } } });
+  await prisma.sessionDateAnnouncement.deleteMany({ where: { liveSessionId: { in: productIds } } });
   await prisma.sessionRegistration.deleteMany({ where: { liveSessionId: { in: productIds } } });
   await prisma.liveSessionDay.deleteMany({ where: { liveSessionId: { in: productIds } } });
   await prisma.productBundleItem.deleteMany({ where: { bundleProductId: { in: productIds } } });
@@ -200,6 +213,8 @@ describe('live sessions', () => {
     expect(planner?.sourceProductId).toBe(session.id);
 
     expect(sentMail.map((m) => m.tag)).toEqual(['session-confirmation']);
+    // Granted at payment, so the confirmation may truthfully say so.
+    expect(sentMail[0].text).toContain('now in your JSMF library');
 
     const registration = await prisma.sessionRegistration.findUniqueOrThrow({
       where: { liveSessionId_userId: { liveSessionId: session.id, userId: buyer.id } },
@@ -282,7 +297,7 @@ describe('live sessions', () => {
     });
 
     expect(session.days.map((d) => d.durationMinutes)).toEqual([90, 120, 60]);
-    expect(new Date(session.startsAt).getTime()).toBe(new Date(session.days[0].startsAt).getTime());
+    expect(new Date(session.startsAt!).getTime()).toBe(new Date(session.days[0].startsAt).getTime());
 
     const buyer = await createUser();
     sentMail.length = 0;
@@ -378,6 +393,177 @@ describe('live sessions', () => {
     );
 
     expect(moved.days.map((d) => d.id)).toEqual([day1.id, day2.id]);
-    expect(new Date(moved.startsAt).toISOString()).toBe(shift(day1.startsAt));
+    expect(new Date(moved.startsAt!).toISOString()).toBe(shift(day1.startsAt));
+  });
+
+  it('sells a session whose dates are not fixed yet, and keeps registration open', async () => {
+    const session = await createSession({ days: [] });
+
+    expect(session.startsAt).toBeNull();
+    expect(session.days).toEqual([]);
+
+    const view = await sessions.publicBySlug(session.slug);
+    // Nothing has started, so nothing has closed.
+    expect(view.startsAt).toBeNull();
+    expect(view.days).toEqual([]);
+    expect(view.registrationOpen).toBe(true);
+    expect(view.recordingUrl).toBeNull();
+
+    // An undated session is still upcoming — it has not happened.
+    const landing = await sessions.landing();
+    expect(landing.previous?.id).not.toBe(session.id);
+
+    const buyer = await createUser();
+    await registerAndPay(buyer.id, session.id);
+    expect(await entitlements.findActive(buyer.id, session.id)).not.toBeNull();
+
+    // Adding dates later turns it into an ordinary session.
+    const dated = await sessions.update(
+      session.id,
+      { days: [{ startsAt: inHours(72), durationMinutes: 90 }] },
+      { id: adminId },
+    );
+    expect(dated.startsAt).not.toBeNull();
+
+    // And they can be taken away again.
+    const undated = await sessions.update(session.id, { days: [] }, { id: adminId });
+    expect(undated.startsAt).toBeNull();
+  });
+
+  it('holds the planner back until an admin sends it, then never sends it twice', async () => {
+    const session = await createSession({ bundleDeliveryMode: BundleDeliveryMode.MANUAL });
+    const buyer = await createUser();
+    sentMail.length = 0;
+    await registerAndPay(buyer.id, session.id);
+
+    // The seat is granted at payment; the planner deliberately is not.
+    expect(await entitlements.findActive(buyer.id, session.id)).not.toBeNull();
+    expect(await entitlements.findActive(buyer.id, plannerId)).toBeNull();
+
+    // So the confirmation must not claim it is already in their library.
+    const confirmation = sentMail.find((m) => m.tag === 'session-confirmation');
+    expect(confirmation).toBeDefined();
+    expect(confirmation!.text).not.toContain('in your JSMF library');
+
+    // Too early: the session has not finished.
+    await expect(notifications.releaseBundle(session.id)).rejects.toThrow(/not finished/i);
+
+    // Move it into the past, as if it had been run.
+    await prisma.liveSessionDay.updateMany({
+      where: { liveSessionId: session.id },
+      data: { startsAt: new Date(Date.now() - 4 * HOUR) },
+    });
+    await prisma.liveSession.update({
+      where: { productId: session.id },
+      data: { startsAt: new Date(Date.now() - 4 * HOUR) },
+    });
+
+    sentMail.length = 0;
+    const first = await notifications.releaseBundle(session.id);
+
+    expect(first).toMatchObject({ attempted: 1, sent: 1, failed: [] });
+    expect(await entitlements.findActive(buyer.id, plannerId)).not.toBeNull();
+
+    const ready = sentMail.filter((m) => m.tag === 'session-bundle-ready');
+    expect(ready).toHaveLength(1);
+    expect(ready[0].to.email).toBe(buyer.email);
+    expect(ready[0].text).toContain('Revision Planner');
+
+    const listed = await notifications.listBundleDeliveries(session.id);
+    expect(listed.blocker).toBeNull();
+    expect(listed.rows).toHaveLength(1);
+    expect(listed.rows[0]).toMatchObject({ userId: buyer.id, status: 'SENT', lastError: null });
+
+    // Sending again reaches nobody: already-sent buyers are skipped, so a
+    // second click cannot email the same person twice.
+    sentMail.length = 0;
+    const second = await notifications.releaseBundle(session.id);
+    expect(second).toMatchObject({ attempted: 0, sent: 0, failed: [] });
+    expect(sentMail.filter((m) => m.tag === 'session-bundle-ready')).toHaveLength(0);
+  });
+
+  it('announces dates to buyers once, and again only when the dates move', async () => {
+    // Sold while undated: the buyer is told "to be announced" and nothing more.
+    const session = await createSession({ days: [] });
+    const buyer = await createUser();
+    sentMail.length = 0;
+    await registerAndPay(buyer.id, session.id);
+
+    const confirmation = sentMail.find((m) => m.tag === 'session-confirmation');
+    expect(confirmation!.text).toContain('Date to be announced');
+
+    // Nothing to announce yet, and the admin is told why rather than guessing.
+    const empty = await notifications.listDateAnnouncements(session.id);
+    expect(empty.blocker).toMatch(/no dates yet/i);
+    expect(empty.rows).toHaveLength(1);
+    expect(empty.rows[0]).toMatchObject({ userId: buyer.id, status: 'PENDING' });
+    await expect(notifications.announceDates(session.id)).rejects.toThrow(/no dates yet/i);
+
+    // The admin fixes the date. That alone must not email anyone — this is the
+    // whole point of the manual flow.
+    sentMail.length = 0;
+    const firstDate = inHours(72);
+    await sessions.update(session.id, { days: [{ startsAt: firstDate, durationMinutes: 90 }] }, { id: adminId });
+    expect(sentMail.filter((m) => m.tag === 'session-dates-announced')).toHaveLength(0);
+
+    // Now the admin presses the button.
+    const first = await notifications.announceDates(session.id);
+    expect(first).toMatchObject({ attempted: 1, sent: 1, failed: [] });
+
+    const announced = sentMail.filter((m) => m.tag === 'session-dates-announced');
+    expect(announced).toHaveLength(1);
+    expect(announced[0].to.email).toBe(buyer.email);
+    expect(announced[0].subject).toContain('Dates confirmed');
+
+    const listed = await notifications.listDateAnnouncements(session.id);
+    expect(listed.blocker).toBeNull();
+    expect(listed.rows[0]).toMatchObject({ userId: buyer.id, status: 'SENT', lastError: null });
+
+    // Pressing it again reaches nobody: the dates have not changed.
+    sentMail.length = 0;
+    const second = await notifications.announceDates(session.id);
+    expect(second).toMatchObject({ attempted: 0, sent: 0, failed: [] });
+    expect(sentMail.filter((m) => m.tag === 'session-dates-announced')).toHaveLength(0);
+
+    // Reschedule: the buyer was told an old date, so they become sendable
+    // again without the admin having to force a re-send to everyone.
+    await sessions.update(session.id, { days: [{ startsAt: inHours(96), durationMinutes: 90 }] }, { id: adminId });
+
+    const afterMove = await notifications.listDateAnnouncements(session.id);
+    expect(afterMove.rows[0]).toMatchObject({ userId: buyer.id, status: 'PENDING', sentAt: null });
+
+    const third = await notifications.announceDates(session.id);
+    expect(third).toMatchObject({ attempted: 1, sent: 1, failed: [] });
+    expect(sentMail.filter((m) => m.tag === 'session-dates-announced')).toHaveLength(1);
+  });
+
+  it('refunding a deferred session takes the planner back with the seat', async () => {
+    const session = await createSession({ bundleDeliveryMode: BundleDeliveryMode.AUTO_AFTER_SESSION });
+    const buyer = await createUser();
+    const checkout = await registerAndPay(buyer.id, session.id);
+
+    await prisma.liveSessionDay.updateMany({
+      where: { liveSessionId: session.id },
+      data: { startsAt: new Date(Date.now() - 4 * HOUR) },
+    });
+    await prisma.liveSession.update({
+      where: { productId: session.id },
+      data: { startsAt: new Date(Date.now() - 4 * HOUR) },
+    });
+
+    // The automatic sweep is the one that releases this mode.
+    await notifications.sweepAutoBundleReleases();
+    expect(await entitlements.findActive(buyer.id, plannerId)).not.toBeNull();
+
+    await payments.refund(checkout.orderId, adminId, 'Spec refund');
+
+    // Granted late, but still carrying the order — so a refund still takes it.
+    expect(await entitlements.findActive(buyer.id, session.id)).toBeNull();
+    expect(await entitlements.findActive(buyer.id, plannerId)).toBeNull();
+
+    const revoked = await prisma.entitlement.findFirst({
+      where: { userId: buyer.id, productId: plannerId },
+    });
+    expect(revoked?.status).toBe(EntitlementStatus.REVOKED);
   });
 });

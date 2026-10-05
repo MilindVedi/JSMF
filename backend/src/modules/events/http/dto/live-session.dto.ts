@@ -1,11 +1,12 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { BundleDeliveryMode } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
-  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsIn,
   IsInt,
   IsOptional,
@@ -70,10 +71,12 @@ export class CreateLiveSessionDto {
 
   @ApiProperty({
     type: [SessionDayDto],
-    description: 'One entry per day. The whole list is sent on every save; days left out are removed.',
+    description:
+      'One entry per day. The whole list is sent on every save; days left out are removed. ' +
+      'Empty means the dates have not been fixed yet — the website shows "To be announced" ' +
+      'and registration stays open.',
   })
   @IsArray()
-  @ArrayMinSize(1, { message: 'A session needs at least one day' })
   @ArrayMaxSize(MAX_SESSION_DAYS)
   @ValidateNested({ each: true })
   @Type(() => SessionDayDto)
@@ -114,6 +117,97 @@ export class CreateLiveSessionDto {
   @Min(0)
   @Max(100_000)
   displaySeats?: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      '"Who is this session for?" — one paragraph. Null or blank hides the section on the website.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(600)
+  audienceText?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Testimonials section heading. Null falls back to a generic default.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(150)
+  testimonialsHeading?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Testimonials section subheading. Null falls back to a generic default.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(300)
+  testimonialsSubheading?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Small label shown to the right of the testimonials heading, e.g. "Previous FMGE session". ' +
+      'Null falls back to a generic default.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(80)
+  testimonialsTag?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Subject line of the confirmation email sent when a seat is paid for. `{title}` is replaced ' +
+      'with the session title. Null falls back to "JSMF - Your seat is confirmed: {title}".',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(200)
+  confirmationSubject?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'What the confirmation email says in place of the joining link while the joining link is ' +
+      'still empty — useful when the dates have not been announced. Null falls back to ' +
+      '"We will email you the joining link before the session starts."',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(300)
+  pendingJoinLinkText?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Appends a short "if this landed in Spam, mark it Not spam" info box to every email sent ' +
+      'for this session — the confirmation, the dates announcement, each day\'s reminder, and the ' +
+      'bundle-ready note. Defaults to false.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  showNotSpamNotice?: boolean;
+
+  @ApiPropertyOptional({
+    enum: BundleDeliveryMode,
+    default: BundleDeliveryMode.IMMEDIATE,
+    description:
+      'When the items included with a seat reach buyers. IMMEDIATE = at payment, named in the ' +
+      'confirmation email. AUTO_AFTER_SESSION = automatically once the session has ended and the ' +
+      'item is published. MANUAL = only when an admin sends it. Use a deferred mode while the PDF ' +
+      'is still being prepared.',
+  })
+  @IsOptional()
+  @IsEnum(BundleDeliveryMode)
+  bundleDeliveryMode?: BundleDeliveryMode;
 
   @ApiProperty({ example: '9900', description: 'Paise, as a string. Always paid, so > 0.' })
   @Matches(MINOR_UNITS, { message: 'priceAmountMinor must be a whole number of paise' })
@@ -167,11 +261,56 @@ export class CreateLiveSessionDto {
 
 export class UpdateLiveSessionDto extends PartialType(CreateLiveSessionDto) {}
 
+export class SendBundleDto {
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Who to send to. Omit for everyone who has not received it yet, which also retries ' +
+      'earlier failures. Anyone already sent to is skipped either way.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsUUID(undefined, { each: true })
+  userIds?: string[];
+}
+
+export class SendDateAnnouncementDto {
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Who to send to. Omit for everyone who has not been told the current dates yet, ' +
+      'which also retries earlier failures and covers buyers told about old dates.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsUUID(undefined, { each: true })
+  userIds?: string[];
+}
+
+export class ReorderTestimonialsDto {
+  @ApiProperty({
+    type: [String],
+    description: 'Every testimonial id for this session, once each, in the new display order.',
+  })
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID(undefined, { each: true })
+  testimonialIds!: string[];
+}
+
 export class RegisterForSessionDto {
-  @ApiProperty({ example: '+91 98765 43210' })
+  @ApiPropertyOptional({
+    example: '9876543210',
+    description:
+      'A 10-digit Indian mobile number, no country code. A contact number on file — nothing ' +
+      'sends WhatsApp or SMS to it today.',
+  })
+  @IsOptional()
   @IsString()
-  @Matches(/^[0-9+\-\s]{10,18}$/, { message: 'Enter a valid WhatsApp number' })
-  whatsappNumber!: string;
+  @Matches(/^[6-9]\d{9}$/, { message: 'Enter a valid 10-digit mobile number' })
+  whatsappNumber?: string;
 
   @ApiProperty({ enum: EXAM_OPTIONS })
   @IsIn(EXAM_OPTIONS as unknown as string[], { message: "Choose the exam you're preparing for" })

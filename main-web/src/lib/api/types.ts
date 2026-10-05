@@ -17,13 +17,21 @@ export interface LiveSession {
   title: string;
   tagline: string | null;
   description: string | null;
-  /** The first day's start. */
-  startsAt: string;
-  /** In start order; one entry for a one-day session. */
+  /** The first day's start. Null when the dates have not been fixed yet. */
+  startsAt: string | null;
+  /** In start order; one entry for a one-day session, empty when undated. */
   days: Array<{ startsAt: string; durationMinutes: number }>;
   platformLabel: string;
   highlights: string[];
   perkText: string | null;
+  /** "Who is this session for?" — null hides the section. */
+  audienceText: string | null;
+  /** Testimonials section copy. Null falls back to a generic default. */
+  testimonialsHeading: string | null;
+  testimonialsSubheading: string | null;
+  testimonialsTag: string | null;
+  /** Testimonial screenshots, in display order. Empty hides the section. */
+  testimonialUrls: string[];
   priceAmountMinor: string;
   compareAtAmountMinor: string | null;
   currency: string;
@@ -42,7 +50,8 @@ export interface SessionLanding {
 }
 
 export interface RegistrationAnswers {
-  whatsappNumber: string;
+  /** A contact number on file. Nothing sends WhatsApp or SMS to it today. */
+  whatsappNumber?: string;
   exam: string;
   stage: string;
 }

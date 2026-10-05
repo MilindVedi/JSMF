@@ -1,23 +1,17 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Source_Serif_4, JetBrains_Mono } from "next/font/google";
+import { Manrope, Sora, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
-import { ThemePalettePicker } from "@/components/dev/theme-palette-picker";
 import { ScrollRestoration } from "@/components/common/scroll-restoration";
+import { Providers } from "@/components/providers";
 import "./globals.css";
 
-const jakarta = Plus_Jakarta_Sans({
-  variable: "--font-jakarta",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
-});
-
-const sourceSerif = Source_Serif_4({
-  variable: "--font-source-serif",
-  subsets: ["latin"],
-});
+// Same type pairing as jsmf.me and the resources store: Sora for display
+// and headings, Manrope for reading.
+const sora = Sora({ variable: "--font-sora", subsets: ["latin"], weight: ["500", "600", "700"] });
+const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
@@ -42,15 +36,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${jakarta.variable} ${sourceSerif.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${sora.variable} ${manrope.variable} ${jetbrainsMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider delay={200}>
-            {children}
+            <Providers>{children}</Providers>
             <Toaster position="top-center" />
-            <ThemePalettePicker />
             <Suspense fallback={null}>
               <ScrollRestoration />
             </Suspense>

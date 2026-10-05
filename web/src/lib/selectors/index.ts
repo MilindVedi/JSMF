@@ -4,6 +4,7 @@ import type {
   Collection,
   ExamId,
   OverallStatistics,
+  PublicQuestion,
   Question,
   SessionSummary,
   SubjectPerformance,
@@ -68,12 +69,12 @@ export function countAttemptsOnDay(sessions: TestSession[], dayISO: string): num
  */
 export function getSessionScope(
   session: TestSession,
-  questions: Question[]
+  questions: PublicQuestion[]
 ): { examIds: ExamId[]; subjectIds: string[]; questionCount: number; answeredCount: number } {
   const questionMap = new Map(questions.map((q) => [q.id, q] as const));
   const sessionQuestions = session.questionIds
     .map((id) => questionMap.get(id))
-    .filter((q): q is Question => Boolean(q));
+    .filter((q): q is PublicQuestion => Boolean(q));
 
   return {
     examIds: Array.from(new Set(sessionQuestions.map((q) => q.examId))),
@@ -344,7 +345,7 @@ export function getSubjectCoverage(sessions: TestSession[], questions: Question[
  */
 export function getSessionSubjectPerformance(
   session: TestSession,
-  questions: Question[]
+  questions: PublicQuestion[]
 ): SubjectPerformance[] {
   const questionMap = new Map(questions.map((q) => [q.id, q] as const));
   const bySubject = new Map<string, { attempted: number; correct: number; incorrect: number }>();
@@ -372,11 +373,11 @@ export function getSessionSubjectPerformance(
     .sort((a, b) => a.accuracy - b.accuracy);
 }
 
-export function getSessionSummary(session: TestSession, questions: Question[]): SessionSummary {
+export function getSessionSummary(session: TestSession, questions: PublicQuestion[]): SessionSummary {
   const questionMap = new Map(questions.map((q) => [q.id, q] as const));
   const sessionQuestions = session.questionIds
     .map((id) => questionMap.get(id))
-    .filter((q): q is Question => Boolean(q));
+    .filter((q): q is PublicQuestion => Boolean(q));
 
   const attempts = Object.values(session.attempts);
   const correct = attempts.filter((a) => a.isCorrect).length;
@@ -428,11 +429,11 @@ export function getCollectionStats(collections: Collection[]): CollectionStats {
  * collection is the whole point) should pass every collection id itself
  * rather than relying on this function to infer that from an empty array.
  */
-export function getQuestionsInCollections(
+export function getQuestionsInCollections<T extends PublicQuestion = Question>(
   collections: Collection[],
   selectedCollectionIds: string[],
-  questions: Question[]
-): Question[] {
+  questions: T[]
+): T[] {
   if (selectedCollectionIds.length === 0) return questions;
   const idSet = new Set<string>();
   for (const c of collections) {
@@ -440,4 +441,51 @@ export function getQuestionsInCollections(
     for (const id of c.questionIds) idSet.add(id);
   }
   return questions.filter((q) => idSet.has(q.id));
+}
+
+// ---------------------------------------------------------------------------
+// Revision items (data-source `getRevision`) — the same facets as above, but
+// built from per-question facts so they work against the API as well.
+// ---------------------------------------------------------------------------
+
+export interface RevisionFacts {
+  question: PublicQuestion;
+  latestCorrect: boolean | null;
+  lastAttemptedAt?: string;
+  neverCorrected: boolean;
+}
+
+/** `getWrongQuestionFacets`, from revision items restricted to `pool`. */
+export function getWrongFacetsFromRevision<T extends PublicQuestion>(
+  facts: Map<string, RevisionFacts>,
+  pool: T[],
+  recentRange: DayRange | null
+): { all: T[]; recent: T[]; neverCorrected: T[]; bySubject: { subjectId: string; questions: T[] }[] } {
+  const all: T[] = [];
+  const recent: T[] = [];
+  const neverCorrected: T[] = [];
+  for (const q of pool) {
+    const f = facts.get(q.id);
+    if (!f || f.latestCorrect !== false) continue;
+    all.push(q);
+    if (recentRange && f.lastAttemptedAt) {
+      const day = f.lastAttemptedAt.slice(0, 10);
+      if ((!recentRange.from || day >= recentRange.from) && (!recentRange.to || day <= recentRange.to)) recent.push(q);
+    }
+    if (f.neverCorrected) neverCorrected.push(q);
+  }
+  const bySubjectMap = new Map<string, T[]>();
+  for (const q of all) {
+    const list = bySubjectMap.get(q.subjectId);
+    if (list) list.push(q);
+    else bySubjectMap.set(q.subjectId, [q]);
+  }
+  return {
+    all,
+    recent,
+    neverCorrected,
+    bySubject: Array.from(bySubjectMap.entries())
+      .map(([subjectId, qs]) => ({ subjectId, questions: qs }))
+      .sort((a, b) => b.questions.length - a.questions.length),
+  };
 }

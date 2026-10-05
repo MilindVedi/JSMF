@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { adminSessionApi, type AdminSession } from "@/lib/api/admin";
 import { formatMoney } from "@/lib/money";
+import { mainWebsiteHost } from "@/lib/site-content";
 import { istLabel } from "./ist";
 
 export default function AdminSessionsPage() {
@@ -31,7 +32,7 @@ export default function AdminSessionsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Live sessions</h1>
           <p className="text-sm text-muted-foreground">
-            Paid sessions sold on the main website. The next published one is what jsmf.me shows.
+            Paid sessions sold on the main website. The next published one is what {mainWebsiteHost} shows.
           </p>
         </div>
         <Link href="/admin/sessions/new" className={buttonVariants()}>
@@ -71,7 +72,11 @@ export default function AdminSessionsPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
-                    {istLabel(session.startsAt)}
+                    {session.startsAt ? (
+                      istLabel(session.startsAt)
+                    ) : (
+                      <span className="text-muted-foreground">To be announced</span>
+                    )}
                     {session.days.length > 1 && (
                       <span className="ml-1.5 text-xs text-muted-foreground">· {session.days.length} days</span>
                     )}

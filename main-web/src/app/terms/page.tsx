@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage, LegalSection } from "@/components/legal-page";
+import { supportEmail } from "@/lib/site-content";
 
 export const metadata: Metadata = { title: "Terms & Conditions — JSMF" };
 
@@ -24,6 +25,25 @@ export default function TermsPage() {
         </ul>
       </LegalSection>
 
+      <LegalSection heading="Live Sessions">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>Registration for a live session is confirmed only after successful payment.</li>
+          <li>
+            Live-session registrations are personal and non-transferable unless otherwise permitted by JSMF.
+          </li>
+          <li>Participants are responsible for joining the session at the communicated date and time.</li>
+          <li>
+            Session recordings and study materials are provided for personal use only and must not be
+            copied, recorded, uploaded, redistributed, or resold without permission.
+          </li>
+          <li>Recording or redistributing a session without permission is prohibited.</li>
+          <li>
+            JSMF does not guarantee any specific examination question, topic, score, rank, qualification, or
+            result.
+          </li>
+        </ul>
+      </LegalSection>
+
       <LegalSection>
         <p>
           Payments, refunds, and cancellations are governed by our{" "}
@@ -34,8 +54,8 @@ export default function TermsPage() {
         </p>
         <p>
           For questions, contact{" "}
-          <a href="mailto:support@jsmf.me" className="font-semibold text-primary">
-            support@jsmf.me
+          <a href={`mailto:${supportEmail}`} className="font-semibold text-primary">
+            {supportEmail}
           </a>
           .
         </p>

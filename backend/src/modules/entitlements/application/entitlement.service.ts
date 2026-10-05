@@ -6,6 +6,7 @@ import {
   Prisma,
   ProductType,
 } from '@prisma/client';
+import { NOT_A_PYQ_PLAN } from '../../../shared/pyq-plan';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 
 export interface GrantInput {
@@ -111,6 +112,25 @@ export class EntitlementService {
     return entitlement;
   }
 
+  /**
+   * Whether the user holds any live entitlement to a product matching
+   * `product` — for access that is granted by a *kind* of product (a PYQ
+   * subscription plan) rather than one specific product id. Same expiry rule
+   * as `findActive`.
+   */
+  async hasActiveMatching(userId: string, product: Prisma.ProductWhereInput): Promise<boolean> {
+    const found = await this.prisma.entitlement.findFirst({
+      where: {
+        userId,
+        status: EntitlementStatus.ACTIVE,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        product,
+      },
+      select: { id: true },
+    });
+    return found !== null;
+  }
+
   /** Used when a payment is refunded or an admin withdraws access. */
   async revoke(
     entitlementId: string,
@@ -159,7 +179,8 @@ export class EntitlementService {
       where: {
         userId,
         status: EntitlementStatus.ACTIVE,
-        product: { type: { not: ProductType.LIVE_SESSION } },
+        // Same for a PYQ plan: it unlocks the practice app, there is no file.
+        product: { type: { not: ProductType.LIVE_SESSION }, AND: [NOT_A_PYQ_PLAN] },
       },
       orderBy: { grantedAt: 'desc' },
       include: {

@@ -22,7 +22,7 @@ export default function OpengraphImage() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#FAF7F0",
+          backgroundColor: "#FAF8FF",
           fontFamily: "sans-serif",
         }}
       >
@@ -35,22 +35,22 @@ export default function OpengraphImage() {
               width: 88,
               height: 88,
               borderRadius: 20,
-              backgroundColor: "#1C2541",
-              color: "#FAF7F0",
+              backgroundColor: "#5B21B6",
+              color: "#FAF8FF",
               fontSize: 48,
               fontWeight: 700,
             }}
           >
             J
           </div>
-          <div style={{ fontSize: 72, fontWeight: 700, color: "#20202B", letterSpacing: -2 }}>
+          <div style={{ fontSize: 72, fontWeight: 700, color: "#22163A", letterSpacing: -2 }}>
             JSMF
           </div>
         </div>
-        <div style={{ marginTop: 28, fontSize: 32, color: "#4B4B58", textAlign: "center" }}>
+        <div style={{ marginTop: 28, fontSize: 32, color: "#5E5670", textAlign: "center" }}>
           Memory-based PYQ preparation
         </div>
-        <div style={{ marginTop: 8, fontSize: 32, color: "#4B4B58", textAlign: "center" }}>
+        <div style={{ marginTop: 8, fontSize: 32, color: "#5E5670", textAlign: "center" }}>
           NEET-PG · FMGE · INI-CET
         </div>
       </div>

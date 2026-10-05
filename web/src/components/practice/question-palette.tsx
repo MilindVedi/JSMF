@@ -11,12 +11,15 @@ export function QuestionPalette({
   flags,
   currentIndex,
   onJump,
+  hideResults = false,
 }: {
   questionIds: string[];
   attempts: Record<string, Attempt>;
   flags: Record<string, boolean>;
   currentIndex: number;
   onJump: (index: number) => void;
+  /** Test mode before submit: answered, but not whether correctly. */
+  hideResults?: boolean;
 }) {
   return (
     <Popover>
@@ -29,8 +32,14 @@ export function QuestionPalette({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72">
         <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.7rem] text-muted-foreground">
-          <LegendDot className="bg-success" label="Correct" />
-          <LegendDot className="bg-error" label="Incorrect" />
+          {hideResults ? (
+            <LegendDot className="bg-primary" label="Answered" />
+          ) : (
+            <>
+              <LegendDot className="bg-success" label="Correct" />
+              <LegendDot className="bg-error" label="Incorrect" />
+            </>
+          )}
           <LegendDot className="bg-muted" label="Unanswered" />
           <LegendDot className="bg-flag" label="Flagged" />
         </div>
@@ -47,8 +56,9 @@ export function QuestionPalette({
                 className={cn(
                   "relative flex size-8 items-center justify-center rounded-md text-xs font-semibold transition-colors",
                   !attempt && "bg-muted text-muted-foreground",
-                  attempt?.isCorrect && "bg-success text-success-foreground",
-                  attempt && !attempt.isCorrect && "bg-error text-error-foreground",
+                  attempt && hideResults && "bg-primary text-primary-foreground",
+                  attempt && !hideResults && attempt.isCorrect && "bg-success text-success-foreground",
+                  attempt && !hideResults && !attempt.isCorrect && "bg-error text-error-foreground",
                   isCurrent && "ring-2 ring-primary ring-offset-1 ring-offset-popover"
                 )}
               >

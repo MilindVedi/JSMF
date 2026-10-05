@@ -1,13 +1,13 @@
 "use client";
 
 import { Check, ChevronRight, Circle, X } from "lucide-react";
-import type { Question } from "@/types";
+import type { PublicQuestion } from "@/types";
 import { SubjectBadge } from "@/components/common/subject-badge";
 import { ExamBadge } from "@/components/common/exam-badge";
 import { BookmarkButton } from "@/components/practice/bookmark-button";
 import { AddToCollectionButton } from "./add-to-collection-button";
-import { useBookmarksStore } from "@/store/bookmarks-store";
 import type { QuestionStatus } from "@/lib/selectors";
+import { pyqCapabilities, useBookmarkToggle } from "@/hooks/pyq";
 
 function StatusDot({ status }: { status: QuestionStatus }) {
   if (status === "correct") {
@@ -43,15 +43,15 @@ export function QuestionListRow({
   number,
   onClick,
 }: {
-  question: Question;
+  question: PublicQuestion;
   status?: QuestionStatus;
   /** The question's position in the current (filtered) list — shown as a
    *  subtle "Q{n}" so a specific question is easy to reference. */
   number?: number;
   onClick: () => void;
 }) {
-  const isBookmarked = useBookmarksStore((s) => s.isBookmarked(question.id));
-  const toggleBookmark = useBookmarksStore((s) => s.toggleBookmark);
+  const bookmarks = useBookmarkToggle();
+  const isBookmarked = bookmarks.isBookmarked(question.id);
 
   return (
     <div className="flex w-full items-start gap-1 px-2 py-2 transition-colors hover:bg-muted/50 sm:px-4 sm:py-3.5">
@@ -79,9 +79,9 @@ export function QuestionListRow({
       <div className="flex shrink-0 items-center gap-0.5 pt-1">
         <BookmarkButton
           isBookmarked={isBookmarked}
-          onToggle={() => toggleBookmark(question.id)}
+          onToggle={() => bookmarks.toggle(question.id, isBookmarked)}
         />
-        <AddToCollectionButton questionId={question.id} />
+        {pyqCapabilities.collections && <AddToCollectionButton questionId={question.id} />}
         <span className="flex size-8 items-center justify-center text-muted-foreground">
           <ChevronRight className="size-4" />
         </span>

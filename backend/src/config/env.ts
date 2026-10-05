@@ -15,6 +15,16 @@ const PLACEHOLDER_SECRET = /placeholder|changeme|change_me|your[-_]?(key|secret)
 const schema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    /**
+     * `json` = one object per line with a Cloud Logging `severity`, so entries
+     * are filterable (`jsonPayload.activity="payment.settled"`). `text` =
+     * coloured lines for a terminal. Unset: json in production, text otherwise.
+     * Read directly in main.ts (the logger exists before config does); declared
+     * here so a typo is caught at boot.
+     */
+    LOG_FORMAT: z.enum(['json', 'text']).optional(),
+    /** Include debug/verbose lines. Off by default — they are noise in production. */
+    LOG_DEBUG: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
     PORT: z.coerce.number().int().positive().default(4000),
     CORS_ORIGINS: z
       .string()
@@ -119,6 +129,12 @@ const schema = z
     /// send as — for Resend, a domain verified in the dashboard — or providers
     /// will reject or spam-folder the message.
     MAIL_FROM: z.string().default('JSMF <no-reply@jsmf.local>'),
+    /// Where a reply goes. MAIL_FROM is a no-reply address the mail account is
+    /// allowed to send as, which is not somewhere a person can be answered —
+    /// so every message carries this instead, and someone hitting Reply on a
+    /// receipt or a session confirmation reaches support rather than nothing.
+    /// A caller that needs a different address still sets `replyTo` itself.
+    MAIL_REPLY_TO: z.string().email().default('support@jsmf.me'),
     SMTP_HOST: z.string().optional(),
     SMTP_PORT: z.coerce.number().int().positive().default(587),
     SMTP_USER: z.string().optional(),
@@ -286,6 +302,34 @@ const schema = z
           .filter((entry) => entry.length > 0),
       ),
 
+    /// Which addresses may deliver a Razorpay webhook. Empty — the default —
+    /// accepts delivery from anywhere, and the HMAC over the raw body remains
+    /// the authentication, as it is in either case: an attacker reaching the
+    /// endpoint from a permitted address still cannot forge a signature.
+    ///
+    /// This is therefore defence in depth, not the lock on the door, and it is
+    /// off by default because the failure it can cause is worse than the one it
+    /// prevents. If Razorpay adds an egress address this list does not have,
+    /// every notification from it is refused, and a buyer who closed the tab
+    /// after paying is never settled by the webhook. The reconciliation sweep
+    /// is what makes that recoverable rather than permanent — it finds the
+    /// uncaptured settlement later and completes it.
+    ///
+    /// Accepts bare IPv4 addresses and CIDR ranges, comma-separated. The values
+    /// belong here rather than in code precisely so that a Razorpay IP change
+    /// is an env var edit on a running service, not a rebuild and a deploy
+    /// while payments are failing. Source the list from Razorpay's own
+    /// documentation; do not infer it from observed traffic.
+    RAZORPAY_WEBHOOK_IPS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0),
+      ),
+
     /// Buyer signup with an email and a password, alongside Google sign-in.
     ///
     /// On: buyers may choose either. It was briefly off, when V1 was Google-only
@@ -367,6 +411,28 @@ const schema = z
       .enum(['true', 'false'])
       .default('true')
       .transform((value) => value === 'true'),
+
+    /**
+     * Whether an admin can refund an order from the dashboard right now.
+     *
+     * Off by default while the payment flow is new: a provider-initiated refund
+     * (from the Razorpay dashboard) still revokes access exactly as before —
+     * this only gates the admin-triggered path, which calls Razorpay's refund
+     * API and therefore moves money. Flip to `true` once that path has been
+     * exercised and is wanted again; nothing else needs to change.
+     */
+    REFUNDS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+
+    /**
+     * Slug of a cheap session kept only for paying through the real checkout
+     * on the main website's /testapayment page. That session is left out of
+     * the homepage's "upcoming" pick, which would otherwise show it to
+     * visitors whenever it sorts before the real one. Empty turns the page off.
+     */
+    PAYMENT_TEST_SESSION_SLUG: z.string().trim().default(''),
     /** How long after checkout a payment with no outcome is worth querying. */
     PAYMENT_RECONCILIATION_STALE_AFTER_MINUTES: z.coerce.number().int().positive().default(10),
     /** Past this, an unpaid checkout is assumed abandoned and stops being polled. */
@@ -384,6 +450,12 @@ const schema = z
      * the frontend makes (see `pdf-web/src/middleware.ts`).
      */
     PAYMENT_RECONCILIATION_TRIGGER: z.enum(['cron', 'http']).default('cron'),
+
+    /// How many PYQ questions a student without a PYQ subscription may answer
+    /// per day (the day runs midnight to midnight India time). A number to
+    /// tune against conversion, not a decision, so it lives here. 0 means no
+    /// free practice at all.
+    PYQ_FREE_DAILY_QUESTIONS: z.coerce.number().int().min(0).default(20),
 
     SEED_ADMIN_EMAIL: z.string().email().default('admin@jsmf.local'),
     SEED_ADMIN_PASSWORD: z.string().min(8).default('ChangeMe123!'),

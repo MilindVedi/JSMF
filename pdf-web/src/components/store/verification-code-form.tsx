@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, MailCheck, MessageCircle } from "lucide-react";
 import { storeButton } from "@/components/store/store-button";
 import { CHANNEL_LABEL, type VerificationChannel } from "@/lib/api/auth";
+import { useSpamFolderNoteEnabled } from "@/lib/use-platform-settings";
 
 /**
  * Entering the six digits that arrived by email.
@@ -46,6 +47,7 @@ export function VerificationCodeForm({
   children?: React.ReactNode;
 }) {
   const Icon = channel === "email" ? MailCheck : MessageCircle;
+  const spamNoteEnabled = useSpamFolderNoteEnabled();
   const [code, setCode] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -76,7 +78,7 @@ export function VerificationCodeForm({
               miss, and the advice would just be noise there. This is the
               single most common reason someone lands on this screen and
               says nothing arrived. */}
-          {channel === "email" && (
+          {channel === "email" && spamNoteEnabled && (
             <span className="mt-1 block text-xs text-muted-foreground/80">
               Not in your inbox? Check spam or promotions — it can land there
               the first time.

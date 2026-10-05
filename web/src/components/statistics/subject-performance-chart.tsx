@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { getSubjectById } from "@/data/mock/subjects";
+import { useTaxonomyLookup } from "@/hooks/pyq";
 import type { SubjectPerformance } from "@/types";
 
 function accuracyColor(accuracy: number) {
@@ -20,6 +20,7 @@ function accuracyColor(accuracy: number) {
 }
 
 export function SubjectPerformanceChart({ data }: { data: SubjectPerformance[] }) {
+  const { subject: getSubjectById } = useTaxonomyLookup();
   const chartData = data
     .map((s) => ({
       subjectId: s.subjectId,

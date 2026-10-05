@@ -1,0 +1,74 @@
+@startuml admin-content-lifecycle
+!theme plain
+title A question's life — import to triage to soft delete (see docs/pyq/user-flows.md)
+
+skinparam state {
+  BackgroundColor<<student>> #E8F1FB
+  BorderColor<<student>> #3A6EA5
+}
+
+state "DRAFT" as DRAFT
+DRAFT : questions.status = DRAFT
+DRAFT : invisible to students, visible in the admin list
+DRAFT : edited at /admin/pyq/questions/{id}
+DRAFT : 2-6 options, exactly one correct
+
+state "PUBLISHED" as PUBLISHED
+PUBLISHED : the only status GET pyq/questions and
+PUBLISHED : POST pyq/sessions will draw from
+
+state "Student sees it" as Seen <<student>>
+Seen : answered, written to pyq.attempts
+Seen : bookmarked or added to a collection
+
+state "Report OPEN" as Reported <<student>>
+Reported : pyq.question_reports.status = OPEN
+Reported : shows in GET admin/pyq/questions?reported=true
+Reported : and in the queue at /admin/pyq/reports
+
+state "Report closed" as Closed
+Closed : admin_note, resolved_by_id, resolved_at persisted
+Closed : closing an already-closed report is a 409 — decided once
+Closed : activity pyq.report_resolved / pyq.report_dismissed
+
+state "Soft deleted" as Deleted
+Deleted : questions.deleted_at set, the row stays
+Deleted : hidden from students AND from admin lists
+Deleted : past sessions, scores, reviews and reports still render it
+Deleted : still blocks deleting its exam / subject / topic with a 409
+
+[*] --> DRAFT : POST admin/pyq/questions/import\nupsert by external_key — the whole file is\nvalidated before anything is written
+[*] --> DRAFT : POST admin/pyq/questions\n(Questions, New question)
+
+DRAFT --> DRAFT : PATCH admin/pyq/questions/:id\noptions matched by id; one a student has already\nchosen can be reworded but not removed (409)
+DRAFT --> PUBLISHED : PATCH .../status { PUBLISHED }\nactivity pyq.question_status_changed
+
+PUBLISHED --> Seen : appears in the bank and in new sessions
+Seen --> Reported : POST pyq/questions/:id/reports { reason, details }
+
+Reported --> DRAFT : unpublish first if the question is wrong\nPATCH .../status { DRAFT }
+Reported --> Closed : PATCH admin/pyq/reports/:id\n{ status: RESOLVED | DISMISSED, note? }
+Closed --> PUBLISHED : question fixed and re-published
+
+PUBLISHED --> DRAFT : PATCH .../status { DRAFT }\nunpublish — gone from new lists and sessions at once
+PUBLISHED --> Deleted : DELETE admin/pyq/questions/:id
+DRAFT --> Deleted : DELETE admin/pyq/questions/:id
+Deleted --> [*]
+
+note right of Deleted
+  Soft, not hard, for two reasons: session_questions and
+  attempts reference the question with onDelete: Restrict,
+  and a student's old result should not change under them.
+  For the same reason, correcting the right answer does not
+  re-score attempts already made.
+end note
+
+note bottom of DRAFT
+  Taxonomy (exams, subjects, topics) is managed separately at
+  /admin/pyq/taxonomy: create, rename, reorder (PUT .../order
+  with { slugs }). Slugs never change, and anything still
+  referenced — even by a soft-deleted question — cannot be
+  deleted (409).
+end note
+
+@enduml

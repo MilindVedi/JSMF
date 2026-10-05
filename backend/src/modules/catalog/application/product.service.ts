@@ -1,3 +1,4 @@
+import { NOT_A_PYQ_PLAN } from '../../../shared/pyq-plan';
 import {
   BadRequestException,
   ConflictException,
@@ -471,16 +472,16 @@ export class ProductService {
       type: catalogType(query.type),
       accessType: query.accessType,
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' } } : {}),
-      // One nested `every`-style condition per term rather than `in`, because
-      // `in` would match a product carrying ANY of the terms. Filters have to
-      // narrow: picking Anatomy *and* NEET-PG must not widen the results.
-      ...(query.terms?.length
-        ? {
-            AND: query.terms.map((slug) => ({
-              taxonomyTerms: { some: { term: { slug, deletedAt: null } } },
-            })),
-          }
-        : {}),
+      AND: [
+        // PYQ plans are products sold in the practice app, not files.
+        NOT_A_PYQ_PLAN,
+        // One nested `every`-style condition per term rather than `in`, because
+        // `in` would match a product carrying ANY of the terms. Filters have to
+        // narrow: picking Anatomy *and* NEET-PG must not widen the results.
+        ...(query.terms ?? []).map((slug) => ({
+          taxonomyTerms: { some: { term: { slug, deletedAt: null } } },
+        })),
+      ],
     };
 
     const [items, total] = await this.prisma.$transaction([
@@ -529,6 +530,7 @@ export class ProductService {
         ...ACTIVE,
         status: ProductStatus.PUBLISHED,
         type: catalogType(),
+        AND: [NOT_A_PYQ_PLAN],
         featuredOrder: { not: null },
       },
       orderBy: { featuredOrder: 'asc' },
@@ -649,7 +651,7 @@ export class ProductService {
 
   async findPublicBySlug(slug: string) {
     const product = await this.prisma.product.findFirst({
-      where: { slug, status: ProductStatus.PUBLISHED, type: catalogType(), ...ACTIVE },
+      where: { slug, status: ProductStatus.PUBLISHED, type: catalogType(), ...ACTIVE, AND: [NOT_A_PYQ_PLAN] },
       include: {
         // Only the metadata a storefront needs. Object keys for private assets
         // are deliberately not selected: a buyer gets a signed URL from the

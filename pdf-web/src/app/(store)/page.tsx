@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Award, ExternalLink, Play, Sparkles } from "lucide-react";
-import { DoctorPortrait } from "@/components/store/doctor-portrait";
-import { InstagramIcon, YouTubeIcon } from "@/components/store/social-icons";
+import { ArrowRight, ExternalLink, Play, Sparkles } from "lucide-react";
+import { DoctorPortraitCard } from "@/components/store/doctor-portrait";
+import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/store/social-icons";
 import { ResourceCard } from "@/components/store/resource-card";
 import { storeButton } from "@/components/store/store-button";
 import { storeApi, type StorefrontProduct } from "@/lib/api/store";
@@ -87,29 +87,13 @@ export default function LandingPage() {
             )}
           </div>
 
-          {/* The credential card is absolutely positioned against this wrapper
-              and bleeds past its lower-right corner, so the wrapper carries
-              the bottom margin that keeps it clear of the section edge. */}
-          <div className="relative mx-auto mb-16 w-full max-w-md lg:col-span-5 lg:mb-10">
-            <DoctorPortrait />
-            {author.featuredCredential && (
-              <p className="doctor-badge">
-                <Award className="size-3.5" aria-hidden />
-                {author.featuredCredential}
-              </p>
-            )}
-            <div className="doctor-credential">
-              <p className="text-[10px] font-bold uppercase text-primary">Lead academic</p>
-              <h2 className="mt-1 font-display font-semibold text-brand-ink">{author.name}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">{author.qualification}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {author.credentials.map((credential) => (
-                  <span key={credential} className="credential-chip">
-                    {credential}
-                  </span>
-                ))}
-              </div>
-            </div>
+          {/* Same photo and badges as jsmf.me's hero — the card brings its own
+              rank badge, credential chips, social orbs and bottom credential
+              block. The outer wrapper only carries the column span and the
+              bottom margin that keeps the bleeding credential card clear of
+              the section edge. */}
+          <div className="mb-16 lg:col-span-5 lg:mb-10">
+            <DoctorPortraitCard />
           </div>
 
         </div>
@@ -158,6 +142,16 @@ export default function LandingPage() {
             >
               <InstagramIcon className="size-4" />
               Instagram
+              <ExternalLink className="size-3" />
+            </a>
+            <a
+              href={socials.telegram}
+              target="_blank"
+              rel="noreferrer noopener"
+              className={storeButton({ variant: "secondary", size: "sm" })}
+            >
+              <TelegramIcon className="size-4" />
+              Telegram
               <ExternalLink className="size-3" />
             </a>
           </div>

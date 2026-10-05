@@ -13,6 +13,8 @@ import {
   ProductStatus,
   ProductType,
 } from '@prisma/client';
+import { readPyqPlan } from '../../../shared/pyq-plan';
+import { activity } from '../../../shared/logging/activity';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import { PaymentProvider } from '../../payments/domain/payment-provider.port';
@@ -88,7 +90,9 @@ export class OrderService {
     if (!product) throw new NotFoundException('Product not found');
 
     const existing = await this.entitlements.findActive(request.userId, product.id);
-    if (existing) {
+    // A PYQ plan is the one product bought again while still owned: the
+    // renewal extends the expiry at settlement instead of granting twice.
+    if (existing && !readPyqPlan(product.metadata)) {
       throw new ConflictException('You already own this product.');
     }
 
@@ -207,13 +211,31 @@ export class OrderService {
       });
     });
 
-    const providerOrder = await this.payments.createOrder({
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      amountMinor: order.totalAmountMinor,
-      currency: order.currency,
-      customerEmail: order.customerEmail,
-    });
+    let providerOrder: Awaited<ReturnType<PaymentProvider['createOrder']>>;
+    try {
+      providerOrder = await this.payments.createOrder({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amountMinor: order.totalAmountMinor,
+        currency: order.currency,
+        customerEmail: order.customerEmail,
+      });
+    } catch (error) {
+      // The buyer sees "could not start the payment"; this is the line that
+      // says why — wrong keys, Razorpay down, a network timeout.
+      activity(
+        this.logger,
+        'checkout.provider_error',
+        {
+          orderNumber: order.orderNumber,
+          userId: request.userId,
+          productId: product.id,
+          reason: error instanceof Error ? error.message : String(error),
+        },
+        'error',
+      );
+      throw error;
+    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.payment.create({
@@ -233,9 +255,17 @@ export class OrderService {
       });
     });
 
-    this.logger.log(
-      `Checkout started: order ${order.orderNumber} → ${providerOrder.providerOrderId}`,
-    );
+    activity(this.logger, 'checkout.started', {
+      orderNumber: order.orderNumber,
+      orderId: order.id,
+      userId: request.userId,
+      productId: product.id,
+      productType: product.type,
+      amountMinor: order.totalAmountMinor,
+      currency: order.currency,
+      provider: providerOrder.provider,
+      providerOrderId: providerOrder.providerOrderId,
+    });
 
     return {
       kind: 'PAYMENT_REQUIRED',

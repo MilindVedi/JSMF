@@ -3,9 +3,10 @@
 import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-import { usePracticeStore } from "@/store/practice-store";
-import { getQuestionById } from "@/data/mock/questions";
+import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { useSessionReview } from "@/hooks/pyq";
+import { PageLoading, QueryError } from "@/components/pyq/query-states";
+import { NotFoundError } from "@/lib/data-source";
 import { QuestionCard } from "@/components/practice/question-card";
 import { ReviewExplanationPanel } from "@/components/practice/review-explanation-panel";
 import { ReviewNavStrip } from "@/components/practice/review-nav-strip";
@@ -49,8 +50,8 @@ export default function ReviewPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const session = usePracticeStore((s) => s.sessions[sessionId]);
-  const hasHydrated = usePracticeStore((s) => s.hasHydrated);
+  const { data: detail, error, isPending, refetch } = useSessionReview(sessionId);
+  const session = detail?.session;
 
   const filterParam = searchParams.get("filter") as ReviewFilter | null;
   const iParam = searchParams.get("i");
@@ -87,15 +88,17 @@ export default function ReviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, filterParam, iParam]);
 
-  if (!hasHydrated) {
+  if (isPending) return <PageLoading className="min-h-dvh" />;
+
+  if (error && !(error instanceof NotFoundError)) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        <QueryError error={error} onRetry={() => refetch()} title="Couldn't load the review" />
       </div>
     );
   }
 
-  if (!session) {
+  if (!session || !detail) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">
         <EmptyState
@@ -109,14 +112,8 @@ export default function ReviewPage() {
   }
 
   const questionId = session.questionIds[index];
-  const question = questionId ? getQuestionById(questionId) : undefined;
-  if (!question) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const question = detail.questions.find((q) => q.id === questionId);
+  if (!question) return <PageLoading className="min-h-dvh" />;
 
   const filteredIndices = session.questionIds
     .map((id, i) => ({ id, i }))

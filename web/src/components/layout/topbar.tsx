@@ -18,6 +18,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Logo } from "@/components/common/logo";
 import { SidebarNav } from "./sidebar-nav";
 import { TopbarStreakChip } from "./topbar-streak-chip";
+import { useStreakState } from "@/lib/use-streak-state";
 import { useAuthStore } from "@/store/auth-store";
 import { getPlanById } from "@/data/mock/plans";
 
@@ -33,6 +34,7 @@ function initials(name: string) {
 export function Topbar() {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
+  const { currentStreak } = useStreakState();
   const logout = useAuthStore((s) => s.logout);
   const plan = getPlanById(profile.currentPlanId);
   const [navOpen, setNavOpen] = useState(false);
@@ -65,7 +67,7 @@ export function Topbar() {
         {/* No streak established yet — an empty "0-day streak" pill reads as
             a failed achievement rather than an invitation; the dashboard's
             streak card already carries that invitation instead. */}
-        {profile.streakDays > 0 && <TopbarStreakChip streakDays={profile.streakDays} />}
+        {currentStreak > 0 && <TopbarStreakChip streakDays={currentStreak} />}
         {plan && (
           <Link
             href="/subscription"

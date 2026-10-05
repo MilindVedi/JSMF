@@ -1,48 +1,28 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { QuestionListRow } from "@/components/question-bank/question-list-row";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usePracticeStore } from "@/store/practice-store";
-import { QUESTIONS } from "@/data/mock/questions";
-import { getCorrectQuestionFacets } from "@/lib/selectors";
-import { useClientSnapshot } from "@/lib/use-client-snapshot";
-import { useStartSession } from "@/lib/use-start-session";
+import { PageLoading, QueryError } from "@/components/pyq/query-states";
+import { useReinforce, useStartSession } from "@/hooks/pyq";
 
 const RECENT_WINDOW_DAYS = 7;
 
 type Mode = "all" | "recent" | "notRevisited";
 
 export default function ReinforcePage() {
-  const hasHydrated = usePracticeStore((s) => s.hasHydrated);
-  const sessions = usePracticeStore((s) => s.sessions);
   const startSession = useStartSession();
-
   const [mode, setMode] = useState<Mode>("all");
+  const { data: facets, error, refetch } = useReinforce(RECENT_WINDOW_DAYS);
 
-  const recentSinceDay = useClientSnapshot<string | null>(
-    () => new Date(Date.now() - RECENT_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10),
-    null
-  );
-
-  const facets = useMemo(
-    () => (hasHydrated ? getCorrectQuestionFacets(Object.values(sessions), QUESTIONS, recentSinceDay) : null),
-    [hasHydrated, sessions, recentSinceDay]
-  );
-
-  if (!hasHydrated || !facets) {
-    return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  if (error) return <QueryError error={error} onRetry={() => refetch()} title="Couldn't load your correct answers" />;
+  if (!facets) return <PageLoading />;
 
   const MODES: { value: Mode; label: string; count: number }[] = [
     { value: "all", label: "All correct", count: facets.all.length },

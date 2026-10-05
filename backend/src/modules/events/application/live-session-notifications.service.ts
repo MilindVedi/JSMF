@@ -1,18 +1,55 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { EntitlementStatus, ProductStatus, ProductType } from '@prisma/client';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  AnnouncementStatus,
+  BundleDeliveryMode,
+  BundleDeliveryStatus,
+  EntitlementSource,
+  EntitlementStatus,
+  ProductStatus,
+  ProductType,
+} from '@prisma/client';
 import { AppConfig } from '../../../config/config.module';
+import { activity } from '../../../shared/logging/activity';
 import { MailService } from '../../../shared/mail/application/mail.service';
 import {
+  liveSessionBundleReady,
   liveSessionConfirmation,
+  liveSessionDatesAnnounced,
   liveSessionReminder,
 } from '../../../shared/mail/templates/mail-templates';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
+import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import {
   OrderEvents,
   type OrderPaidEvent,
   type OrderPaidListener,
 } from '../../orders/application/order-events';
 import { firstName, formatMoney, sessionDayLabel, sessionWhenLines } from '../domain/session-display';
+
+/** One buyer's row in the admin's delivery table. */
+export interface BundleDeliveryRow {
+  userId: string;
+  name: string;
+  email: string | null;
+  status: BundleDeliveryStatus;
+  lastError: string | null;
+  sentAt: Date | null;
+  attempts: number;
+}
+
+/** One buyer's row in the admin's date-announcement table. */
+export interface DateAnnouncementRow {
+  userId: string;
+  name: string;
+  email: string | null;
+  status: AnnouncementStatus;
+  lastError: string | null;
+  sentAt: Date | null;
+  attempts: number;
+}
+
+/** Why sending is not possible yet, or null when it is. */
+type SendBlocker = string | null;
 
 /**
  * The two emails a live session sends: the confirmation when a seat is paid
@@ -31,6 +68,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
     private readonly mail: MailService,
     private readonly config: AppConfig,
     private readonly orderEvents: OrderEvents,
+    private readonly entitlements: EntitlementService,
   ) {}
 
   onModuleInit(): void {
@@ -56,6 +94,9 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
         product: {
           include: {
             bundleItems: {
+              // Same filter settlement grants with, so the email never names
+              // something that was not actually granted.
+              where: { child: { deletedAt: null } },
               orderBy: { sortOrder: 'asc' },
               include: { child: { select: { title: true } } },
             },
@@ -66,6 +107,13 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
 
     if (!session) return { confirmationHandled: false };
 
+    // The template says the included items are "already in your JSMF
+    // library". That is only true when they were granted at payment; a
+    // deferred session grants them after it ends and announces them then
+    // (liveSessionBundleReady), so naming them here would promise a PDF the
+    // buyer opens their library to find missing.
+    const grantedNow = session.bundleDeliveryMode === BundleDeliveryMode.IMMEDIATE;
+
     const rendered = liveSessionConfirmation({
       attendeeName: firstName(event.customerName),
       sessionTitle: session.product.title,
@@ -75,8 +123,11 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
       totalFormatted: formatMoney(event.totalAmountMinor, event.currency),
       orderNumber: event.orderNumber,
       paymentId: event.paymentId,
-      includedTitles: session.product.bundleItems.map((b) => b.child.title),
+      includedTitles: grantedNow ? session.product.bundleItems.map((b) => b.child.title) : [],
       libraryUrl: `${this.config.get('STOREFRONT_URL').replace(/\/$/, '')}/library`,
+      subjectOverride: session.confirmationSubject,
+      pendingJoinLinkText: session.pendingJoinLinkText,
+      showNotSpamNotice: session.showNotSpamNotice,
     });
 
     const outcome = await this.mail.sendBestEffort({
@@ -92,11 +143,20 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
         where: { liveSessionId: session.productId, userId: event.userId },
         data: { confirmationSentAt: new Date() },
       });
+      activity(this.logger, 'session.confirmation_sent', {
+        orderNumber: event.orderNumber,
+        userId: event.userId,
+        sessionId: session.productId,
+        joinLinkIncluded: Boolean(session.joinUrl),
+      });
     } else {
-      this.logger.warn(
-        `Session confirmation not delivered for ${event.orderNumber} (${outcome.reason}) — ` +
-          `the seat is paid for and granted regardless`,
-      );
+      activity(this.logger, 'session.confirmation_not_delivered', {
+        orderNumber: event.orderNumber,
+        userId: event.userId,
+        sessionId: session.productId,
+        reason: outcome.reason,
+        note: 'the seat is paid for and granted regardless',
+      }, 'warn');
     }
 
     // Handled either way: the generic "your files are in your library" receipt
@@ -188,6 +248,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
           dayMarker,
           platformLabel: session.platformLabel,
           joinUrl: session.joinUrl,
+          showNotSpamNotice: session.showNotSpamNotice,
         });
 
         const outcome = await this.mail.sendBestEffort({
@@ -216,5 +277,547 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
     }
 
     return { days: days.length, sent, failed, awaitingLink };
+  }
+
+  // --- deferred delivery of a session's included items ----------------------
+
+  /**
+   * The session, its days, and the included products — everything both the
+   * listing and the sending need.
+   */
+  private async loadForDelivery(sessionId: string) {
+    const session = await this.prisma.liveSession.findUnique({
+      where: { productId: sessionId },
+      include: {
+        days: { orderBy: { startsAt: 'asc' } },
+        product: {
+          include: {
+            bundleItems: {
+              orderBy: { sortOrder: 'asc' },
+              include: { child: { select: { id: true, title: true, status: true, deletedAt: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    if (!session) throw new NotFoundException('Session not found');
+    return session;
+  }
+
+  /**
+   * When the last day finishes. Derived rather than stored: `startsAt` is the
+   * only time a day carries, and its length is what turns that into an end.
+   */
+  private endsAt(days: Array<{ startsAt: Date; durationMinutes: number }>): Date {
+    return days.reduce((latest, day) => {
+      const end = new Date(day.startsAt.getTime() + day.durationMinutes * 60_000);
+      return end > latest ? end : latest;
+    }, new Date(0));
+  }
+
+  /**
+   * Whether this session's included items can be sent right now, and if not,
+   * the reason in the words the admin should see. Returned rather than thrown
+   * so the listing can disable a button and explain itself in the same call
+   * that renders the table.
+   */
+  private sendBlocker(session: {
+    bundleDeliveryMode: BundleDeliveryMode;
+    days: Array<{ startsAt: Date; durationMinutes: number }>;
+    product: { bundleItems: Array<{ child: { status: ProductStatus; deletedAt: Date | null } }> };
+  }): SendBlocker {
+    if (session.bundleDeliveryMode === BundleDeliveryMode.IMMEDIATE) {
+      return 'This session delivers its included material at payment, so there is nothing to send.';
+    }
+
+    if (session.days.length === 0) return 'This session has no days yet.';
+
+    if (this.endsAt(session.days) > new Date()) {
+      return 'The session has not finished yet. Included material is sent once it is over.';
+    }
+
+    const ready = session.product.bundleItems.filter(
+      (item) => item.child.status === ProductStatus.PUBLISHED && !item.child.deletedAt,
+    );
+
+    if (ready.length === 0) {
+      return 'No included material is published yet. Upload and publish the PDF, then add it to this session.';
+    }
+
+    return null;
+  }
+
+  /**
+   * Every seat holder and where their included material has got to.
+   *
+   * A buyer with no delivery row has simply never been sent anything, which is
+   * PENDING — the row is written when a send is first attempted, so the table
+   * does not depend on rows existing before anyone presses anything.
+   */
+  async listBundleDeliveries(sessionId: string): Promise<{
+    mode: BundleDeliveryMode;
+    blocker: SendBlocker;
+    includedTitles: string[];
+    rows: BundleDeliveryRow[];
+  }> {
+    const session = await this.loadForDelivery(sessionId);
+
+    const [holders, deliveries] = await Promise.all([
+      this.prisma.entitlement.findMany({
+        where: { productId: sessionId, status: EntitlementStatus.ACTIVE },
+        select: { userId: true, user: { select: { name: true, email: true } } },
+      }),
+      this.prisma.sessionBundleDelivery.findMany({ where: { liveSessionId: sessionId } }),
+    ]);
+
+    const byUser = new Map(deliveries.map((row) => [row.userId, row]));
+
+    return {
+      mode: session.bundleDeliveryMode,
+      blocker: this.sendBlocker(session),
+      includedTitles: session.product.bundleItems
+        .filter((item) => item.child.status === ProductStatus.PUBLISHED && !item.child.deletedAt)
+        .map((item) => item.child.title),
+      rows: holders.map((holder) => {
+        const delivery = byUser.get(holder.userId);
+        return {
+          userId: holder.userId,
+          name: holder.user.name,
+          email: holder.user.email,
+          status: delivery?.status ?? BundleDeliveryStatus.PENDING,
+          lastError: delivery?.lastError ?? null,
+          sentAt: delivery?.sentAt ?? null,
+          attempts: delivery?.attempts ?? 0,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Grants a session's included items to buyers and tells them.
+   *
+   * The one path all three callers take — the automatic sweep, an admin's
+   * "send to everyone", and an admin sending to one person — so the rule that
+   * matters most lives in exactly one place: anyone already SENT is never sent
+   * to again, whatever triggered this.
+   *
+   * `userIds` omitted means everyone not yet sent, which is both "send to all
+   * pending" and "retry the failures" at once — a failed row is, by definition,
+   * one that has not been sent.
+   */
+  async releaseBundle(
+    sessionId: string,
+    options: { userIds?: string[] } = {},
+  ): Promise<{
+    attempted: number;
+    sent: number;
+    failed: Array<{ userId: string; name: string; email: string | null; reason: string }>;
+  }> {
+    const session = await this.loadForDelivery(sessionId);
+
+    const blocker = this.sendBlocker(session);
+    if (blocker) throw new BadRequestException(blocker);
+
+    const ready = session.product.bundleItems
+      .filter((item) => item.child.status === ProductStatus.PUBLISHED && !item.child.deletedAt)
+      .map((item) => item.child);
+
+    const holders = await this.prisma.entitlement.findMany({
+      where: {
+        productId: sessionId,
+        status: EntitlementStatus.ACTIVE,
+        ...(options.userIds?.length ? { userId: { in: options.userIds } } : {}),
+      },
+      select: {
+        userId: true,
+        sourceOrderId: true,
+        user: { select: { name: true, email: true } },
+      },
+    });
+
+    const alreadySent = new Set(
+      (
+        await this.prisma.sessionBundleDelivery.findMany({
+          where: { liveSessionId: sessionId, status: BundleDeliveryStatus.SENT },
+          select: { userId: true },
+        })
+      ).map((row) => row.userId),
+    );
+
+    const targets = holders.filter((holder) => !alreadySent.has(holder.userId));
+
+    let sent = 0;
+    const failed: Array<{ userId: string; name: string; email: string | null; reason: string }> = [];
+
+    for (const holder of targets) {
+      const result = await this.deliverTo(session, ready, holder);
+      if (result.ok) {
+        sent += 1;
+      } else {
+        failed.push({
+          userId: holder.userId,
+          name: holder.user.name,
+          email: holder.user.email,
+          reason: result.reason,
+        });
+      }
+    }
+
+    if (sent || failed.length) {
+      this.logger.log(
+        `Included material for "${session.product.title}": ${sent} sent, ${failed.length} failed`,
+      );
+    }
+
+    return { attempted: targets.length, sent, failed };
+  }
+
+  /**
+   * One buyer: grant, email, record the outcome.
+   *
+   * Never throws. A bad address or a mail provider having a bad minute must
+   * not stop the rest of the list being served, and the reason is kept on the
+   * row so the admin can see it and retry that person alone.
+   */
+  private async deliverTo(
+    session: { productId: string; showNotSpamNotice: boolean; product: { title: string } },
+    items: Array<{ id: string; title: string }>,
+    holder: { userId: string; sourceOrderId: string | null; user: { name: string; email: string | null } },
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    const fail = async (reason: string) => {
+      await this.recordDelivery(session.productId, holder.userId, BundleDeliveryStatus.FAILED, reason);
+      return { ok: false as const, reason };
+    };
+
+    if (!holder.user.email) {
+      return fail('This account has no email address.');
+    }
+
+    try {
+      for (const item of items) {
+        // Granting is idempotent, so a buyer who already owns the PDF — bought
+        // separately, or granted before the mode was changed — keeps the copy
+        // they have and this adds nothing.
+        await this.entitlements.grant({
+          userId: holder.userId,
+          productId: item.id,
+          source: EntitlementSource.BUNDLE,
+          // Carried so a refund of the seat takes the material back with it,
+          // exactly as it would have at payment.
+          sourceOrderId: holder.sourceOrderId,
+          sourceProductId: session.productId,
+        });
+      }
+    } catch (error) {
+      return fail(
+        `Could not grant access: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    const rendered = liveSessionBundleReady({
+      attendeeName: firstName(holder.user.name),
+      sessionTitle: session.product.title,
+      includedTitles: items.map((item) => item.title),
+      libraryUrl: `${this.config.get('STOREFRONT_URL').replace(/\/$/, '')}/library`,
+      showNotSpamNotice: session.showNotSpamNotice,
+    });
+
+    const outcome = await this.mail.sendBestEffort({
+      to: { email: holder.user.email, name: holder.user.name },
+      subject: rendered.subject,
+      text: rendered.text,
+      html: rendered.html,
+      tag: 'session-bundle-ready',
+    });
+
+    if (!outcome.delivered) {
+      // The access was granted a moment ago and stays granted: the material is
+      // in their library whether or not this email arrived. Recording FAILED
+      // is about the notification, so a retry re-sends the mail and the grant
+      // above simply finds itself already done.
+      return fail(outcome.reason);
+    }
+
+    await this.recordDelivery(session.productId, holder.userId, BundleDeliveryStatus.SENT, null);
+    return { ok: true };
+  }
+
+  private async recordDelivery(
+    liveSessionId: string,
+    userId: string,
+    status: BundleDeliveryStatus,
+    lastError: string | null,
+  ): Promise<void> {
+    const sentAt = status === BundleDeliveryStatus.SENT ? new Date() : null;
+
+    await this.prisma.sessionBundleDelivery.upsert({
+      where: { liveSessionId_userId: { liveSessionId, userId } },
+      create: { liveSessionId, userId, status, lastError, sentAt, attempts: 1 },
+      update: { status, lastError, sentAt, attempts: { increment: 1 } },
+    });
+  }
+
+  /**
+   * Releases included material for every session set to do it automatically.
+   *
+   * Runs on the reminder sweep's clock. Sessions that have not finished, or
+   * whose material is not published yet, are the ordinary waiting states and
+   * are skipped silently — they are what this is waiting *for*, not faults.
+   * A failed delivery is simply not SENT, so the next tick retries it.
+   */
+  async sweepAutoBundleReleases() {
+    const sessions = await this.prisma.liveSession.findMany({
+      where: {
+        bundleDeliveryMode: BundleDeliveryMode.AUTO_AFTER_SESSION,
+        product: { status: ProductStatus.PUBLISHED, deletedAt: null },
+      },
+      select: { productId: true },
+    });
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const session of sessions) {
+      try {
+        const result = await this.releaseBundle(session.productId);
+        sent += result.sent;
+        failed += result.failed.length;
+      } catch (error) {
+        // BadRequestException here means "not ready yet", which is expected.
+        if (error instanceof BadRequestException) continue;
+
+        this.logger.error(
+          `Automatic release failed for session ${session.productId}: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return { sessions: sessions.length, sent, failed };
+  }
+
+  // --- date announcements (admin-triggered "notify attendees") ---------------
+
+  /**
+   * Every seat holder and whether they have been told the dates.
+   *
+   * A buyer with no announcement row has simply never been notified, which is
+   * PENDING. A buyer whose `announcedStartsAt` differs from the session's
+   * current first day has been told about *old* dates and is shown as outdated
+   * (effectively PENDING for the new date).
+   */
+  async listDateAnnouncements(sessionId: string): Promise<{
+    blocker: SendBlocker;
+    currentStartsAt: Date | null;
+    rows: DateAnnouncementRow[];
+  }> {
+    const session = await this.prisma.liveSession.findUnique({
+      where: { productId: sessionId },
+      include: {
+        days: { orderBy: { startsAt: 'asc' }, select: { startsAt: true } },
+        product: { select: { title: true, status: true, deletedAt: true } },
+      },
+    });
+    if (!session) throw new NotFoundException('Session not found');
+
+    const currentStartsAt = session.days[0]?.startsAt ?? null;
+
+    const [holders, announcements] = await Promise.all([
+      this.prisma.entitlement.findMany({
+        where: { productId: sessionId, status: EntitlementStatus.ACTIVE },
+        select: { userId: true, user: { select: { name: true, email: true } } },
+      }),
+      this.prisma.sessionDateAnnouncement.findMany({ where: { liveSessionId: sessionId } }),
+    ]);
+
+    const byUser = new Map(announcements.map((row) => [row.userId, row]));
+
+    return {
+      blocker: this.dateAnnouncementBlocker(session.days.length),
+      currentStartsAt,
+      rows: holders.map((holder) => {
+        const row = byUser.get(holder.userId);
+        // If the dates changed since the last announcement, treat as PENDING.
+        const stale =
+          row?.status === AnnouncementStatus.SENT &&
+          currentStartsAt &&
+          row.announcedStartsAt?.getTime() !== currentStartsAt.getTime();
+        return {
+          userId: holder.userId,
+          name: holder.user.name,
+          email: holder.user.email,
+          status: stale ? AnnouncementStatus.PENDING : (row?.status ?? AnnouncementStatus.PENDING),
+          lastError: row?.lastError ?? null,
+          sentAt: stale ? null : (row?.sentAt ?? null),
+          attempts: row?.attempts ?? 0,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Send the date-announcement email to seat holders.
+   *
+   * `userIds` omitted → everyone whose row is not SENT for the current dates
+   * (i.e. never told, told about old dates, or previously failed). Anyone
+   * already SENT for the current dates is skipped, so this is safe to repeat.
+   */
+  async announceDates(
+    sessionId: string,
+    options: { userIds?: string[] } = {},
+  ): Promise<{
+    attempted: number;
+    sent: number;
+    failed: Array<{ userId: string; name: string; email: string | null; reason: string }>;
+  }> {
+    const session = await this.prisma.liveSession.findUnique({
+      where: { productId: sessionId },
+      include: {
+        days: { orderBy: { startsAt: 'asc' } },
+        product: { select: { title: true, status: true, deletedAt: true } },
+      },
+    });
+    if (!session) throw new NotFoundException('Session not found');
+
+    const blocker = this.dateAnnouncementBlocker(session.days.length);
+    if (blocker) throw new BadRequestException(blocker);
+
+    const currentStartsAt = session.days[0]!.startsAt;
+    const whenLines = sessionWhenLines(session.days);
+
+    const holders = await this.prisma.entitlement.findMany({
+      where: {
+        productId: sessionId,
+        status: EntitlementStatus.ACTIVE,
+        ...(options.userIds?.length ? { userId: { in: options.userIds } } : {}),
+      },
+      select: { userId: true, user: { select: { name: true, email: true } } },
+    });
+
+    // Skip anyone already told about the current date.
+    const alreadySent = new Set(
+      (
+        await this.prisma.sessionDateAnnouncement.findMany({
+          where: {
+            liveSessionId: sessionId,
+            status: AnnouncementStatus.SENT,
+            announcedStartsAt: currentStartsAt,
+          },
+          select: { userId: true },
+        })
+      ).map((row) => row.userId),
+    );
+
+    const targets = holders.filter((h) => !alreadySent.has(h.userId));
+
+    let sent = 0;
+    const failed: Array<{ userId: string; name: string; email: string | null; reason: string }> = [];
+
+    for (const holder of targets) {
+      const result = await this.sendDateAnnouncement(session, whenLines, currentStartsAt, holder);
+      if (result.ok) {
+        sent += 1;
+      } else {
+        failed.push({
+          userId: holder.userId,
+          name: holder.user.name,
+          email: holder.user.email,
+          reason: result.reason,
+        });
+      }
+    }
+
+    if (sent || failed.length) {
+      activity(this.logger, 'session.dates_announced', {
+        sessionId,
+        sent,
+        failed: failed.length,
+        currentStartsAt: currentStartsAt.toISOString(),
+      });
+    }
+
+    return { attempted: targets.length, sent, failed };
+  }
+
+  private dateAnnouncementBlocker(dayCount: number): SendBlocker {
+    if (dayCount === 0) {
+      return 'This session has no dates yet. Add dates in the session form first.';
+    }
+    return null;
+  }
+
+  private async sendDateAnnouncement(
+    session: {
+      productId: string;
+      joinUrl: string | null;
+      platformLabel: string;
+      showNotSpamNotice: boolean;
+      product: { title: string };
+    },
+    whenLines: string[],
+    currentStartsAt: Date,
+    holder: { userId: string; user: { name: string; email: string | null } },
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    const fail = async (reason: string) => {
+      await this.recordDateAnnouncement(
+        session.productId,
+        holder.userId,
+        AnnouncementStatus.FAILED,
+        currentStartsAt,
+        reason,
+      );
+      return { ok: false as const, reason };
+    };
+
+    if (!holder.user.email) {
+      return fail('This account has no email address.');
+    }
+
+    const rendered = liveSessionDatesAnnounced({
+      attendeeName: firstName(holder.user.name),
+      sessionTitle: session.product.title,
+      whenLines,
+      platformLabel: session.platformLabel,
+      joinUrl: session.joinUrl,
+      showNotSpamNotice: session.showNotSpamNotice,
+    });
+
+    const outcome = await this.mail.sendBestEffort({
+      to: { email: holder.user.email, name: holder.user.name },
+      subject: rendered.subject,
+      text: rendered.text,
+      html: rendered.html,
+      tag: 'session-dates-announced',
+    });
+
+    if (!outcome.delivered) {
+      return fail(outcome.reason);
+    }
+
+    await this.recordDateAnnouncement(
+      session.productId,
+      holder.userId,
+      AnnouncementStatus.SENT,
+      currentStartsAt,
+      null,
+    );
+    return { ok: true };
+  }
+
+  private async recordDateAnnouncement(
+    liveSessionId: string,
+    userId: string,
+    status: AnnouncementStatus,
+    announcedStartsAt: Date,
+    lastError: string | null,
+  ): Promise<void> {
+    const sentAt = status === AnnouncementStatus.SENT ? new Date() : null;
+
+    await this.prisma.sessionDateAnnouncement.upsert({
+      where: { liveSessionId_userId: { liveSessionId, userId } },
+      create: { liveSessionId, userId, status, announcedStartsAt, lastError, sentAt, attempts: 1 },
+      update: { status, announcedStartsAt, lastError, sentAt, attempts: { increment: 1 } },
+    });
   }
 }

@@ -3,8 +3,8 @@
  * registration (not a database enum), so changing a label here is a deploy,
  * never a migration — and old registrations keep the label they were given.
  */
-export const EXAM_OPTIONS = ['NEET-PG', 'INI-CET', 'FMGE', 'MBBS Professional'] as const;
-export const STAGE_OPTIONS = ['1st / 2nd year', '3rd year', 'Final year', 'Intern', 'Repeater'] as const;
+export const EXAM_OPTIONS = ['NEET-PG', 'INI-CET', 'FMGE'] as const;
+export const STAGE_OPTIONS = ['1st / 2nd year', '3rd year', 'Final year', 'Intern'] as const;
 
 /**
  * Sessions are for Indian aspirants and are announced in IST, so every label
@@ -43,6 +43,9 @@ export function sessionDayLabel(day: SessionDayTime): string {
 
 /** One line for a one-day session; "Day 1 · …", "Day 2 · …" for longer ones. Days must be in order. */
 export function sessionWhenLines(days: SessionDayTime[]): string[] {
+  // A session can be sold before its dates are fixed. Saying so is better than
+  // a confirmation email with a blank where the date belongs.
+  if (days.length === 0) return ['Date to be announced'];
   if (days.length === 1) return [sessionDayLabel(days[0])];
   return days.map((day, index) => `Day ${index + 1} · ${sessionDayLabel(day)}`);
 }

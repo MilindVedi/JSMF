@@ -27,12 +27,6 @@ declare global {
   }
 }
 
-/** 10-digit Indian numbers get 91; the same rule the API applies when storing it. */
-function normalisedDigits(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
-  return digits.length === 10 ? `91${digits}` : digits;
-}
-
 function loadCheckoutScript(): Promise<void> {
   if (window.Razorpay) return Promise.resolve();
 
@@ -85,6 +79,14 @@ export function useSessionCheckout() {
         if (!window.Razorpay) throw new Error("The payment window failed to load.");
 
         return await new Promise<CheckoutOutcome>((resolve) => {
+          // A failed attempt does not end the checkout. Razorpay keeps its
+          // window open and lets the buyer retry with another card or UPI —
+          // against the same order — so resolving "failed" here would leave the
+          // dialog saying "payment did not go through" while the buyer goes on
+          // to pay successfully underneath it. Remembered instead, and reported
+          // only if they then close the window without a successful payment.
+          let lastFailure: string | null = null;
+
           const razorpay = new window.Razorpay!({
             key: order.checkoutKeyId,
             order_id: order.providerOrderId,
@@ -95,8 +97,7 @@ export function useSessionCheckout() {
             prefill: {
               name: buyer.name,
               email: buyer.email ?? undefined,
-              // Razorpay only prefills a bare +digits number; spaces leave the field empty.
-              contact: `+${normalisedDigits(answers.whatsappNumber)}`,
+              contact: answers.whatsappNumber,
             },
             theme: { color: "#5b21b6" },
             handler: (response: RazorpayResponse) => {
@@ -116,15 +117,22 @@ export function useSessionCheckout() {
                   }),
                 );
             },
-            modal: { ondismiss: () => resolve({ status: "dismissed" }) },
+            modal: {
+              ondismiss: () =>
+                resolve(
+                  lastFailure
+                    ? {
+                        status: "failed",
+                        message: `${lastFailure} You can try again. If your bank shows a debit, it is reversed automatically.`,
+                      }
+                    : { status: "dismissed" },
+                ),
+            },
           });
 
-          razorpay.on("payment.failed", (payload) =>
-            resolve({
-              status: "failed",
-              message: payload.error?.description ?? "The payment did not go through.",
-            }),
-          );
+          razorpay.on("payment.failed", (payload) => {
+            lastFailure = payload.error?.description ?? "The payment did not go through.";
+          });
 
           razorpay.open();
         });

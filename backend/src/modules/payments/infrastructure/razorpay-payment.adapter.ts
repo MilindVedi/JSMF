@@ -70,6 +70,13 @@ export class RazorpayPaymentAdapter extends PaymentProvider {
     const body = await this.call<RazorpayEntity>('POST', '/orders', {
       amount: this.toPaiseNumber(request.amountMinor),
       currency: request.currency,
+      // Capture the money as soon as it is authorized, stated per order rather
+      // than left to the Dashboard's auto-capture setting. Without a capture
+      // the buyer is charged, `payment.captured` never arrives, settlement
+      // never runs, and the amount is auto-refunded days later — a buyer who
+      // paid and got nothing, with nothing in this code able to recover it.
+      // A per-order instruction cannot be switched off by accident in a UI.
+      payment_capture: 1,
       // Our order number, so a Razorpay dashboard row can be traced back to a
       // JSMF order without a database lookup.
       receipt: request.orderNumber,
@@ -151,6 +158,10 @@ export class RazorpayPaymentAdapter extends PaymentProvider {
             : refund?.amount !== undefined
               ? BigInt(refund.amount)
               : undefined,
+        // Kept separate from `amountMinor` on purpose: a refund event carries
+        // both entities, so the line above reports the payment's full amount
+        // even when only part of it was returned.
+        refundAmountMinor: refund?.amount !== undefined ? BigInt(refund.amount) : undefined,
         currency: payment?.currency ?? refund?.currency,
         method: payment?.method,
         errorCode: payment?.error_code ?? undefined,

@@ -1,4 +1,6 @@
-import { getSubjectById } from "@/data/mock/subjects";
+"use client";
+
+import { useTaxonomyLookup } from "@/hooks/pyq";
 import { cn } from "@/lib/utils";
 
 const GROUP_DOT: Record<string, string> = {
@@ -8,7 +10,7 @@ const GROUP_DOT: Record<string, string> = {
 };
 
 export function SubjectBadge({ subjectId, className }: { subjectId: string; className?: string }) {
-  const subject = getSubjectById(subjectId);
+  const subject = useTaxonomyLookup().subject(subjectId);
   if (!subject) return null;
   return (
     <span

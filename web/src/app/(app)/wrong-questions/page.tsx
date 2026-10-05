@@ -1,35 +1,18 @@
 "use client";
 
-import { useMemo } from "react";
 import Link from "next/link";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { QuestionListRow } from "@/components/question-bank/question-list-row";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { usePracticeStore } from "@/store/practice-store";
-import { QUESTIONS } from "@/data/mock/questions";
-import { getWrongQuestions } from "@/lib/selectors";
-import { useStartSession } from "@/lib/use-start-session";
+import { ListSkeleton, QueryError } from "@/components/pyq/query-states";
+import { useStartSession, useWrongQuestions } from "@/hooks/pyq";
 
 export default function WrongQuestionsPage() {
-  const hasHydrated = usePracticeStore((s) => s.hasHydrated);
-  const sessions = usePracticeStore((s) => s.sessions);
+  const { data: wrongQuestions = [], error, isPending, refetch } = useWrongQuestions();
   const startSession = useStartSession();
-
-  const wrongQuestions = useMemo(
-    () => (hasHydrated ? getWrongQuestions(Object.values(sessions), QUESTIONS) : []),
-    [hasHydrated, sessions]
-  );
-
-  if (!hasHydrated) {
-    return (
-      <div className="flex min-h-[60dvh] items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-5">
@@ -53,7 +36,11 @@ export default function WrongQuestionsPage() {
         }
       />
 
-      {wrongQuestions.length === 0 ? (
+      {error ? (
+        <QueryError error={error} onRetry={() => refetch()} title="Couldn't load your wrong questions" />
+      ) : isPending ? (
+        <ListSkeleton />
+      ) : wrongQuestions.length === 0 ? (
         <EmptyState
           icon={CheckCircle2}
           title="No wrong questions yet — keep practicing!"

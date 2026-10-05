@@ -1,0 +1,113 @@
+@startuml practice-session
+!theme plain
+title One practice session, end to end (see docs/pyq/user-flows.md)
+
+actor Student
+participant "Practice screen\n/practice/[sessionId]" as Screen
+participant "hooks/pyq\n(react-query)" as Hooks
+participant "PyqDataSource\napi-adapter" as Source
+participant "PyqController\n/api/pyq/*" as API
+participant "PracticeService" as Practice
+participant "PyqAccessService" as Access
+database "Postgres\nschema pyq" as DB
+
+== Start ==
+
+Student -> Screen : choose a filter set / mode
+Screen -> Hooks : useStartSession(params)
+Hooks -> Source : createSession(input)
+Source -> API : POST pyq/sessions
+API -> Practice : start(userId, dto)
+Practice -> DB : resolve question ids\n(explicit list, or matchingIds + shuffle)
+Practice -> Access : assertCanAnswer(userId)
+note right of Access
+  Checked before the session row is written:
+  starting a session the student cannot answer
+  anything in is a dead end.
+end note
+Access -> DB : count attempts since start of India day
+alt free allowance spent
+  Access --> API : 403 PYQ_DAILY_LIMIT_REACHED
+  API --> Source : error body { code, message, dailyLimit }
+  Source --> Hooks : throw DailyLimitError
+  Hooks -> Screen : toast with "See plans" -> /subscription
+else allowed
+  Practice -> DB : INSERT practice_sessions\n+ session_questions (position 0..n)
+  Practice -> DB : re-read via get()
+  Practice --> Source : session + questions (no answers)
+  Source --> Hooks : SessionDetail
+  Hooks -> Screen : router.push(/practice/{id}?i=0)
+end
+
+== Answering ==
+
+Student -> Screen : select an option
+Screen -> Hooks : useAnswer(sessionId).mutate
+Hooks -> Source : answer(sessionId, questionId, optionId, timeSpentMs)
+Source -> API : POST pyq/sessions/:id/answers
+API -> Practice : answer(...)
+Practice -> DB : load session (owner-scoped; another user's id is a 404)
+Practice -> Practice : assertOpen — SUBMITTED, or past\ntimeLimitSec + 30s grace, is a 409
+Practice -> DB : option belongs to the question?
+Practice -> DB : existing attempt?
+
+alt PRACTICE / CUSTOM, already answered
+  Practice --> API : the stored attempt, unchanged
+  note right of Practice
+    Practice answers are final once the
+    explanation has been shown — otherwise
+    "change it to the right one" would
+    inflate every score.
+  end note
+else first answer (any mode), or a changed TEST answer
+  Practice -> Access : assertCanAnswer — only on a FIRST answer
+  Practice -> DB : UPSERT attempts\n(selected_option_id, is_correct, time_spent_ms, answered_at)
+end
+
+alt mode == TEST and not yet submitted
+  Practice --> Source : { questionId, selectedOptionId, recorded: true }
+  Source --> Screen : palette marks it "answered"; no correctness
+else PRACTICE / CUSTOM
+  Practice -> DB : load question + options
+  Practice --> Source : + isCorrect, correctOptionId,\nexplanation, explanationFigure
+  Source --> Screen : reveal the answer inline
+end
+Hooks -> Hooks : invalidate ["pyq","user"]\n(access, stats, streak, lists)
+
+== Flagging ==
+
+Student -> Screen : flag for review
+Screen -> Hooks : useSetFlag(sessionId)
+Hooks -> Source : setFlag(...)
+Source -> API : PATCH pyq/sessions/:id/questions/:qid/flag
+API -> Practice : flag(...)
+Practice -> DB : UPSERT attempts SET flagged\n(a row may exist with no selected option)
+Practice --> Screen : { questionId, flagged }
+
+== Submit and review ==
+
+Student -> Screen : Submit
+Screen -> Hooks : useSubmitSession()
+Hooks -> Source : submitSession(sessionId)
+Source -> API : POST pyq/sessions/:id/submit
+API -> Practice : submit(...)
+Practice -> DB : read attempts, score them
+Practice -> DB : UPDATE practice_sessions\nWHERE status = IN_PROGRESS\nSET SUBMITTED, counts, accuracy
+note right of Practice
+  Conditional update, so submitting twice
+  scores once and returns the same review.
+end note
+Practice -> Practice : review() — 409 unless SUBMITTED
+Practice --> Source : full detail, answers and explanations revealed
+Hooks -> Hooks : setQueryData for session + review,\nthen invalidate ["pyq","user"]
+Screen -> Student : /results, then /review
+
+Student -> Screen : open /review later
+Screen -> Hooks : useSessionReview(sessionId)
+Hooks -> Source : getReview(sessionId)
+Source -> API : GET pyq/sessions/:id/review
+API -> Practice : review(...)
+Practice -> DB : session + session_questions + attempts
+Practice --> Screen : same payload as submit
+
+@enduml

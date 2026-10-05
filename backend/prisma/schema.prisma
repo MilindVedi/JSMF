@@ -17,6 +17,7 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   extensions = [citext]
+  schemas    = ["public", "pyq"]
 }
 
 // ---------------------------------------------------------------------------
@@ -27,6 +28,8 @@ enum UserStatus {
   ACTIVE
   SUSPENDED
   DELETED
+
+  @@schema("public")
 }
 
 model User {
@@ -52,7 +55,15 @@ model User {
   avatarObjectKey       String?          @map("avatar_object_key")
   // Nullable: an OAuth-only account has no password.
   passwordHash          String?          @map("password_hash")
-  status                UserStatus       @default(ACTIVE)
+  /// Profile answers asked once, right after email signup. `contactPhone` is
+  /// what the person typed, unverified (`919876543210`) — deliberately not
+  /// `phone`, which is a verified sign-in identifier and unique.
+  contactPhone          String?          @map("contact_phone") @db.VarChar(20)
+  /// Plain text from EXAM_OPTIONS / STAGE_OPTIONS, like a session registration.
+  preparingFor          String?          @map("preparing_for") @db.VarChar(40)
+  currentStage          String?          @map("current_stage") @db.VarChar(40)
+  profileCompletedAt    DateTime?        @map("profile_completed_at") @db.Timestamptz(6)
+  status             UserStatus       @default(ACTIVE)
   lastLoginAt           DateTime?        @map("last_login_at") @db.Timestamptz(6)
   createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -61,21 +72,32 @@ model User {
   refreshTokens        RefreshToken[]
   oauthAccounts        OAuthAccount[]
   verificationCodes    VerificationCode[]
-  authoredProducts     Product[]             @relation("ProductAuthor")
-  createdProducts      Product[]             @relation("ProductCreatedBy")
-  updatedProducts      Product[]             @relation("ProductUpdatedBy")
+  authoredProducts     Product[]               @relation("ProductAuthor")
+  createdProducts      Product[]               @relation("ProductCreatedBy")
+  updatedProducts      Product[]               @relation("ProductUpdatedBy")
   uploadedAssets       ProductAsset[]
   orders               Order[]
   entitlements         Entitlement[]
-  grantedRoles         UserRole[]            @relation("RoleGrantedBy")
+  grantedRoles         UserRole[]              @relation("RoleGrantedBy")
   initiatedRefunds     Refund[]
   accessEvents         ContentAccessEvent[]
   auditLogs            AuditLog[]
   publisherProfile     PublisherProfile?
   couponRedemptions    CouponRedemption[]
   sessionRegistrations SessionRegistration[]
+  bundleDeliveries     SessionBundleDelivery[]
+  dateAnnouncements    SessionDateAnnouncement[]
+  sessionTestimonials  SessionTestimonial[]
+  practiceSessions     PracticeSession[]
+  pyqAttempts          Attempt[]
+  pyqBookmarks         Bookmark[]
+  pyqReports           QuestionReport[]
+  pyqReportsResolved   QuestionReport[]     @relation("QuestionReportResolver")
+  pyqCollections       QuestionCollection[]
+  pyqPreferences       PyqPreference?
 
   @@map("users")
+  @@schema("public")
 }
 
 /// Roles are a table rather than a column on User because one person is
@@ -91,6 +113,7 @@ model Role {
   users UserRole[]
 
   @@map("roles")
+  @@schema("public")
 }
 
 model UserRole {
@@ -105,6 +128,7 @@ model UserRole {
 
   @@id([userId, roleId])
   @@map("user_roles")
+  @@schema("public")
 }
 
 /// Why a refresh token is revoked. The distinction is not bookkeeping: telling
@@ -121,6 +145,8 @@ enum RefreshTokenRevokedReason {
   /// revoked, because a reset is often a response to someone else holding the
   /// account — leaving their refresh tokens alive would make it cosmetic.
   PASSWORD_CHANGED
+
+  @@schema("public")
 }
 
 /// Refresh tokens rotate: each one is single-use, and exchanging it issues a
@@ -151,6 +177,7 @@ model RefreshToken {
   @@index([userId, expiresAt])
   @@index([tokenFamilyId])
   @@map("refresh_tokens")
+  @@schema("public")
 }
 
 /// Identity providers a JSMF account can be linked to. Platform-wide: the same
@@ -158,6 +185,8 @@ model RefreshToken {
 /// because identity is one service for all of them.
 enum OAuthProvider {
   GOOGLE
+
+  @@schema("public")
 }
 
 /// A third-party identity linked to a JSMF account.
@@ -186,6 +215,7 @@ model OAuthAccount {
   @@unique([provider, providerUserId])
   @@unique([userId, provider])
   @@map("oauth_accounts")
+  @@schema("public")
 }
 
 /// What a one-time code authorises. Kept as an enum on one table rather than a
@@ -211,6 +241,8 @@ enum VerificationPurpose {
   PHONE_REGISTRATION
   /// Adding a verified mobile number to an account that is already signed in.
   PHONE_LINK
+
+  @@schema("public")
 }
 
 /// A single-use, expiring secret.
@@ -253,6 +285,7 @@ model VerificationCode {
   /// Finding the live code for a subject is the only lookup this table serves.
   @@index([purpose, subject, expiresAt])
   @@map("verification_codes")
+  @@schema("public")
 }
 
 /// Why a send ended the way it did.
@@ -264,6 +297,8 @@ enum EmailDeliveryStatus {
   SENT
   FAILED
   QUOTA_EXCEEDED
+
+  @@schema("public")
 }
 
 /// One row per attempted send.
@@ -297,6 +332,7 @@ model EmailDelivery {
   /// without reading the table.
   @@index([createdAt, status])
   @@map("email_deliveries")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +353,8 @@ enum ProductType {
   /// need no second implementation; everything only a session has lives in
   /// `live_sessions`. Never listed in the PDF storefront.
   LIVE_SESSION
+
+  @@schema("public")
 }
 
 enum ProductStatus {
@@ -324,6 +362,8 @@ enum ProductStatus {
   PUBLISHED
   UNPUBLISHED // reversible
   ARCHIVED // the soft delete
+
+  @@schema("public")
 }
 
 /// Explicit rather than inferred from `price == 0`, so that "this is free" is a
@@ -332,6 +372,8 @@ enum ProductStatus {
 enum AccessType {
   FREE
   PAID
+
+  @@schema("public")
 }
 
 model Product {
@@ -401,6 +443,7 @@ model Product {
   @@index([authorUserId])
   @@index([featuredOrder])
   @@map("products")
+  @@schema("public")
 }
 
 enum AssetKind {
@@ -412,6 +455,8 @@ enum AssetKind {
   /// belongs in (public vs. private) is a service-layer rule, not a column:
   /// see docs/pdf-platform/02-architecture.md, "Storage and download access".
   COVER_IMAGE
+
+  @@schema("public")
 }
 
 /// Where an asset physically lives. Recorded per asset rather than assumed
@@ -427,6 +472,8 @@ enum StorageProvider {
   /// of this column is that the provider is data, not a structural assumption.
   GCS
   S3
+
+  @@schema("public")
 }
 
 /// Versioned on purpose. The doctor will find a typo and re-upload; a new row
@@ -466,6 +513,7 @@ model ProductAsset {
 
   @@index([productId, kind, isCurrent])
   @@map("product_assets")
+  @@schema("public")
 }
 
 enum LinkKind {
@@ -474,6 +522,8 @@ enum LinkKind {
   TELEGRAM
   WEBSITE
   OTHER
+
+  @@schema("public")
 }
 
 /// A table rather than a `youtube_url` column on Product, so that "also link
@@ -501,6 +551,7 @@ model ProductLink {
 
   @@index([productId, sortOrder])
   @@map("product_links")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -530,6 +581,7 @@ model Taxonomy {
   terms TaxonomyTerm[]
 
   @@map("taxonomies")
+  @@schema("public")
 }
 
 /// taxonomy: Restrict, not Cascade. A taxonomy KIND (e.g. "subject") is master
@@ -572,6 +624,7 @@ model TaxonomyTerm {
   @@index([parentTermId])
   @@index([taxonomyId, sortOrder])
   @@map("taxonomy_terms")
+  @@schema("public")
 }
 
 /// term: Restrict, not Cascade. This is the sharper edge of the taxonomy risk
@@ -593,6 +646,7 @@ model ProductTaxonomyTerm {
   @@id([productId, termId])
   @@index([termId])
   @@map("product_taxonomy_terms")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -607,6 +661,8 @@ enum OrderStatus {
   CANCELLED
   REFUNDED
   PARTIALLY_REFUNDED
+
+  @@schema("public")
 }
 
 model Order {
@@ -649,6 +705,7 @@ model Order {
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
   @@map("orders")
+  @@schema("public")
 }
 
 /// The snapshot columns are the point of this table: if the doctor renames the
@@ -673,6 +730,7 @@ model OrderItem {
 
   @@unique([orderId, productId])
   @@map("order_items")
+  @@schema("public")
 }
 
 enum PaymentProvider {
@@ -680,6 +738,8 @@ enum PaymentProvider {
   /// Development adapter: simulates the full authorize/capture/webhook cycle
   /// so the payment flow can be built and tested before Razorpay keys exist.
   STUB
+
+  @@schema("public")
 }
 
 enum PaymentStatus {
@@ -688,6 +748,8 @@ enum PaymentStatus {
   CAPTURED
   FAILED
   REFUNDED
+
+  @@schema("public")
 }
 
 /// Separate from Order because one order can have several payment attempts (a
@@ -723,6 +785,7 @@ model Payment {
   @@index([orderId])
   @@index([providerOrderId])
   @@map("payments")
+  @@schema("public")
 }
 
 enum WebhookEventStatus {
@@ -730,6 +793,8 @@ enum WebhookEventStatus {
   PROCESSED
   IGNORED
   FAILED
+
+  @@schema("public")
 }
 
 /// The idempotency guard, and not optional.
@@ -753,12 +818,15 @@ model PaymentWebhookEvent {
 
   @@index([provider, eventType])
   @@map("payment_webhook_events")
+  @@schema("public")
 }
 
 enum RefundStatus {
   PENDING
   PROCESSED
   FAILED
+
+  @@schema("public")
 }
 
 model Refund {
@@ -780,6 +848,7 @@ model Refund {
 
   @@index([orderId])
   @@map("refunds")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -792,12 +861,16 @@ enum EntitlementSource {
   ADMIN_GRANT
   SUBSCRIPTION
   BUNDLE
+
+  @@schema("public")
 }
 
 enum EntitlementStatus {
   ACTIVE
   REVOKED
   EXPIRED
+
+  @@schema("public")
 }
 
 /// The heart of access control: every download check reads this table and only
@@ -840,6 +913,7 @@ model Entitlement {
   @@index([userId, status])
   @@index([productId])
   @@map("entitlements")
+  @@schema("public")
 }
 
 /// Written on every signed-URL mint. This is what makes download management and
@@ -873,6 +947,7 @@ model ContentAccessEvent {
   @@index([productId, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
   @@map("content_access_events")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -885,12 +960,16 @@ model ContentAccessEvent {
 enum CouponDiscountType {
   PERCENT
   FIXED
+
+  @@schema("public")
 }
 
 enum CouponStatus {
   ACTIVE
   DISABLED
   EXPIRED
+
+  @@schema("public")
 }
 
 model Coupon {
@@ -913,6 +992,7 @@ model Coupon {
   redemptions CouponRedemption[]
 
   @@map("coupons")
+  @@schema("public")
 }
 
 model CouponRedemption {
@@ -929,6 +1009,7 @@ model CouponRedemption {
 
   @@unique([couponId, orderId])
   @@map("coupon_redemptions")
+  @@schema("public")
 }
 
 /// Buying the bundle grants one entitlement per child, with source = BUNDLE.
@@ -942,6 +1023,7 @@ model ProductBundleItem {
 
   @@id([bundleProductId, childProductId])
   @@map("product_bundle_items")
+  @@schema("public")
 }
 
 /// For the multi-educator marketplace.
@@ -960,6 +1042,7 @@ model PublisherProfile {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("publisher_profiles")
+  @@schema("public")
 }
 
 /// Worth having as soon as more than one person has admin access to a system
@@ -980,6 +1063,7 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([actorUserId, createdAt(sort: Desc)])
   @@map("audit_logs")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -1001,48 +1085,95 @@ model AuditLog {
 model LiveSession {
   /// Shares the product's id: one session per product, and the product is the
   /// thing orders point at.
-  productId       String   @id @map("product_id") @db.Uuid
+  productId              String             @id @map("product_id") @db.Uuid
   /// The first day's start. A copy kept by LiveSessionService — the only writer
   /// — in the same transaction that writes the days, so listing, ordering and
   /// "registration closes when it starts" stay one indexed column.
-  startsAt        DateTime @map("starts_at") @db.Timestamptz(6)
+  ///
+  /// NULL when the session has no days yet: announced, open for booking, dates
+  /// still to be fixed. The website shows "To be announced" for those, and
+  /// registration stays open because nothing has started.
+  startsAt               DateTime?          @map("starts_at") @db.Timestamptz(6)
   /// "Live on Zoom · Link sent on mail". Display text, not a URL.
-  platformLabel   String   @map("platform_label") @db.VarChar(160)
+  platformLabel          String             @map("platform_label") @db.VarChar(160)
   /// NULL = unlimited. Seats taken are counted from entitlements, never stored,
   /// so this is the only number here that can go stale — and only by an admin
   /// changing it.
-  capacity        Int?
+  capacity               Int?
   /// Admin toggle: when false, both seatsRemaining and displaySeats are hidden
   /// from the public-facing API. Lets the admin suppress seat counts without
   /// deleting the underlying data.
-  showSeats       Boolean  @default(true) @map("show_seats")
+  showSeats              Boolean            @default(true) @map("show_seats")
   /// TEMPORARY (external Razorpay Payment Page phase): a manually-set "seats
   /// available" number shown on /prep-kit to signal demand. NOT real capacity
   /// and not derived from entitlements. NULL = show no seats line, 0 = fully
   /// booked. Remove this column when the external checkout flow is retired.
-  displaySeats    Int?     @map("display_seats")
+  displaySeats           Int?               @map("display_seats")
   /// The joining link. Private: sent only to people holding a seat, never in a
   /// public response. Nullable because it is often created days after the
   /// session is announced.
-  joinUrl         String?  @map("join_url")
-  recordingUrl    String?  @map("recording_url")
+  joinUrl                String?            @map("join_url")
+  recordingUrl           String?            @map("recording_url")
   /// "What you'll learn" bullets, in display order. An array rather than a
   /// child table: they are never queried, filtered or referenced, and always
   /// edited as one list.
-  highlights      String[] @default([])
+  highlights             String[]           @default([])
   /// "Every attendee gets Dr. Angad's high-yield revision planner (PDF) free."
-  perkText        String?  @map("perk_text") @db.VarChar(300)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  perkText               String?            @map("perk_text") @db.VarChar(300)
+  /// "Who is this session for?" — one paragraph naming the exams and the kind
+  /// of preparation it suits. Null hides the section entirely rather than
+  /// printing an empty heading.
+  audienceText           String?            @map("audience_text") @db.VarChar(600)
+  /// Copy around the testimonials section. All three fall back to a generic
+  /// default when null, so a session shows reasonable text the moment its
+  /// first testimonial is added, without the admin having to fill these in.
+  testimonialsHeading    String?            @map("testimonials_heading") @db.VarChar(150)
+  testimonialsSubheading String?            @map("testimonials_subheading") @db.VarChar(300)
+  /// The small label on the right, e.g. "Previous FMGE session". Null hides
+  /// it entirely — unlike the heading and subheading, this one has no
+  /// generic fallback, because an empty tag reads as broken decoration.
+  testimonialsTag        String?            @map("testimonials_tag") @db.VarChar(80)
+  /// Subject line of the confirmation email sent when a seat is paid for.
+  /// NULL keeps the built-in "JSMF - Your seat is confirmed: {title}". The
+  /// token `{title}` is substituted with the session's title wherever it
+  /// appears, so a custom subject can still carry it without being retyped
+  /// every time the session is renamed.
+  confirmationSubject    String?            @map("confirmation_subject") @db.VarChar(200)
+  /// What the confirmation email says in place of the joining link while
+  /// `joinUrl` is still empty. NULL keeps the built-in "We will email you the
+  /// joining link before the session starts." Editable because that sentence
+  /// is wrong whenever the dates themselves are not fixed yet — there is no
+  /// "before the session starts" to point at.
+  pendingJoinLinkText    String?            @map("pending_join_link_text") @db.VarChar(300)
+  /// Appends a short "if this landed in Spam, mark it Not spam" info box to
+  /// every email sent for this session — the confirmation, the dates
+  /// announcement, each day's reminder, and the bundle-ready note. On per
+  /// session rather than platform-wide: a brand-new session with no sender
+  /// reputation benefits from the nudge; a steady one does not need to pester
+  /// everyone forever. Defaults off, so existing sessions are unchanged.
+  showNotSpamNotice      Boolean            @default(false) @map("show_not_spam_notice")
+  /// When and how the items included with a seat (the bundled PDF) reach
+  /// buyers. IMMEDIATE grants them at payment, named in the confirmation
+  /// email. The other two hold them back until the session has ended and the
+  /// item is published — AUTO_AFTER_SESSION releases them on the reminder
+  /// sweep's clock, MANUAL only when an admin sends them. A deferred mode is
+  /// what makes it possible to sell seats before the PDF exists.
+  bundleDeliveryMode     BundleDeliveryMode @default(IMMEDIATE) @map("bundle_delivery_mode")
+  createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   /// Restrict: a session that has been sold must keep its product forever,
   /// the same rule every other product follows (archive, never delete).
-  product       Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product       Product                 @relation(fields: [productId], references: [id], onDelete: Restrict)
   days          LiveSessionDay[]
   registrations SessionRegistration[]
+  deliveries         SessionBundleDelivery[]
+  dateAnnouncements  SessionDateAnnouncement[]
+  testimonials       SessionTestimonial[]
 
   @@index([startsAt])
   @@map("live_sessions")
+  @@schema("public")
 }
 
 /// One sitting of a session. A single-day session has one row; a multi-day
@@ -1065,6 +1196,7 @@ model LiveSessionDay {
   @@index([liveSessionId, startsAt])
   @@index([startsAt])
   @@map("live_session_days")
+  @@schema("public")
 }
 
 /// What a person told us when they signed up for a session, and what we have
@@ -1079,7 +1211,11 @@ model SessionRegistration {
   userId             String    @map("user_id") @db.Uuid
   /// Digits only, with country code (919876543210). Typed by the attendee and
   /// not verified — used for the session only, never as a login identifier.
-  whatsappNumber     String    @map("whatsapp_number") @db.VarChar(20)
+  ///
+  /// Collected on the registration form again; nullable survives from when it
+  /// briefly was not. Nothing sends WhatsApp or SMS to it today — it is kept
+  /// as a contact number on file, not a delivery channel.
+  whatsappNumber     String?   @map("whatsapp_number") @db.VarChar(20)
   /// "NEET-PG", "INI-CET"… and "Final year", "Intern"… Free text in the
   /// database, validated against a list in the API: the options will change,
   /// and a changed option should not need a migration.
@@ -1093,16 +1229,17 @@ model SessionRegistration {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  liveSession LiveSession @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
+  liveSession  LiveSession          @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
   /// Restrict, like orders: a person who registered is part of a session's
   /// record, and removing an account is a deliberate process, not a cascade.
-  user        User        @relation(fields: [userId], references: [id], onDelete: Restrict)
-  order       Order?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order        Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
   dayReminders SessionDayReminder[]
 
   @@unique([liveSessionId, userId])
   @@index([userId])
   @@map("session_registrations")
+  @@schema("public")
 }
 
 /// "This person has been reminded about this day." The primary key is the
@@ -1119,4 +1256,496 @@ model SessionDayReminder {
   @@id([registrationId, liveSessionDayId])
   @@index([liveSessionDayId])
   @@map("session_day_reminders")
+  @@schema("public")
+}
+
+/// A screenshot of what someone said about a past session, shown on the
+/// session's page.
+///
+/// Its own table rather than a `product_assets` row: that table's
+/// `product_assets_current_unique` index allows one current asset per kind,
+/// and testimonials are a gallery — many at once, ordered, each removable on
+/// its own. Stored in the PUBLIC bucket, like a cover image, because it is
+/// marketing shown to people who have not paid.
+model SessionTestimonial {
+  id              String          @id @default(uuid(7)) @db.Uuid
+  liveSessionId   String          @map("live_session_id") @db.Uuid
+  storageProvider StorageProvider @map("storage_provider")
+  bucket          String          @db.VarChar(255)
+  objectKey       String          @map("object_key")
+  mimeType        String?         @map("mime_type") @db.VarChar(120)
+  sizeBytes       BigInt?         @map("size_bytes")
+  /// Display order, lowest first. Ties fall back to `createdAt`.
+  sortOrder       Int             @default(0) @map("sort_order")
+  uploadedById    String?         @map("uploaded_by") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  liveSession LiveSession @relation(fields: [liveSessionId], references: [productId], onDelete: Cascade)
+  uploadedBy  User?       @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([liveSessionId, sortOrder])
+  @@map("session_testimonials")
+  @@schema("public")
+}
+
+/// How a session's included items reach its buyers. See `LiveSession`.
+enum BundleDeliveryMode {
+  IMMEDIATE
+  AUTO_AFTER_SESSION
+  MANUAL
+
+  @@schema("public")
+}
+
+enum BundleDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+
+  @@schema("public")
+}
+
+/// One row per buyer of a session whose included items are delivered after the
+/// session rather than at payment.
+///
+/// A plain claim row (as `SessionDayReminder` uses) would not be enough here:
+/// an admin working through this list needs to see *why* someone has not
+/// received the PDF, so the failure reason is kept rather than left in a log.
+/// Nothing ever moves a row back to PENDING once it is SENT — "already sent"
+/// has to survive a later "send to everyone", or a bulk click would mail the
+/// same people twice.
+model SessionBundleDelivery {
+  id            String               @id @default(uuid(7)) @db.Uuid
+  liveSessionId String               @map("live_session_id") @db.Uuid
+  userId        String               @map("user_id") @db.Uuid
+  status        BundleDeliveryStatus @default(PENDING)
+  /// Why the last attempt failed. Cleared when one succeeds.
+  lastError     String?              @map("last_error")
+  attempts      Int                  @default(0)
+  sentAt        DateTime?            @map("sent_at") @db.Timestamptz(6)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  liveSession LiveSession @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
+  /// Restrict, like every other record of what a person was sold.
+  user        User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([liveSessionId, userId])
+  @@index([liveSessionId, status])
+  @@map("session_bundle_deliveries")
+  @@schema("public")
+}
+
+enum AnnouncementStatus {
+  PENDING
+  SENT
+  FAILED
+
+  @@schema("public")
+}
+
+/// One row per seat holder told that a session's dates are now fixed.
+/// Mirrors SessionBundleDelivery — the same admin-triggered send flow —
+/// and records `announcedStartsAt` so that a later reschedule makes every
+/// buyer sendable again without a separate table or a blunt re-send.
+model SessionDateAnnouncement {
+  id                String             @id @default(uuid(7)) @db.Uuid
+  liveSessionId     String             @map("live_session_id") @db.Uuid
+  userId            String             @map("user_id") @db.Uuid
+  status            AnnouncementStatus @default(PENDING)
+  /// The first-day start the buyer was told about. When the session is
+  /// rescheduled, rows whose announcedStartsAt differs from the current
+  /// first day become eligible to be sent again.
+  announcedStartsAt DateTime?          @map("announced_starts_at") @db.Timestamptz(6)
+  lastError         String?            @map("last_error")
+  attempts          Int                @default(0)
+  sentAt            DateTime?          @map("sent_at") @db.Timestamptz(6)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  liveSession LiveSession @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([liveSessionId, userId])
+  @@index([liveSessionId, status])
+  @@map("session_date_announcements")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Platform-wide settings
+// ---------------------------------------------------------------------------
+
+/// A single row ("global") of site-wide toggles that are not tied to any one
+/// session or product — things the admin flips on or off for the whole
+/// platform at once. Modelled as a singleton row rather than a key/value
+/// table because there are only a handful of these and each needs its own
+/// type; add a column here for the next one rather than inventing a schema.
+model PlatformSettings {
+  id String @id @default("global") @db.VarChar(20)
+
+  /// Shows a "check your spam folder" line wherever a verification email or
+  /// Google sign-in is offered, across both the main website and the PDF
+  /// store. Off hides it everywhere at once.
+  showSpamFolderNote Boolean @default(true) @map("show_spam_folder_note")
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("platform_settings")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// PYQ question bank & practice
+// ---------------------------------------------------------------------------
+//
+// Owned by the `questions` module. Self-contained on purpose: nothing here
+// references products or orders. Paid access is decided by PyqAccessService
+// through the entitlements module's public service, so plans can change
+// without a migration to these tables.
+//
+// Slugs are the public identifiers (`neet-pg`, `anatomy`, `anatomy--upper-limb`)
+// because the PYQ web app already addresses taxonomy that way; the uuid ids
+// stay internal.
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+
+  @@schema("pyq")
+}
+
+enum QuestionStatus {
+  /// Imported or edited but not yet visible to students.
+  DRAFT
+  PUBLISHED
+
+  @@schema("pyq")
+}
+
+/// An exam a question was asked in (NEET-PG, FMGE, INI-CET).
+model Exam {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  slug        String   @unique @db.VarChar(60)
+  name        String   @db.VarChar(120)
+  shortName   String   @map("short_name") @db.VarChar(40)
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  questions Question[]
+
+  @@map("exams")
+  @@schema("pyq")
+}
+
+/// One of the MBBS subjects.
+model Subject {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  slug        String   @unique @db.VarChar(80)
+  name        String   @db.VarChar(120)
+  /// `pre-clinical` | `para-clinical` | `clinical`. A string rather than an
+  /// enum: it is display grouping, and a new group should not need a migration.
+  group       String   @db.VarChar(40)
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  topics    Topic[]
+  questions Question[]
+
+  @@map("subjects")
+  @@schema("pyq")
+}
+
+/// A topic within a subject. The slug is globally unique and, by convention,
+/// `${subjectSlug}--${topic}` so a topic slug alone reveals its subject.
+model Topic {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  subjectId String   @map("subject_id") @db.Uuid
+  slug      String   @unique @db.VarChar(160)
+  name      String   @db.VarChar(160)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  questions Question[]
+
+  @@index([subjectId])
+  @@map("topics")
+  @@schema("pyq")
+}
+
+/// A single-best-answer MCQ.
+model Question {
+  id                  String         @id @default(uuid(7)) @db.Uuid
+  /// The content pipeline's own identifier. Import is an upsert on this, so
+  /// re-running the same file updates rather than duplicates.
+  externalKey         String         @unique @map("external_key") @db.VarChar(160)
+  examId              String         @map("exam_id") @db.Uuid
+  subjectId           String         @map("subject_id") @db.Uuid
+  topicId             String?        @map("topic_id") @db.Uuid
+  year                Int            @db.SmallInt
+  stem                String
+  stemImageUrl        String?        @map("stem_image_url")
+  /// Placeholder figure (`{ kind, caption }`) the web app renders until real
+  /// images exist. Display-only, never queried.
+  stemFigure          Json?          @map("stem_figure")
+  explanation         String
+  explanationImageUrl String?        @map("explanation_image_url")
+  explanationFigure   Json?          @map("explanation_figure")
+  difficulty          Difficulty     @default(MEDIUM)
+  status              QuestionStatus @default(DRAFT)
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime?      @map("deleted_at") @db.Timestamptz(6)
+
+  exam    Exam    @relation(fields: [examId], references: [id], onDelete: Restrict)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  topic   Topic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
+
+  options          QuestionOption[]
+  sessionQuestions SessionQuestion[]
+  attempts         Attempt[]
+  bookmarks        Bookmark[]
+  reports          QuestionReport[]
+  collectionItems  CollectionQuestion[]
+
+  @@index([status, subjectId, topicId])
+  @@index([status, examId, year])
+  @@index([status, difficulty])
+  @@map("questions")
+  @@schema("pyq")
+}
+
+model QuestionOption {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  /// `A`, `B`, `C`, `D` — what the student sees beside the option.
+  label      String   @db.VarChar(4)
+  text       String
+  imageUrl   String?  @map("image_url")
+  /// Never serialised to a student before they have answered (PRACTICE) or
+  /// submitted (TEST).
+  isCorrect  Boolean  @default(false) @map("is_correct")
+  sortOrder  Int      @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, sortOrder])
+  @@map("question_options")
+  @@schema("pyq")
+}
+
+enum PracticeMode {
+  /// Feedback after every answer.
+  PRACTICE
+  /// Answers hidden until the session is submitted.
+  TEST
+  /// A hand-picked set (bookmarks, wrong questions) with practice feedback.
+  CUSTOM
+
+  @@schema("pyq")
+}
+
+enum PracticeSessionStatus {
+  IN_PROGRESS
+  SUBMITTED
+
+  @@schema("pyq")
+}
+
+/// One sitting: a fixed, ordered set of questions chosen when it starts.
+model PracticeSession {
+  id               String                @id @default(uuid(7)) @db.Uuid
+  userId           String                @map("user_id") @db.Uuid
+  mode             PracticeMode
+  label            String                @db.VarChar(200)
+  /// The filters / source the questions were drawn from, kept so history can
+  /// describe the session. Never used to re-derive its questions.
+  config           Json                  @default("{}")
+  timeLimitSec     Int?                  @map("time_limit_sec")
+  status           PracticeSessionStatus @default(IN_PROGRESS)
+  startedAt        DateTime              @default(now()) @map("started_at") @db.Timestamptz(6)
+  submittedAt      DateTime?             @map("submitted_at") @db.Timestamptz(6)
+  totalQuestions   Int                   @map("total_questions")
+  /// Score fields are written once, at submit.
+  correctCount     Int?                  @map("correct_count")
+  incorrectCount   Int?                  @map("incorrect_count")
+  unattemptedCount Int?                  @map("unattempted_count")
+  /// 0-100, correct over attempted.
+  accuracy         Int?
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions SessionQuestion[]
+  attempts  Attempt[]
+
+  @@index([userId, startedAt(sort: Desc)])
+  @@map("practice_sessions")
+  @@schema("pyq")
+}
+
+/// The ordered question list of a session, fixed when it starts.
+model SessionQuestion {
+  sessionId  String @map("session_id") @db.Uuid
+  questionId String @map("question_id") @db.Uuid
+  position   Int
+
+  session  PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question        @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@id([sessionId, questionId])
+  @@unique([sessionId, position])
+  @@index([questionId])
+  @@map("session_questions")
+  @@schema("pyq")
+}
+
+/// A student's interaction with one question in one session. A row may exist
+/// with no selected option (flagged before answering).
+model Attempt {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  sessionId        String    @map("session_id") @db.Uuid
+  questionId       String    @map("question_id") @db.Uuid
+  /// Denormalised from the session so per-user stats and the daily allowance
+  /// are single-index reads.
+  userId           String    @map("user_id") @db.Uuid
+  selectedOptionId String?   @map("selected_option_id") @db.Uuid
+  isCorrect        Boolean?  @map("is_correct")
+  timeSpentMs      Int       @default(0) @map("time_spent_ms")
+  flagged          Boolean   @default(false)
+  answeredAt       DateTime? @map("answered_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  session  PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question        @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
+  @@index([userId, answeredAt])
+  @@index([userId, questionId, answeredAt(sort: Desc)])
+  @@map("attempts")
+  @@schema("pyq")
+}
+
+model Bookmark {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("bookmarks")
+  @@schema("pyq")
+}
+
+enum QuestionReportReason {
+  WRONG_ANSWER
+  WRONG_EXPLANATION
+  INCORRECT_QUESTION
+  IMAGE_ISSUE
+  OTHER
+
+  @@schema("pyq")
+}
+
+enum QuestionReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+
+  @@schema("pyq")
+}
+
+/// A student flagging a problem with a question for content review.
+model QuestionReport {
+  id         String               @id @default(uuid(7)) @db.Uuid
+  userId     String               @map("user_id") @db.Uuid
+  questionId String               @map("question_id") @db.Uuid
+  reason     QuestionReportReason
+  details    String?              @db.VarChar(2000)
+  status     QuestionReportStatus @default(OPEN)
+  resolvedAt DateTime?            @map("resolved_at") @db.Timestamptz(6)
+  /// What the admin did about it, written when the report is resolved or
+  /// dismissed. Kept so the decision survives beyond the activity log.
+  adminNote    String? @map("admin_note") @db.VarChar(2000)
+  /// Which admin closed it. Null while OPEN, and for reports closed before
+  /// this column existed.
+  resolvedById String? @map("resolved_by_id") @db.Uuid
+  createdAt  DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  resolvedBy User?    @relation("QuestionReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([questionId])
+  @@map("question_reports")
+  @@schema("pyq")
+}
+
+/// A user-named list of questions ("High-yield pharmacology"). Distinct from a
+/// bookmark: a bookmark saves one question, a collection is a themed set
+/// practised and filtered as a group.
+model QuestionCollection {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  name        String   @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CollectionQuestion[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("collections")
+  @@schema("pyq")
+}
+
+/// Membership of a question in a collection, with when it was added.
+model CollectionQuestion {
+  collectionId String   @map("collection_id") @db.Uuid
+  questionId   String   @map("question_id") @db.Uuid
+  addedAt      DateTime @default(now()) @map("added_at") @db.Timestamptz(6)
+
+  collection QuestionCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  question   Question           @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, questionId])
+  @@index([questionId])
+  @@map("collection_questions")
+  @@schema("pyq")
+}
+
+/// PYQ-specific preferences of one user (target exam, daily goal). One row
+/// per user, created on first save; absent means defaults.
+model PyqPreference {
+  userId      String   @id @map("user_id") @db.Uuid
+  /// Exam slug (`neet-pg`). A slug, not a foreign key, so retiring an exam
+  /// never blocks or cascades into preferences.
+  targetExam  String?  @map("target_exam") @db.VarChar(60)
+  /// Answers per India-time day that count as "today done" for the streak.
+  dailyTarget Int      @default(10) @map("daily_target") @db.SmallInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+  @@schema("pyq")
 }

@@ -3,7 +3,18 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, FileText, FolderTree, Loader2, LogOut, ReceiptText, Sparkles, Users } from "lucide-react";
+import {
+  BookOpenCheck,
+  CalendarDays,
+  FileText,
+  FolderTree,
+  Loader2,
+  LogOut,
+  ReceiptText,
+  Settings,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isAdmin, useSessionStore } from "@/store/session-store";
@@ -13,8 +24,10 @@ const NAV = [
   { href: "/admin/featured", label: "Featured", icon: Sparkles },
   { href: "/admin/sessions", label: "Sessions", icon: CalendarDays },
   { href: "/admin/taxonomy", label: "Categories", icon: FolderTree },
+  { href: "/admin/pyq", label: "Question bank", icon: BookOpenCheck },
   { href: "/admin/orders", label: "Orders", icon: ReceiptText },
   { href: "/admin/team", label: "Team", icon: Users },
+  { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
 /**
@@ -57,13 +70,42 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
+      {/*
+        Two-row header. The old single-row version crammed brand + 8 nav items +
+        the signed-in email + a logout button into one 56px bar, which forced
+        horizontal scrolling on the nav and buried the identity. Splitting
+        brand/identity above and the full nav below lets each row take the width
+        it needs, and the nav wraps vertically once it runs out of room instead
+        of hiding items off the right edge.
+      */}
       <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-[1280px] items-center gap-4 px-4 sm:px-6">
-          <Link href="/admin/products" className="font-semibold tracking-tight">
-            JSMF <span className="text-muted-foreground">Admin</span>
+        <div className="mx-auto flex w-full max-w-[1280px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <Link href="/admin/products" className="flex items-center gap-2 font-semibold tracking-tight">
+            {/* eslint-disable-next-line @next/next/no-img-element -- build-time constant from public/ */}
+            <img src="/favicon.png" alt="" width={28} height={28} className="size-7 rounded-full object-cover" />
+            <span className="text-base">
+              JSMF <span className="text-muted-foreground">Admin</span>
+            </span>
           </Link>
 
-          <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
+          <div className="flex items-center gap-3">
+            <span className="hidden text-sm text-muted-foreground sm:inline">{user.email}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                await logout();
+                router.replace("/admin/login");
+              }}
+            >
+              <LogOut className="size-4" />
+              <span className="sr-only sm:not-sr-only">Log out</span>
+            </Button>
+          </div>
+        </div>
+
+        <nav className="mx-auto w-full max-w-[1280px] px-4 pb-3 sm:px-6">
+          <div className="flex flex-wrap items-center gap-1.5">
             {NAV.map((item) => {
               const active = pathname.startsWith(item.href);
               return (
@@ -82,23 +124,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </Link>
               );
             })}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <span className="hidden text-sm text-muted-foreground sm:inline">{user.email}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={async () => {
-                await logout();
-                router.replace("/admin/login");
-              }}
-            >
-              <LogOut className="size-4" />
-              <span className="sr-only sm:not-sr-only">Log out</span>
-            </Button>
           </div>
-        </div>
+        </nav>
       </header>
 
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-6 sm:px-6 lg:py-8">

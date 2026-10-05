@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ReportReason } from "@/types";
+import { useReportQuestion } from "@/hooks/pyq";
 
 const REASONS: { id: ReportReason; label: string }[] = [
   { id: "wrong-answer", label: "The marked answer is wrong" },
@@ -29,14 +30,22 @@ export function ReportQuestionModal({ questionId }: { questionId: string }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [details, setDetails] = useState("");
+  const report = useReportQuestion();
 
   function handleSubmit() {
     if (!reason) return;
-    // No backend yet — this only simulates entering the content review workflow.
-    toast.success("Thanks — this question has been sent to our content team for review.");
-    setOpen(false);
-    setReason(null);
-    setDetails("");
+    report.mutate(
+      { questionId, reason, details: details.trim() || undefined },
+      {
+        onSuccess: () => {
+          toast.success("Thanks — this question has been sent to our content team for review.");
+          setOpen(false);
+          setReason(null);
+          setDetails("");
+        },
+        onError: (error) => toast.error(error.message || "Could not send the report. Please try again."),
+      }
+    );
   }
 
   return (
@@ -59,7 +68,7 @@ export function ReportQuestionModal({ questionId }: { questionId: string }) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Report question {questionId}</DialogTitle>
+          <DialogTitle>Report this question</DialogTitle>
           <DialogDescription>
             Let us know what&apos;s wrong. Reports go straight to our internal content review workflow.
           </DialogDescription>
@@ -104,8 +113,8 @@ export function ReportQuestionModal({ questionId }: { questionId: string }) {
           <Button variant="outline" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!reason}>
-            Submit report
+          <Button onClick={handleSubmit} disabled={!reason || report.isPending}>
+            {report.isPending ? "Sending…" : "Submit report"}
           </Button>
         </DialogFooter>
       </DialogContent>

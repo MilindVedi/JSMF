@@ -73,7 +73,31 @@ async function getGoogleIdToken(audience: string): Promise<string | null> {
  * closing the second door is an infrastructure change (ingress restriction or
  * a load balancer), not an application one.
  */
+/** Must match VIA_FRONTEND_HEADER in backend/src/common/guards/internal-only.guard.ts. */
+const VIA_FRONTEND_HEADER = "x-jsmf-via-frontend";
+
+/**
+ * `/api/internal/*` is for Cloud Scheduler, which calls the backend directly
+ * with its own identity. Proxying it would attach this app's IAM token and let
+ * anyone on the internet trigger those jobs. Decoded and slash-collapsed first
+ * so `/api//internal` or `/api/%69nternal` cannot slip past; a path that will
+ * not decode is refused outright.
+ */
+function isInternalPath(pathname: string): boolean {
+  let path: string;
+  try {
+    path = decodeURIComponent(pathname);
+  } catch {
+    return true;
+  }
+  return /^\/api\/internal(\/|$)/i.test(path.replace(/\/{2,}/g, "/"));
+}
+
 export async function middleware(request: NextRequest) {
+  if (isInternalPath(request.nextUrl.pathname)) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
   // Only intercept requests to /api/*
   if (request.nextUrl.pathname.startsWith("/api/")) {
     const rawBackendUrl =
@@ -93,6 +117,10 @@ export async function middleware(request: NextRequest) {
 
     // Clone request headers and inject the ID token
     const requestHeaders = new Headers(request.headers);
+    // Marks the request as having come through a public frontend. Set, never
+    // copied, so a caller cannot strip it; the backend refuses /internal routes
+    // that carry it (InternalOnlyGuard).
+    requestHeaders.set(VIA_FRONTEND_HEADER, "1");
     if (idToken) {
       // X-Serverless-Authorization is used by Cloud Run for IAM auth,
       // leaving the standard Authorization header free for the app's

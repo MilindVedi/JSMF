@@ -136,6 +136,69 @@ export const adminOrderApi = {
     api.post<{ orderId: string; status: OrderStatus }>(`/admin/orders/${id}/refund`, { reason }),
 };
 
+/**
+ * When the PDF included with a seat reaches buyers.
+ *
+ * `IMMEDIATE` grants it at payment. The other two hold it back until the
+ * session has ended and the PDF is published — which is what lets seats sell
+ * before the PDF has been written.
+ */
+export type BundleDeliveryMode = "IMMEDIATE" | "AUTO_AFTER_SESSION" | "MANUAL";
+
+export type BundleDeliveryStatus = "PENDING" | "SENT" | "FAILED";
+
+/** A testimonial screenshot shown on the session's page. */
+export interface SessionTestimonial {
+  id: string;
+  url: string;
+  sortOrder: number;
+}
+
+/** One buyer's row in the included-material delivery table. */
+export interface BundleDelivery {
+  userId: string;
+  name: string;
+  email: string | null;
+  status: BundleDeliveryStatus;
+  /** Why the last attempt failed. */
+  lastError: string | null;
+  sentAt: string | null;
+  attempts: number;
+}
+
+export interface BundleDeliveryList {
+  mode: BundleDeliveryMode;
+  /** Why sending is not possible yet, or null when it is. */
+  blocker: string | null;
+  includedTitles: string[];
+  rows: BundleDelivery[];
+}
+
+export interface BundleSendResult {
+  attempted: number;
+  sent: number;
+  failed: Array<{ userId: string; name: string; email: string | null; reason: string }>;
+}
+
+export type AnnouncementStatus = 'PENDING' | 'SENT' | 'FAILED';
+
+/** One buyer's row in the date-announcement table. */
+export interface DateAnnouncement {
+  userId: string;
+  name: string;
+  email: string | null;
+  status: AnnouncementStatus;
+  lastError: string | null;
+  sentAt: string | null;
+  attempts: number;
+}
+
+export interface DateAnnouncementList {
+  blocker: string | null;
+  currentStartsAt: string | null;
+  rows: DateAnnouncement[];
+}
+
 /** A live session as the admin API returns it. Money is paise, as a string. */
 export interface SessionDay {
   id: string;
@@ -150,9 +213,9 @@ export interface AdminSession {
   tagline: string | null;
   description: string | null;
   status: "DRAFT" | "PUBLISHED" | "UNPUBLISHED" | "ARCHIVED";
-  /** The first day's start. */
-  startsAt: string;
-  /** In start order; one entry for a one-day session. */
+  /** The first day's start. Null when the dates have not been fixed yet. */
+  startsAt: string | null;
+  /** In start order; one entry for a one-day session, empty when undated. */
   days: SessionDay[];
   platformLabel: string;
   capacity: number | null;
@@ -160,11 +223,26 @@ export interface AdminSession {
   showSeats: boolean;
   /** TEMPORARY external-checkout scarcity number for /prep-kit. Null = hidden, 0 = full. */
   displaySeats: number | null;
+  /** When the PDF included with a seat reaches buyers. */
+  bundleDeliveryMode: BundleDeliveryMode;
   seatsTaken: number;
   joinUrl: string | null;
   recordingUrl: string | null;
   highlights: string[];
   perkText: string | null;
+  /** "Who is this session for?" — null hides the section on the website. */
+  audienceText: string | null;
+  /** Testimonials section copy. Null falls back to a generic default. */
+  testimonialsHeading: string | null;
+  testimonialsSubheading: string | null;
+  testimonialsTag: string | null;
+  /** Confirmation email copy. Null falls back to the built-in wording. */
+  confirmationSubject: string | null;
+  pendingJoinLinkText: string | null;
+  /** Append the "mark as Not spam" info box to every email sent for this session. */
+  showNotSpamNotice: boolean;
+  /** Screenshots of what people said about a past session, in display order. */
+  testimonials: SessionTestimonial[];
   priceAmountMinor: string;
   compareAtAmountMinor: string | null;
   currency: string;
@@ -182,19 +260,28 @@ export interface SessionInput {
   capacity?: number | null;
   showSeats?: boolean;
   displaySeats?: number | null;
+  bundleDeliveryMode?: BundleDeliveryMode;
   priceAmountMinor?: string;
   compareAtAmountMinor?: string | null;
   joinUrl?: string | null;
   recordingUrl?: string | null;
   highlights?: string[];
   perkText?: string | null;
+  audienceText?: string | null;
+  testimonialsHeading?: string | null;
+  testimonialsSubheading?: string | null;
+  testimonialsTag?: string | null;
+  confirmationSubject?: string | null;
+  pendingJoinLinkText?: string | null;
+  showNotSpamNotice?: boolean;
   includedProductIds?: string[];
 }
 
 export interface SessionRegistrationRow {
   id: string;
   user: { id: string; name: string; email: string | null };
-  whatsappNumber: string;
+  /** No longer collected — null for anyone who registered after it was dropped. */
+  whatsappNumber: string | null;
   exam: string;
   stage: string;
   paid: boolean;
@@ -217,4 +304,42 @@ export const adminSessionApi = {
   archive: (id: string) => api.delete<void>(`/admin/sessions/${id}`),
   registrations: (id: string) =>
     api.get<SessionRegistrationRow[]>(`/admin/sessions/${id}/registrations`),
+
+  addTestimonial(id: string, file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.upload<SessionTestimonial>(`/admin/sessions/${id}/testimonials`, formData);
+  },
+
+  removeTestimonial: (id: string, testimonialId: string) =>
+    api.delete<void>(`/admin/sessions/${id}/testimonials/${testimonialId}`),
+
+  /** Every testimonial id for this session, once each, in the new display order. */
+  reorderTestimonials: (id: string, testimonialIds: string[]) =>
+    api.patch<void>(`/admin/sessions/${id}/testimonials/reorder`, { testimonialIds }),
+
+  /** Who has received the material included with this session, and who has not. */
+  bundleDeliveries: (id: string) =>
+    api.get<BundleDeliveryList>(`/admin/sessions/${id}/bundle-deliveries`),
+
+  /**
+   * Sends the included material. Omit `userIds` for everyone not yet sent to,
+   * which also retries earlier failures; anyone already sent to is skipped, so
+   * repeating this never delivers twice.
+   */
+  sendBundle: (id: string, userIds?: string[]) =>
+    api.post<BundleSendResult>(`/admin/sessions/${id}/bundle-deliveries/send`, { userIds }),
+
+  /** Who has been told this session's dates, and who has not. */
+  dateAnnouncements: (id: string) =>
+    api.get<DateAnnouncementList>(`/admin/sessions/${id}/date-announcements`),
+
+  /**
+   * Sends the date-announcement email. Omit `userIds` for everyone not yet
+   * told the current dates, which also retries failures and reaches buyers
+   * told about an older date; anyone already told the current dates is
+   * skipped, so repeating this never sends twice.
+   */
+  sendDateAnnouncement: (id: string, userIds?: string[]) =>
+    api.post<BundleSendResult>(`/admin/sessions/${id}/date-announcements/send`, { userIds }),
 };

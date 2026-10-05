@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
+import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ type FormValues = z.infer<typeof schema>;
 export default function AdminLoginPage() {
   const router = useRouter();
   const { login, user, ready, restore } = useSessionStore();
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
@@ -82,12 +84,24 @@ export default function AdminLoginPage() {
 
             <div className="space-y-1.5">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                {...register("password")}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  className="pr-10"
+                  {...register("password")}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((shown) => !shown)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
               {errors.password && (
                 <p className="text-xs text-destructive">{errors.password.message}</p>
               )}
@@ -107,8 +121,15 @@ export default function AdminLoginPage() {
           {/*
             Not optional: an admin who accepted their invitation with Google has
             no password at all, so without this they could never sign back in.
+            `next` carries the admin destination through the Google round-trip
+            so the callback can tell this sign-in came from the admin page and
+            say so plainly when the account is not an admin, instead of
+            silently sending them to the student library.
           */}
-          <GoogleButton label="Sign in with Google" onClick={() => googleAuth.start()} />
+          <GoogleButton
+            label="Sign in with Google"
+            onClick={() => googleAuth.start({ next: "/admin/products" })}
+          />
         </CardContent>
       </Card>
     </div>

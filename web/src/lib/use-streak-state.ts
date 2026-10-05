@@ -1,46 +1,40 @@
-import { useMemo } from "react";
-import { useAuthStore } from "@/store/auth-store";
-import { useStreakStore } from "@/store/streak-store";
+import { useStreak } from "@/hooks/pyq";
 import { useStreakAnimationStore } from "@/store/streak-animation-store";
-import { usePracticeStore } from "@/store/practice-store";
-import { countAttemptsOnDay } from "@/lib/selectors";
-import { useClientSnapshot } from "@/lib/use-client-snapshot";
-import {
-  DAILY_QUESTION_TARGET,
-  DEMO_ALWAYS_CELEBRATE_ON_VISIT,
-  isMilestoneDay,
-  nextMilestone,
-} from "@/lib/streak-config";
+import { DEMO_ALWAYS_CELEBRATE_ON_VISIT, isMilestoneDay, nextMilestone } from "@/lib/streak-config";
+import { DATA_SOURCE_KIND } from "@/lib/data-source";
 import type { StreakState } from "@/types";
 
+export interface LiveStreakState extends StreakState {
+  /** False until the streak has loaded from the data source. */
+  loaded: boolean;
+  /** Today's answers have reached the daily target. */
+  todayDone: boolean;
+}
+
 /**
- * Assembles the one StreakState object every streak UI reads from. A real
- * backend would return this shape directly; here it's composed from the
- * mock stores so nothing downstream needs to know the difference.
+ * The one StreakState object every streak UI reads from, built from the data
+ * source's streak summary (`useStreak`). In api mode the server computes it
+ * from attempts by India-time day; the mock derives it from browser stores.
+ * Whether today's completion has been celebrated stays in memory (see
+ * streak-animation-store), and the always-celebrate demo applies only to mock.
  */
-export function useStreakState(): StreakState {
-  const currentStreak = useAuthStore((s) => s.profile.streakDays);
-  const bestStreak = useStreakStore((s) => s.bestStreak);
+export function useStreakState(): LiveStreakState {
+  const { data } = useStreak();
   const celebratedDate = useStreakAnimationStore((s) => s.celebratedDate);
-  const sessions = usePracticeStore((s) => s.sessions);
 
-  const dayISO = useClientSnapshot<string | null>(
-    () => new Date().toISOString().slice(0, 10),
-    null
-  );
-
-  const sessionList = useMemo(() => Object.values(sessions), [sessions]);
-  const todayProgress = dayISO ? countAttemptsOnDay(sessionList, dayISO) : 0;
-
-  const celebratedToday = DEMO_ALWAYS_CELEBRATE_ON_VISIT ? false : celebratedDate === dayISO;
+  const currentStreak = data?.currentStreak ?? 0;
+  const today = data?.today ?? null;
+  const demo = DEMO_ALWAYS_CELEBRATE_ON_VISIT && DATA_SOURCE_KIND === "mock";
 
   return {
+    loaded: Boolean(data),
     currentStreak,
-    bestStreak: Math.max(bestStreak, currentStreak),
-    todayProgress,
-    dailyTarget: DAILY_QUESTION_TARGET,
-    lastCompletedDate: dayISO,
-    celebratedToday,
+    bestStreak: Math.max(data?.longestStreak ?? 0, currentStreak),
+    todayProgress: data?.todayCount ?? 0,
+    dailyTarget: data?.dailyTarget ?? 10,
+    todayDone: data?.todayDone ?? false,
+    lastCompletedDate: today,
+    celebratedToday: demo ? false : Boolean(today) && celebratedDate === today,
     isMilestone: isMilestoneDay(currentStreak),
     nextMilestone: nextMilestone(currentStreak),
   };

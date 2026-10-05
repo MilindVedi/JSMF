@@ -7,8 +7,14 @@ import { CurrentPlanBanner } from "@/components/subscription/current-plan-banner
 import { PricingCard } from "@/components/subscription/pricing-card";
 import { useAuthStore } from "@/store/auth-store";
 import { PLANS, getPlanById } from "@/data/mock/plans";
+import { isApiDataSource } from "@/hooks/pyq";
+import { ApiSubscription } from "@/components/subscription/api-subscription";
 
 export default function SubscriptionPage() {
+  return isApiDataSource ? <ApiSubscription /> : <MockSubscriptionPage />;
+}
+
+function MockSubscriptionPage() {
   const profile = useAuthStore((s) => s.profile);
   const hydrated = useAuthStore((s) => s.hasHydrated);
   const upgradePlan = useAuthStore((s) => s.upgradePlan);
