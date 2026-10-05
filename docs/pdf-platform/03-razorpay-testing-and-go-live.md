@@ -85,6 +85,7 @@ This tests the `refund.processed` webhook — the path you'll actually use for r
   - order and payment are marked **REFUNDED**
   - a row exists in the `refund` table
   - the seat count goes back up
+  - the buyer receives the **refund confirmation email** (full refunds only — a partial refund leaves access in place and sends nothing)
 
 ### Step 8b: Test the reconciliation sweep (optional)
 
@@ -164,7 +165,7 @@ The cleanest way to test the real flow without losing money or leaving messy rec
 3. Buy a seat at the real price with your own card — capacity now shows one seat taken (e.g. 51 → 50 remaining)
 4. **Verify:** entitlement granted, confirmation email arrives, seat count dropped by 1 in admin
 5. Refund yourself **directly in the Razorpay Dashboard** (Live mode → Payments → your payment → Refund)
-6. The `refund.processed` webhook fires → access revoked automatically → seat count goes back up
+6. The `refund.processed` webhook fires → access revoked automatically → seat count goes back up → refund confirmation email arrives
 7. **Set the capacity back** to the original number (e.g. 51 → 50)
 
 Why this is clean: seats taken = count of active entitlements, computed live (never a stored number). Refunding revokes the entitlement, which frees the seat by itself. The money returns to your card, and the order is recorded as a proper refund with a full audit trail — not an orphaned "paid but revoked" row.

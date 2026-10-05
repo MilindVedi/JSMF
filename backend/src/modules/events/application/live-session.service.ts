@@ -44,6 +44,9 @@ export interface LiveSessionInput {
   testimonialsHeading?: string | null;
   testimonialsSubheading?: string | null;
   testimonialsTag?: string | null;
+  confirmationSubject?: string | null;
+  pendingJoinLinkText?: string | null;
+  showNotSpamNotice?: boolean;
   includedProductIds?: string[];
 }
 
@@ -409,6 +412,9 @@ export class LiveSessionService {
             testimonialsHeading: blankToNull(input.testimonialsHeading) ?? null,
             testimonialsSubheading: blankToNull(input.testimonialsSubheading) ?? null,
             testimonialsTag: blankToNull(input.testimonialsTag) ?? null,
+            confirmationSubject: blankToNull(input.confirmationSubject) ?? null,
+            pendingJoinLinkText: blankToNull(input.pendingJoinLinkText) ?? null,
+            showNotSpamNotice: input.showNotSpamNotice ?? false,
           },
         });
 
@@ -485,6 +491,9 @@ export class LiveSessionService {
             testimonialsHeading: blankToNull(input.testimonialsHeading),
             testimonialsSubheading: blankToNull(input.testimonialsSubheading),
             testimonialsTag: blankToNull(input.testimonialsTag),
+            confirmationSubject: blankToNull(input.confirmationSubject),
+            pendingJoinLinkText: blankToNull(input.pendingJoinLinkText),
+            showNotSpamNotice: input.showNotSpamNotice,
           },
         });
 
@@ -833,6 +842,9 @@ export class LiveSessionService {
       testimonialsHeading: session.testimonialsHeading,
       testimonialsSubheading: session.testimonialsSubheading,
       testimonialsTag: session.testimonialsTag,
+      confirmationSubject: session.confirmationSubject,
+      pendingJoinLinkText: session.pendingJoinLinkText,
+      showNotSpamNotice: session.showNotSpamNotice,
       testimonials: await Promise.all(
         session.testimonials.map(async (row) => ({
           id: row.id,

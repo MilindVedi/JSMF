@@ -18,7 +18,7 @@ import { activity } from '../../../shared/logging/activity';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { MailService } from '../../../shared/mail/application/mail.service';
 import { WhatsAppService } from '../../../shared/whatsapp/application/whatsapp.service';
-import { purchaseConfirmation } from '../../../shared/mail/templates/mail-templates';
+import { purchaseConfirmation, refundConfirmation } from '../../../shared/mail/templates/mail-templates';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import { extendedExpiry, readPyqPlan } from '../../../shared/pyq-plan';
 import { OrderEvents, type OrderPaidEvent } from './order-events';
@@ -948,7 +948,9 @@ export class PaymentService {
       return;
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    // Non-null only on the pass that actually revokes access, so a redelivered
+    // event or a partial return produces no second — or contradictory — email.
+    const refundedInFull = await this.prisma.$transaction(async (tx) => {
       // `provider_refund_id` is UNIQUE, so this is what makes a redelivered
       // event — or the webhook for a refund `refund()` already recorded — a
       // no-op rather than a second revocation.
@@ -957,7 +959,7 @@ export class PaymentService {
         select: { id: true },
       });
 
-      if (already) return;
+      if (already) return null;
 
       await tx.refund.create({
         data: {
@@ -987,7 +989,7 @@ export class PaymentService {
         this.logger.log(
           `Partial refund recorded on order ${payment.orderId}; access left in place`,
         );
-        return;
+        return null;
       }
 
       await tx.payment.update({
@@ -1005,9 +1007,17 @@ export class PaymentService {
         'Refunded in the Razorpay dashboard',
         tx,
       );
+
+      // The whole captured amount, not this event's slice: a purchase returned
+      // in two parts is confirmed once, for what the buyer actually gets back.
+      return returned._sum.amountMinor ?? payment.amountMinor;
     });
 
     this.logger.log(`Applied provider-initiated refund ${event.providerRefundId}`);
+
+    if (refundedInFull !== null) {
+      await this.sendRefundNotice(payment.orderId, refundedInFull, event.providerRefundId);
+    }
   }
 
   private async markFailed(event: PaymentWebhookEvent): Promise<void> {
@@ -1120,6 +1130,78 @@ export class PaymentService {
 
     this.logger.log(`Refunded order ${order.orderNumber} (${providerRefund.providerRefundId})`);
 
+    await this.sendRefundNotice(order.id, providerRefund.amountMinor, providerRefund.providerRefundId);
+
     return { orderId: order.id, status: OrderStatus.REFUNDED };
+  }
+
+  /**
+   * Tells the buyer their money is on its way back. Best-effort, for the same
+   * reason the purchase receipt is: the refund has already been made with the
+   * provider and the entitlement already revoked by the time this runs, so a
+   * bounced notification must not turn a completed refund into an error — and
+   * on the webhook path, must not leave Razorpay retrying an event that has
+   * fully applied.
+   *
+   * Email only. There is no approved WhatsApp template for a refund, and unlike
+   * the receipt there is no second channel worth falling back to: a buyer with
+   * no address on the order is someone support is already in a conversation
+   * with, since that is the only way the refund got requested.
+   */
+  private async sendRefundNotice(
+    orderId: string,
+    refundedAmountMinor: bigint,
+    refundId: string,
+  ): Promise<void> {
+    // A free order returns no money, so there is nothing to confirm.
+    if (refundedAmountMinor <= 0n) return;
+
+    try {
+      const order = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+          orderNumber: true,
+          currency: true,
+          customerEmail: true,
+          user: { select: { name: true } },
+          items: { select: { productTitleSnapshot: true } },
+        },
+      });
+
+      if (!order?.customerEmail) {
+        this.logger.log(
+          `Refund on order ${order?.orderNumber ?? orderId} not emailed: no address on the order.`,
+        );
+        return;
+      }
+
+      const rendered = refundConfirmation({
+        buyerName: firstName(order.user.name),
+        items: order.items.map((item) => ({ title: item.productTitleSnapshot })),
+        refundedFormatted: formatMoney(refundedAmountMinor, order.currency),
+        orderNumber: order.orderNumber,
+        refundId,
+      });
+
+      const outcome = await this.mail.sendBestEffort({
+        to: { email: order.customerEmail, name: order.user.name },
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+        tag: 'refund-confirmation',
+      });
+
+      if (!outcome.delivered) {
+        this.logger.warn(
+          `Refund notice for order ${order.orderNumber} was not delivered: ${outcome.reason}. ` +
+            `The refund itself is complete.`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not send the refund notice for order ${orderId}: ${(error as Error).message}. ` +
+          `The refund itself is complete.`,
+      );
+    }
   }
 }

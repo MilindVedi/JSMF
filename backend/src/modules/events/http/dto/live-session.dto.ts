@@ -162,6 +162,41 @@ export class CreateLiveSessionDto {
   testimonialsTag?: string | null;
 
   @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Subject line of the confirmation email sent when a seat is paid for. `{title}` is replaced ' +
+      'with the session title. Null falls back to "JSMF - Your seat is confirmed: {title}".',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(200)
+  confirmationSubject?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'What the confirmation email says in place of the joining link while the joining link is ' +
+      'still empty — useful when the dates have not been announced. Null falls back to ' +
+      '"We will email you the joining link before the session starts."',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(300)
+  pendingJoinLinkText?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Appends a short "if this landed in Spam, mark it Not spam" info box to every email sent ' +
+      'for this session — the confirmation, the dates announcement, each day\'s reminder, and the ' +
+      'bundle-ready note. Defaults to false.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  showNotSpamNotice?: boolean;
+
+  @ApiPropertyOptional({
     enum: BundleDeliveryMode,
     default: BundleDeliveryMode.IMMEDIATE,
     description:

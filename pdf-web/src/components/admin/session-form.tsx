@@ -88,6 +88,9 @@ export function SessionForm({
     testimonialsHeading: session?.testimonialsHeading ?? "",
     testimonialsSubheading: session?.testimonialsSubheading ?? "",
     testimonialsTag: session?.testimonialsTag ?? "",
+    confirmationSubject: session?.confirmationSubject ?? "",
+    pendingJoinLinkText: session?.pendingJoinLinkText ?? "",
+    showNotSpamNotice: session?.showNotSpamNotice ?? false,
   });
   const [days, setDays] = useState<DayRow[]>(
     session?.days.map((day) => ({
@@ -156,6 +159,9 @@ export function SessionForm({
         testimonialsHeading: values.testimonialsHeading.trim() || null,
         testimonialsSubheading: values.testimonialsSubheading.trim() || null,
         testimonialsTag: values.testimonialsTag.trim() || null,
+        confirmationSubject: values.confirmationSubject.trim() || null,
+        pendingJoinLinkText: values.pendingJoinLinkText.trim() || null,
+        showNotSpamNotice: values.showNotSpamNotice,
         includedProductIds: included,
       });
     } catch (error) {
@@ -394,6 +400,55 @@ export function SessionForm({
             <Field label="Recording link" hint="Shown on the website after the session.">
               <Input value={values.recordingUrl} onChange={set("recordingUrl")} placeholder="https://youtube.com/…" />
             </Field>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Confirmation email</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <Field
+              label="Subject line"
+              hint="Blank uses “JSMF - Your seat is confirmed: {title}”. Write {title} anywhere to drop the session title in."
+            >
+              <Input
+                value={values.confirmationSubject}
+                onChange={set("confirmationSubject")}
+                maxLength={200}
+                placeholder="JSMF - Your seat is confirmed: {title}"
+              />
+            </Field>
+            <Field
+              label="Text while there is no joining link"
+              hint="Shown in place of the Join button until the joining link above is filled in. Blank uses “We will email you the joining link before the session starts.” — change it when the dates are not announced yet."
+            >
+              <Textarea
+                rows={2}
+                value={values.pendingJoinLinkText}
+                onChange={set("pendingJoinLinkText")}
+                maxLength={300}
+                placeholder="We will email you the joining link before the session starts."
+              />
+            </Field>
+            <div>
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={values.showNotSpamNotice}
+                  onCheckedChange={(checked: boolean) =>
+                    setValues((c) => ({ ...c, showNotSpamNotice: checked }))
+                  }
+                />
+                <Label className="text-sm font-medium">
+                  Append a “mark as Not spam” note to every email for this session
+                </Label>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Adds a small info box at the end of the confirmation, reminders, dates
+                announcement, and bundle-ready emails: “If this email landed in your Spam folder,
+                please mark it as Not spam so you keep receiving future updates from JSMF.”
+              </p>
+            </div>
           </CardContent>
         </Card>
 

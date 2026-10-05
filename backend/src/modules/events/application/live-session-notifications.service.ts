@@ -125,6 +125,9 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
       paymentId: event.paymentId,
       includedTitles: grantedNow ? session.product.bundleItems.map((b) => b.child.title) : [],
       libraryUrl: `${this.config.get('STOREFRONT_URL').replace(/\/$/, '')}/library`,
+      subjectOverride: session.confirmationSubject,
+      pendingJoinLinkText: session.pendingJoinLinkText,
+      showNotSpamNotice: session.showNotSpamNotice,
     });
 
     const outcome = await this.mail.sendBestEffort({
@@ -245,6 +248,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
           dayMarker,
           platformLabel: session.platformLabel,
           joinUrl: session.joinUrl,
+          showNotSpamNotice: session.showNotSpamNotice,
         });
 
         const outcome = await this.mail.sendBestEffort({
@@ -477,7 +481,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
    * row so the admin can see it and retry that person alone.
    */
   private async deliverTo(
-    session: { productId: string; product: { title: string } },
+    session: { productId: string; showNotSpamNotice: boolean; product: { title: string } },
     items: Array<{ id: string; title: string }>,
     holder: { userId: string; sourceOrderId: string | null; user: { name: string; email: string | null } },
   ): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -516,6 +520,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
       sessionTitle: session.product.title,
       includedTitles: items.map((item) => item.title),
       libraryUrl: `${this.config.get('STOREFRONT_URL').replace(/\/$/, '')}/library`,
+      showNotSpamNotice: session.showNotSpamNotice,
     });
 
     const outcome = await this.mail.sendBestEffort({
@@ -747,6 +752,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
       productId: string;
       joinUrl: string | null;
       platformLabel: string;
+      showNotSpamNotice: boolean;
       product: { title: string };
     },
     whenLines: string[],
@@ -774,6 +780,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
       whenLines,
       platformLabel: session.platformLabel,
       joinUrl: session.joinUrl,
+      showNotSpamNotice: session.showNotSpamNotice,
     });
 
     const outcome = await this.mail.sendBestEffort({

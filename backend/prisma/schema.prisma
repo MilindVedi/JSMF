@@ -1133,6 +1133,25 @@ model LiveSession {
   /// it entirely — unlike the heading and subheading, this one has no
   /// generic fallback, because an empty tag reads as broken decoration.
   testimonialsTag        String?            @map("testimonials_tag") @db.VarChar(80)
+  /// Subject line of the confirmation email sent when a seat is paid for.
+  /// NULL keeps the built-in "JSMF - Your seat is confirmed: {title}". The
+  /// token `{title}` is substituted with the session's title wherever it
+  /// appears, so a custom subject can still carry it without being retyped
+  /// every time the session is renamed.
+  confirmationSubject    String?            @map("confirmation_subject") @db.VarChar(200)
+  /// What the confirmation email says in place of the joining link while
+  /// `joinUrl` is still empty. NULL keeps the built-in "We will email you the
+  /// joining link before the session starts." Editable because that sentence
+  /// is wrong whenever the dates themselves are not fixed yet — there is no
+  /// "before the session starts" to point at.
+  pendingJoinLinkText    String?            @map("pending_join_link_text") @db.VarChar(300)
+  /// Appends a short "if this landed in Spam, mark it Not spam" info box to
+  /// every email sent for this session — the confirmation, the dates
+  /// announcement, each day's reminder, and the bundle-ready note. On per
+  /// session rather than platform-wide: a brand-new session with no sender
+  /// reputation benefits from the nudge; a steady one does not need to pester
+  /// everyone forever. Defaults off, so existing sessions are unchanged.
+  showNotSpamNotice      Boolean            @default(false) @map("show_not_spam_notice")
   /// When and how the items included with a seat (the bundled PDF) reach
   /// buyers. IMMEDIATE grants them at payment, named in the confirmation
   /// email. The other two hold them back until the session has ended and the

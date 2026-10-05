@@ -178,6 +178,26 @@ cron every 5 min  →  POST /internal/session-reminders
   retried every sweep until the start, so adding the link late still reaches
   everyone. Each reminder is claimed before sending, so overlapping sweeps
   cannot double-send.
+- **Two pieces of the confirmation email are editable per session**, in the
+  admin form's *Confirmation email* card. `confirmation_subject` replaces the
+  default `JSMF - Your seat is confirmed: {title}`, with `{title}` substituted
+  wherever it appears so renaming the session does not strand the subject.
+  `pending_join_link_text` replaces the sentence shown in place of the Join
+  button while `join_url` is empty — the built-in "We will email you the
+  joining link before the session starts" is wrong for a session whose dates
+  are not announced yet, because there is no start to be before. Both are
+  nullable and fall back to the built-in wording, so an existing session that
+  nobody edits is unchanged. Neither appears in the public API: email copy is
+  not a visitor's business.
+- **One toggle, `show_not_spam_notice`, appends a short info box to every
+  email the platform sends for the session** — the confirmation, the dates
+  announcement, each day's reminder, and the bundle-ready note — reminding
+  the recipient to mark the message *Not spam* if it landed there. On per
+  session rather than platform-wide: a brand-new session with no sender
+  reputation benefits from the nudge, while a steady one with high
+  deliverability does not need to pester everyone forever. Default is off, so
+  turning it on only ever adds the box; nothing already in flight changes
+  wording retroactively.
 - The generic `/orders` checkout refuses `LIVE_SESSION`, and the store's
   Browse, Featured, product page and Library all exclude it.
 

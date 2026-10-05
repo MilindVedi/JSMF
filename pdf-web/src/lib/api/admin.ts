@@ -236,6 +236,11 @@ export interface AdminSession {
   testimonialsHeading: string | null;
   testimonialsSubheading: string | null;
   testimonialsTag: string | null;
+  /** Confirmation email copy. Null falls back to the built-in wording. */
+  confirmationSubject: string | null;
+  pendingJoinLinkText: string | null;
+  /** Append the "mark as Not spam" info box to every email sent for this session. */
+  showNotSpamNotice: boolean;
   /** Screenshots of what people said about a past session, in display order. */
   testimonials: SessionTestimonial[];
   priceAmountMinor: string;
@@ -266,6 +271,9 @@ export interface SessionInput {
   testimonialsHeading?: string | null;
   testimonialsSubheading?: string | null;
   testimonialsTag?: string | null;
+  confirmationSubject?: string | null;
+  pendingJoinLinkText?: string | null;
+  showNotSpamNotice?: boolean;
   includedProductIds?: string[];
 }
 
