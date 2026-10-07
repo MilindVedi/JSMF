@@ -214,11 +214,25 @@ export function refundConfirmation(input: {
   refundedFormatted: string;
   orderNumber: string;
   refundId: string;
+  /** Whether the money went back over a real-time rail rather than the slow one. */
+  instant?: boolean;
 }): RenderedMail {
-  const { buyerName, items, refundedFormatted, orderNumber, refundId } = input;
+  const { buyerName, items, refundedFormatted, orderNumber, refundId, instant = false } = input;
 
   const titles = items.map((item) => item.title);
   const noun = titles.length === 1 ? 'resource is' : 'resources are';
+
+  // The timing is the whole reason this email exists, so it states what
+  // actually happened rather than a worst case. Promising days for a refund
+  // that already landed reads as a mistake; promising minutes for one that
+  // takes a week produces the support ticket this is meant to prevent.
+  const timingText = instant
+    ? 'The amount has been sent back to the method you paid with and should reach you within a few minutes.'
+    : 'The amount goes back to the method you paid with. Banks usually take 5-7 working days to show it on your statement.';
+
+  const timingHtml = instant
+    ? 'The amount has been sent back to the method you paid with and should reach you <strong>within a few minutes</strong>.'
+    : 'The amount goes back to the method you paid with. Banks usually take <strong>5-7 working days</strong> to show it on your statement.';
 
   const text = [
     `Hi ${buyerName},`,
@@ -231,8 +245,7 @@ export function refundConfirmation(input: {
     `Order ID: ${orderNumber}`,
     `Refund ID: ${refundId}`,
     ``,
-    `The amount goes back to the method you paid with. Banks usually take`,
-    `5-7 working days to show it on your statement.`,
+    timingText,
     ``,
     `The ${noun} no longer available in your JSMF account.`,
     ``,
@@ -268,7 +281,7 @@ export function refundConfirmation(input: {
         ${detailRow('Refund ID', refundId)}
       </table>
     </div>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">The amount goes back to the method you paid with. Banks usually take <strong>5-7 working days</strong> to show it on your statement.</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">${timingHtml}</p>
     <p style="margin:0 0 20px;font-size:13px;line-height:1.55;color:#71717a;">The ${noun} no longer available in your JSMF account.</p>
     <p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">If anything about this looks wrong, reply to this email with your Order ID and we will look into it.</p>
     `,

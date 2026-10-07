@@ -64,6 +64,8 @@ export interface PaymentWebhookEvent {
    * returned and would revoke access the buyer has still paid for.
    */
   refundAmountMinor?: bigint;
+  /** The rail the provider actually returned the money over, when it says. */
+  refundSpeedProcessed?: RefundSpeed;
   currency?: string;
   method?: string;
   errorCode?: string;
@@ -109,16 +111,35 @@ export interface ProviderPayment {
   raw: unknown;
 }
 
+/**
+ * How quickly the money is returned.
+ *
+ * `NORMAL` goes back through the card/bank rails the payment came in on and
+ * takes days. `INSTANT` asks the provider to push it over a real-time rail
+ * instead, which lands in minutes — but costs a per-refund fee and only works
+ * where the underlying method supports it. Providers fall back to normal on
+ * their own when it does not, so asking for instant is a preference rather
+ * than a promise, and nothing downstream may assume it was honoured.
+ */
+export type RefundSpeed = 'NORMAL' | 'INSTANT';
+
 export interface RefundRequest {
   providerPaymentId: string;
   amountMinor: bigint;
   reason?: string;
+  /** Defaults to `NORMAL`: the cheap rail, and the one that always works. */
+  speed?: RefundSpeed;
 }
 
 export interface ProviderRefund {
   providerRefundId: string;
   amountMinor: bigint;
   status: 'PENDING' | 'PROCESSED' | 'FAILED';
+  /**
+   * What the provider actually used, which is not always what was asked for.
+   * Undefined when the provider does not report it.
+   */
+  speedProcessed?: RefundSpeed;
   raw: unknown;
 }
 

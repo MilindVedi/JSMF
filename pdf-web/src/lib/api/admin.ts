@@ -117,6 +117,9 @@ export const orderApi = {
   list: () => api.get<Order[]>("/orders"),
 };
 
+/** How quickly a refund reaches the buyer. See `adminOrderApi.refund`. */
+export type RefundSpeed = "NORMAL" | "INSTANT";
+
 /** Platform-wide order visibility and refunds — ADMIN only, server-enforced. */
 export const adminOrderApi = {
   list(params: { status?: OrderStatus; q?: string; page?: number; pageSize?: number } = {}) {
@@ -132,8 +135,16 @@ export const adminOrderApi = {
 
   get: (id: string) => api.get<AdminOrder>(`/admin/orders/${id}`),
 
-  refund: (id: string, reason?: string) =>
-    api.post<{ orderId: string; status: OrderStatus }>(`/admin/orders/${id}/refund`, { reason }),
+  /**
+   * `speed` omitted means NORMAL — the cheap rail. INSTANT costs a per-refund
+   * fee and falls back to NORMAL on its own where the payment method cannot
+   * take a real-time transfer, so it is a request rather than a guarantee.
+   */
+  refund: (id: string, reason?: string, speed?: RefundSpeed) =>
+    api.post<{ orderId: string; status: OrderStatus }>(`/admin/orders/${id}/refund`, {
+      reason,
+      speed,
+    }),
 };
 
 /**

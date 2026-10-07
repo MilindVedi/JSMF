@@ -26,6 +26,9 @@ const DEFAULT_STAGES = ["1st / 2nd year", "3rd year", "Final year", "Intern"];
 const MOBILE_NUMBER_PATTERN = /^[6-9]\d{9}$/;
 
 const schema = z.object({
+  // Kept out of RegistrationAnswers: this names the attendee on the payment and
+  // the confirmation, it is not one of the session's questions.
+  name: z.string().trim().min(2, "Enter your full name"),
   whatsappNumber: z.string().regex(MOBILE_NUMBER_PATTERN, "Enter a valid 10-digit mobile number"),
   exam: z.string().min(1, "Choose the exam you're preparing for"),
   stage: z.string().min(1, "Select where you are right now"),
@@ -59,7 +62,7 @@ export function RegisterDialog({
   const returnTo = `${usePathname()}?register=1`;
 
   const [stage, setStage] = useState<Stage>("loading");
-  const [form, setForm] = useState({ whatsappNumber: "", exam: "", stage: "" });
+  const [form, setForm] = useState({ name: "", whatsappNumber: "", exam: "", stage: "" });
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState("");
@@ -90,6 +93,10 @@ export function RegisterDialog({
     if (!open || !ready || !user) return;
     let cancelled = false;
 
+    // The account's name is only the starting point — the field below is
+    // editable, since the person signing in is not always the attendee.
+    setForm((current) => ({ ...current, name: current.name || user.name || "" }));
+
     sessionsApi
       .mine(session.id)
       .then((mine) => {
@@ -99,10 +106,11 @@ export function RegisterDialog({
         // back after abandoning the payment would be told the number they
         // never typed is invalid.
         if (mine.answers) {
-          setForm({
+          setForm((current) => ({
+            ...current,
             ...mine.answers,
-            whatsappNumber: (mine.answers.whatsappNumber ?? "").replace(/\D/g, "").slice(-10),
-          });
+            whatsappNumber: (mine.answers!.whatsappNumber ?? "").replace(/\D/g, "").slice(-10),
+          }));
         } else if (!mine.registered) {
           // Answered once at signup — prefill rather than ask again. Still
           // editable, and a failure here just leaves the form blank.
@@ -110,11 +118,12 @@ export function RegisterDialog({
             .profile()
             .then((profile) => {
               if (cancelled || !profile.completed) return;
-              setForm({
+              setForm((current) => ({
+                ...current,
                 whatsappNumber: profile.mobileNumber ?? "",
                 exam: profile.preparingFor ?? "",
                 stage: profile.currentStage ?? "",
-              });
+              }));
             })
             .catch(() => undefined);
         }
@@ -148,7 +157,8 @@ export function RegisterDialog({
       return;
     }
 
-    const outcome = await pay(session, parsed.data, { name: user!.name, email: user!.email });
+    const { name, ...answers } = parsed.data;
+    const outcome = await pay(session, answers, { name, email: user!.email });
 
     if (outcome.status === "paid") setStage("done");
     else if (outcome.status === "pending-confirmation") {
@@ -244,11 +254,24 @@ export function RegisterDialog({
             <Heading session={session} />
 
             <p className="mt-5 rounded-2xl border border-border bg-background px-4 py-3 text-xs text-muted-foreground">
-              Registering as <span className="font-semibold text-foreground">{user?.name}</span> ·{" "}
-              {user?.email}
+              Signed in as <span className="font-semibold text-foreground">{user?.email}</span>
             </p>
 
             <div className="mt-5 grid gap-4">
+              <label className="field-label">
+                Full name
+                <input
+                  className="field"
+                  autoComplete="name"
+                  value={form.name}
+                  maxLength={80}
+                  onChange={(event) => set("name", event.target.value)}
+                  placeholder="Enter your full name"
+                />
+                {errors.name && (
+                  <span className="text-xs font-medium text-destructive">{errors.name}</span>
+                )}
+              </label>
               <label className="field-label">
                 Mobile number
                 <input

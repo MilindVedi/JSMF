@@ -87,6 +87,20 @@ This tests the `refund.processed` webhook — the path you'll actually use for r
   - the seat count goes back up
   - the buyer receives the **refund confirmation email** (full refunds only — a partial refund leaves access in place and sends nothing)
 
+#### Refund speed: normal vs instant
+
+Razorpay offers two rails, and which one is used depends on where the refund is issued from:
+
+| Issued from | Speed | Decided by |
+|---|---|---|
+| Razorpay Dashboard | You pick per refund in their UI | The dashboard |
+| Admin **Refund** button | Asked each time; **Cancel = normal** | `speed` sent by our API call |
+
+- **Normal** returns the money over the original card/bank rails — free, roughly 5-7 working days.
+- **Instant** (`optimum` in Razorpay's API) pushes it over a real-time rail and usually lands in minutes, but **Razorpay charges a fee per instant refund**, and it only works where the payment method supports it. Razorpay silently downgrades it to normal when it doesn't, so it is a request, never a guarantee.
+
+The refund email adapts its wording to whichever rail was actually used (`speed_processed`), not the one requested — so a downgraded instant refund still tells the buyer the honest timeline. When Razorpay doesn't report a speed, the email describes the slower one: arriving early costs nothing, arriving late makes a support ticket.
+
 ### Step 8b: Test the reconciliation sweep (optional)
 
 This is the safety net that catches a payment Razorpay captured but whose webhook never arrived (dropped webhook, Razorpay outage, etc.). It runs automatically every 5 minutes, but only looks at payments that are **older than 10 minutes** and **younger than 72 hours** — so to test it without waiting:

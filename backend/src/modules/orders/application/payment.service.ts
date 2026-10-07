@@ -25,6 +25,7 @@ import { OrderEvents, type OrderPaidEvent } from './order-events';
 import {
   PaymentProvider,
   type PaymentWebhookEvent,
+  type RefundSpeed,
 } from '../../payments/domain/payment-provider.port';
 
 export interface VerifyCheckoutRequest {
@@ -1016,7 +1017,12 @@ export class PaymentService {
     this.logger.log(`Applied provider-initiated refund ${event.providerRefundId}`);
 
     if (refundedInFull !== null) {
-      await this.sendRefundNotice(payment.orderId, refundedInFull, event.providerRefundId);
+      await this.sendRefundNotice(
+        payment.orderId,
+        refundedInFull,
+        event.providerRefundId,
+        event.refundSpeedProcessed ?? 'NORMAL',
+      );
     }
   }
 
@@ -1072,8 +1078,17 @@ export class PaymentService {
    * transaction as the local bookkeeping, so a refund can never leave someone
    * with both their money back and the content. The call to the provider
    * happens first: if that fails, nothing local has changed yet to reconcile.
+   *
+   * `speed` defaults to the slow rail rather than being required, so the
+   * cheaper option is what an omitted argument buys — an instant refund costs
+   * a fee per refund and has to be asked for deliberately.
    */
-  async refund(orderId: string, adminUserId: string, reason?: string) {
+  async refund(
+    orderId: string,
+    adminUserId: string,
+    reason?: string,
+    speed: RefundSpeed = 'NORMAL',
+  ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { payments: true },
@@ -1098,8 +1113,15 @@ export class PaymentService {
             providerPaymentId: payment.providerPaymentId ?? payment.providerOrderId ?? '',
             amountMinor: payment.amountMinor,
             reason,
+            speed,
           })
-        : { providerRefundId: `free_${order.id}`, amountMinor: 0n, status: 'PROCESSED' as const, raw: null };
+        : {
+            providerRefundId: `free_${order.id}`,
+            amountMinor: 0n,
+            status: 'PROCESSED' as const,
+            speedProcessed: undefined,
+            raw: null,
+          };
 
     await this.prisma.$transaction(async (tx) => {
       await tx.refund.create({
@@ -1130,7 +1152,15 @@ export class PaymentService {
 
     this.logger.log(`Refunded order ${order.orderNumber} (${providerRefund.providerRefundId})`);
 
-    await this.sendRefundNotice(order.id, providerRefund.amountMinor, providerRefund.providerRefundId);
+    // What the provider did, not what was asked of it. When it does not say,
+    // the email describes the slow rail: a refund that arrives sooner than
+    // promised costs nothing, one that arrives later becomes a support ticket.
+    await this.sendRefundNotice(
+      order.id,
+      providerRefund.amountMinor,
+      providerRefund.providerRefundId,
+      providerRefund.speedProcessed ?? 'NORMAL',
+    );
 
     return { orderId: order.id, status: OrderStatus.REFUNDED };
   }
@@ -1152,6 +1182,7 @@ export class PaymentService {
     orderId: string,
     refundedAmountMinor: bigint,
     refundId: string,
+    speed: RefundSpeed,
   ): Promise<void> {
     // A free order returns no money, so there is nothing to confirm.
     if (refundedAmountMinor <= 0n) return;
@@ -1181,6 +1212,7 @@ export class PaymentService {
         refundedFormatted: formatMoney(refundedAmountMinor, order.currency),
         orderNumber: order.orderNumber,
         refundId,
+        instant: speed === 'INSTANT',
       });
 
       const outcome = await this.mail.sendBestEffort({

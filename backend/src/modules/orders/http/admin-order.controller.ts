@@ -63,6 +63,6 @@ export class AdminOrderController {
       );
     }
 
-    return this.payments.refund(id, admin.id, body.reason);
+    return this.payments.refund(id, admin.id, body.reason, body.speed ?? 'NORMAL');
   }
 }

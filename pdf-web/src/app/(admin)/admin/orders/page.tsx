@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { RefundDialog } from "@/components/admin/refund-dialog";
 import { adminOrderApi } from "@/lib/api/admin";
 import { adminSettingsApi } from "@/lib/api/settings";
 import type { AdminOrder, OrderStatus } from "@/lib/api/types";
@@ -45,7 +46,8 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<OrderStatus | "ALL">("ALL");
   const [q, setQ] = useState("");
-  const [refundingId, setRefundingId] = useState<string | null>(null);
+  /** The order whose refund dialog is open, or null when none is. */
+  const [refundOrder, setRefundOrder] = useState<AdminOrder | null>(null);
   /**
    * Whether this deployment permits admin refunds, asked of the server rather
    * than hardcoded here — the two drifted apart once already, leaving the
@@ -80,29 +82,6 @@ export default function OrdersPage() {
   useEffect(() => {
     load();
   }, [load]);
-
-  async function handleRefund(order: AdminOrder) {
-    const confirmed = window.confirm(
-      `Refund ${order.orderNumber} for ${order.customerEmail}?\n\n` +
-        `This charges nothing further but returns ${formatMoney(order.totalAmountMinor, order.currency)} ` +
-        `via the original payment provider and immediately revokes their access to every item in this order. ` +
-        `This cannot be undone from here.`,
-    );
-    if (!confirmed) return;
-
-    const reason = window.prompt("Reason for the refund (shown to the buyer, optional):") ?? undefined;
-
-    setRefundingId(order.id);
-    try {
-      await adminOrderApi.refund(order.id, reason || undefined);
-      toast.success(`${order.orderNumber} refunded`);
-      load();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Refund failed");
-    } finally {
-      setRefundingId(null);
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -208,19 +187,15 @@ export default function OrdersPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={!refundsEnabled || refundingId === order.id}
+                          disabled={!refundsEnabled}
                           title={
                             refundsEnabled
                               ? undefined
                               : "Refunds are temporarily disabled. Issue it in the Razorpay dashboard instead — access is still revoked automatically."
                           }
-                          onClick={() => handleRefund(order)}
+                          onClick={() => setRefundOrder(order)}
                         >
-                          {refundingId === order.id ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            "Refund"
-                          )}
+                          Refund
                         </Button>
                       )}
                     </TableCell>
@@ -252,6 +227,12 @@ export default function OrdersPage() {
           </div>
         </div>
       )}
+
+      <RefundDialog
+        order={refundOrder}
+        onClose={() => setRefundOrder(null)}
+        onRefunded={load}
+      />
     </div>
   );
 }

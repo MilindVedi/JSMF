@@ -185,11 +185,16 @@ export class StubPaymentAdapter extends PaymentProvider {
     const record = this.payments.get(request.providerPaymentId);
     if (record) record.status = 'REFUNDED';
 
+    const speed = request.speed ?? 'NORMAL';
+
     return Promise.resolve({
       providerRefundId: `rfnd_stub_${randomUUID().replace(/-/g, '').slice(0, 14)}`,
       amountMinor: request.amountMinor,
       status: 'PROCESSED',
-      raw: { simulated: true, reason: request.reason },
+      // The stub always honours what was asked for. A real provider may not —
+      // see RefundSpeed — so nothing downstream may rely on this matching.
+      speedProcessed: speed,
+      raw: { simulated: true, reason: request.reason, speed },
     });
   }
 

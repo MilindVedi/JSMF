@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class AdminOrderQueryDto {
   @ApiPropertyOptional({ enum: OrderStatus })
@@ -36,4 +36,17 @@ export class RefundOrderDto {
   @IsOptional()
   @IsString()
   reason?: string;
+
+  @ApiPropertyOptional({
+    enum: ['NORMAL', 'INSTANT'],
+    default: 'NORMAL',
+    description:
+      'NORMAL returns the money over the original rails and takes about 5-7 working days. ' +
+      'INSTANT asks the provider for a real-time transfer that lands in minutes, which carries ' +
+      'a per-refund fee and silently falls back to NORMAL where the payment method cannot support it. ' +
+      'Omitted means NORMAL.',
+  })
+  @IsOptional()
+  @IsIn(['NORMAL', 'INSTANT'])
+  speed?: 'NORMAL' | 'INSTANT';
 }

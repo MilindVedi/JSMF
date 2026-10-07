@@ -12,6 +12,7 @@ import {
   ProviderPayment,
   ProviderRefund,
   RefundRequest,
+  RefundSpeed,
   WebhookVerification,
 } from '../domain/payment-provider.port';
 
@@ -33,6 +34,13 @@ const STATUS_MAP: Record<string, ProviderPayment['status']> = {
   failed: 'FAILED',
 };
 
+/** Razorpay's name for instant is "optimum". Anything else means the slow rail. */
+const REFUND_SPEED_MAP: Record<string, RefundSpeed | undefined> = {
+  optimum: 'INSTANT',
+  instant: 'INSTANT',
+  normal: 'NORMAL',
+};
+
 interface RazorpayEntity {
   id?: string;
   order_id?: string;
@@ -45,6 +53,9 @@ interface RazorpayEntity {
   notes?: Record<string, string>;
   error_code?: string | null;
   error_description?: string | null;
+  /** On a refund entity: what was asked for, and what was actually used. */
+  speed_requested?: string;
+  speed_processed?: string;
 }
 
 /**
@@ -162,6 +173,7 @@ export class RazorpayPaymentAdapter extends PaymentProvider {
         // both entities, so the line above reports the payment's full amount
         // even when only part of it was returned.
         refundAmountMinor: refund?.amount !== undefined ? BigInt(refund.amount) : undefined,
+        refundSpeedProcessed: REFUND_SPEED_MAP[refund?.speed_processed ?? ''],
         currency: payment?.currency ?? refund?.currency,
         method: payment?.method,
         errorCode: payment?.error_code ?? undefined,
@@ -226,6 +238,11 @@ export class RazorpayPaymentAdapter extends PaymentProvider {
       `/payments/${encodeURIComponent(request.providerPaymentId)}/refund`,
       {
         amount: this.toPaiseNumber(request.amountMinor),
+        // Razorpay calls instant "optimum", and treats a missing value as
+        // "normal". Sent explicitly either way so the speed is a decision this
+        // application made, not one inherited from an API default or from the
+        // Dashboard's refund-speed setting — which does not govern API calls.
+        speed: request.speed === 'INSTANT' ? 'optimum' : 'normal',
         notes: request.reason ? { reason: request.reason } : undefined,
       },
     );
@@ -234,6 +251,10 @@ export class RazorpayPaymentAdapter extends PaymentProvider {
       providerRefundId: body.id ?? '',
       amountMinor: BigInt(body.amount ?? 0),
       status: body.status === 'processed' ? 'PROCESSED' : body.status === 'failed' ? 'FAILED' : 'PENDING',
+      // `optimum` is what was asked for; Razorpay reports what it could do.
+      // An instant request on a method without a real-time rail comes back
+      // `normal`, so this is read rather than assumed.
+      speedProcessed: REFUND_SPEED_MAP[body.speed_processed ?? ''],
       raw: body,
     };
   }
@@ -266,12 +287,24 @@ export class RazorpayPaymentAdapter extends PaymentProvider {
     const text = await response.text();
 
     if (!response.ok) {
-      // The body may contain the customer's details; log the status and
-      // Razorpay's error code, not the whole payload.
-      this.logger.error(`Razorpay ${method} ${path} → ${response.status}`);
-      throw new ServiceUnavailableException(
-        `Razorpay rejected ${method} ${path} with status ${response.status}`,
+      let razorpayError: { error?: { code?: string; description?: string; reason?: string } } = {};
+      try {
+        razorpayError = JSON.parse(text) as typeof razorpayError;
+      } catch { /* body wasn't JSON — the status code alone will do */ }
+
+      const code = razorpayError.error?.code ?? '';
+      const description = razorpayError.error?.description ?? '';
+      const reason = razorpayError.error?.reason ?? '';
+
+      this.logger.error(
+        `Razorpay ${method} ${path} → ${response.status} [${code}] ${description} (${reason})`,
       );
+
+      // 400s are Razorpay rejecting the request (bad input, feature not
+      // enabled, payment method can't take it). Surface the description so
+      // the admin knows what to fix, rather than a generic "service down".
+      const detail = description || `Razorpay rejected the request (HTTP ${response.status})`;
+      throw new ServiceUnavailableException(detail);
     }
 
     return JSON.parse(text) as T;
