@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsContactPhone } from '../../../../shared/sms/domain/contact-phone';
 import { EXAM_OPTIONS, STAGE_OPTIONS } from '../../../events/domain/session-display';
 
 export class UpdateNameDto {
@@ -18,11 +19,15 @@ export class UpdateProfileDto {
   @MaxLength(120)
   name!: string;
 
-  // Same rule as the session registration form: a plain 10-digit Indian
-  // mobile number. Stored unverified, never as the sign-in `phone`.
-  @ApiProperty({ example: '9876543210' })
+  // Same rule as the session registration form: E.164 for any country, or a
+  // bare 10-digit Indian mobile (older pages). Stored unverified, never as the
+  // sign-in `phone`.
+  @ApiProperty({
+    example: '+919876543210',
+    description: 'E.164 with country code, or a 10-digit Indian mobile number.',
+  })
   @IsString()
-  @Matches(/^[6-9]\d{9}$/, { message: 'Enter a valid 10-digit mobile number' })
+  @IsContactPhone()
   mobileNumber!: string;
 
   @ApiProperty({ enum: EXAM_OPTIONS })

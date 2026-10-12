@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { z } from "zod";
+import { PhoneField } from "@/components/store/phone-field";
 import { storeButton } from "@/components/store/store-button";
 import { accountApi } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
 import type { AuthUser } from "@/lib/api/types";
+import { EMPTY_PHONE, validatePhone, type PhoneValue } from "@/lib/phone";
 
 /** Fallbacks if the options request fails; the API validates against its own list either way. */
 const DEFAULT_EXAMS = ["NEET-PG", "INI-CET", "FMGE"];
@@ -14,14 +16,13 @@ const DEFAULT_STAGES = ["1st / 2nd year", "3rd year", "Final year", "Intern"];
 
 const schema = z.object({
   name: z.string().trim().min(2, "Enter your full name").max(120),
-  // Optional: left empty, it is simply not sent. Filled in, it must be valid.
-  mobileNumber: z.union([z.literal(""), z.string().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit mobile number")]),
   preparingFor: z.string().min(1, "Choose the exam you're preparing for"),
   currentStage: z.string().min(1, "Select where you are right now"),
 });
 
 type Values = z.infer<typeof schema>;
-type FieldKey = keyof Values;
+// The mobile number is validated apart from the schema, by libphonenumber (validatePhone).
+type FieldKey = keyof Values | "mobileNumber";
 
 /**
  * The last signup step: the same questions a seat registration asks, asked
@@ -31,7 +32,8 @@ type FieldKey = keyof Values;
  * is platform-wide.
  */
 export function ProfileForm({ onSaved }: { onSaved: (user: AuthUser) => void }) {
-  const [form, setForm] = useState<Values>({ name: "", mobileNumber: "", preparingFor: "", currentStage: "" });
+  const [form, setForm] = useState<Values>({ name: "", preparingFor: "", currentStage: "" });
+  const [phone, setPhone] = useState<PhoneValue>(EMPTY_PHONE);
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -44,7 +46,7 @@ export function ProfileForm({ onSaved }: { onSaved: (user: AuthUser) => void }) 
       .catch(() => undefined);
   }, []);
 
-  const set = (key: FieldKey, value: string) => {
+  const set = (key: keyof Values, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: "" }));
   };
@@ -54,18 +56,18 @@ export function ProfileForm({ onSaved }: { onSaved: (user: AuthUser) => void }) 
     setFailure(null);
 
     const parsed = schema.safeParse(form);
-    if (!parsed.success) {
+    const checkedPhone = validatePhone(phone);
+    if (!parsed.success || checkedPhone.error) {
       const next: Partial<Record<FieldKey, string>> = {};
-      for (const issue of parsed.error.issues) next[issue.path[0] as FieldKey] = issue.message;
+      for (const issue of parsed.error?.issues ?? []) next[issue.path[0] as FieldKey] = issue.message;
+      if (checkedPhone.error) next.mobileNumber = checkedPhone.error;
       setErrors(next);
       return;
     }
 
     setBusy(true);
     try {
-      const { mobileNumber, ...rest } = parsed.data;
-      // The API rejects an empty string, so an unfilled number is left out.
-      onSaved(await accountApi.updateProfile(mobileNumber ? { ...rest, mobileNumber } : rest));
+      onSaved(await accountApi.updateProfile({ ...parsed.data, mobileNumber: checkedPhone.e164! }));
     } catch (error) {
       setFailure(
         error instanceof ApiError && error.status === 400
@@ -92,25 +94,15 @@ export function ProfileForm({ onSaved }: { onSaved: (user: AuthUser) => void }) 
         {errors.name && <span className="text-xs font-medium text-destructive">{errors.name}</span>}
       </label>
 
-      <label className="field-label" htmlFor="mobileNumber">
-        <span>
-          Mobile number <span className="font-normal text-muted-foreground">(optional)</span>
-        </span>
-        <input
-          id="mobileNumber"
-          className="field"
-          inputMode="numeric"
-          autoComplete="tel-national"
-          maxLength={10}
-          placeholder="Enter your 10 digit mobile number"
-          value={form.mobileNumber}
-          // Digits only, capped at ten, so a pasted "+91 98765 43210" still works.
-          onChange={(event) => set("mobileNumber", event.target.value.replace(/\D/g, "").slice(-10))}
-        />
-        {errors.mobileNumber && (
-          <span className="text-xs font-medium text-destructive">{errors.mobileNumber}</span>
-        )}
-      </label>
+      <PhoneField
+        id="mobileNumber"
+        value={phone}
+        onChange={(value) => {
+          setPhone(value);
+          setErrors((current) => ({ ...current, mobileNumber: "" }));
+        }}
+        error={errors.mobileNumber}
+      />
 
       <ChipGroup
         label="Preparing for"

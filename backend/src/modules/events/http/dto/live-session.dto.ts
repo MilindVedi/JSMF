@@ -20,6 +20,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { IsContactPhone } from '../../../../shared/sms/domain/contact-phone';
 import { EXAM_OPTIONS, STAGE_OPTIONS } from '../../domain/session-display';
 
 const MINOR_UNITS = /^\d{1,12}$/;
@@ -301,16 +302,15 @@ export class ReorderTestimonialsDto {
 }
 
 export class RegisterForSessionDto {
-  @ApiPropertyOptional({
-    example: '9876543210',
+  @ApiProperty({
+    example: '+919876543210',
     description:
-      'A 10-digit Indian mobile number, no country code. A contact number on file — nothing ' +
-      'sends WhatsApp or SMS to it today.',
+      'E.164 with country code, or a 10-digit Indian mobile number. A contact number on ' +
+      'file — nothing sends WhatsApp or SMS to it today.',
   })
-  @IsOptional()
   @IsString()
-  @Matches(/^[6-9]\d{9}$/, { message: 'Enter a valid 10-digit mobile number' })
-  whatsappNumber?: string;
+  @IsContactPhone()
+  whatsappNumber!: string;
 
   @ApiProperty({ enum: EXAM_OPTIONS })
   @IsIn(EXAM_OPTIONS as unknown as string[], { message: "Choose the exam you're preparing for" })

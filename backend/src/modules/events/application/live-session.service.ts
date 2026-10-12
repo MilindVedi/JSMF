@@ -22,6 +22,7 @@ import { EntitlementService } from '../../entitlements/application/entitlement.s
 import { OrderService, type CheckoutResult } from '../../orders/application/order.service';
 import { StorageService } from '../../storage/application/storage.service';
 import { objectRefOf } from '../../storage/domain/storage-provider.port';
+import { normaliseContactPhone } from '../../../shared/sms/domain/contact-phone';
 
 export interface LiveSessionInput {
   title?: string;
@@ -92,11 +93,13 @@ function blankToNull(value: string | null | undefined): string | null | undefine
 }
 
 /**
- * Digits with country code, the way every other number here is stored. A bare
- * ten-digit Indian number gets 91 in front; anything else is kept as typed
- * once the spaces, dashes and + are gone.
+ * Digits with country code, the way every other number here is stored. The DTO
+ * has already checked it is a valid number (`IsContactPhone`); the fallback is
+ * the old rule, for callers that bypass the DTO.
  */
 function normalisePhone(raw: string): string {
+  const normalised = normaliseContactPhone(raw);
+  if (normalised) return normalised;
   const digits = raw.replace(/\D/g, '');
   return digits.length === 10 ? `91${digits}` : digits;
 }

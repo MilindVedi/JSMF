@@ -6,12 +6,14 @@ import { usePathname } from "next/navigation";
 import { CheckCircle2, Clock, FileText, Library, Loader2, Send, Sparkles, X } from "lucide-react";
 import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { PhoneField } from "@/components/phone-field";
 import { GoogleButton } from "@/components/ui/google-button";
 import { track } from "@/lib/analytics";
 import { accountApi, googleAuth } from "@/lib/api/auth";
 import { sessionsApi } from "@/lib/api/sessions";
 import type { LiveSession } from "@/lib/api/types";
 import { dateLabel, sessionDateLabel, timeLabel } from "@/lib/format";
+import { EMPTY_PHONE, phoneFromStored, validatePhone, type PhoneValue } from "@/lib/phone";
 import { links } from "@/lib/site-content";
 import { useSessionCheckout } from "@/lib/use-session-checkout";
 import { useSpamFolderNoteEnabled } from "@/lib/use-platform-settings";
@@ -21,25 +23,16 @@ import { useSessionStore } from "@/store/session-store";
 const DEFAULT_EXAMS = ["NEET-PG", "INI-CET", "FMGE"];
 const DEFAULT_STAGES = ["1st / 2nd year", "3rd year", "Final year", "Intern"];
 
-// A plain 10-digit Indian mobile number, no country code or punctuation — the
-// input itself only accepts digits, so this is really just the length/prefix
-// check rather than a format cleanup.
-const MOBILE_NUMBER_PATTERN = /^[6-9]\d{9}$/;
-
 const schema = z.object({
   // Kept out of RegistrationAnswers: this names the attendee on the payment and
   // the confirmation, it is not one of the session's questions.
   name: z.string().trim().min(2, "Enter your full name"),
-  // Optional: left empty, it is simply not sent. Filled in, it must be valid.
-  whatsappNumber: z.union([
-    z.literal(""),
-    z.string().regex(MOBILE_NUMBER_PATTERN, "Enter a valid 10-digit mobile number"),
-  ]),
   exam: z.string().min(1, "Choose the exam you're preparing for"),
   stage: z.string().min(1, "Select where you are right now"),
 });
 
-type FieldKey = keyof z.infer<typeof schema>;
+// The mobile number is validated apart from the schema, by libphonenumber (validatePhone).
+type FieldKey = keyof z.infer<typeof schema> | "whatsappNumber";
 type Stage = "loading" | "form" | "already" | "done" | "pending";
 
 /**
@@ -67,7 +60,8 @@ export function RegisterDialog({
   const returnTo = `${usePathname()}?register=1`;
 
   const [stage, setStage] = useState<Stage>("loading");
-  const [form, setForm] = useState({ name: "", whatsappNumber: "", exam: "", stage: "" });
+  const [form, setForm] = useState({ name: "", exam: "", stage: "" });
+  const [phone, setPhone] = useState<PhoneValue>(EMPTY_PHONE);
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState("");
@@ -107,15 +101,11 @@ export function RegisterDialog({
       .then((mine) => {
         if (cancelled) return;
         // The API stores the number with its country code ("919876543210");
-        // the field takes the 10-digit form. Without trimming, someone coming
-        // back after abandoning the payment would be told the number they
-        // never typed is invalid.
+        // the field splits it back into country and national digits.
         if (mine.answers) {
-          setForm((current) => ({
-            ...current,
-            ...mine.answers,
-            whatsappNumber: (mine.answers!.whatsappNumber ?? "").replace(/\D/g, "").slice(-10),
-          }));
+          const { whatsappNumber, ...answers } = mine.answers;
+          setForm((current) => ({ ...current, ...answers }));
+          setPhone(phoneFromStored(whatsappNumber));
         } else if (!mine.registered) {
           // Answered once at signup — prefill rather than ask again. Still
           // editable, and a failure here just leaves the form blank.
@@ -125,10 +115,11 @@ export function RegisterDialog({
               if (cancelled || !profile.completed) return;
               setForm((current) => ({
                 ...current,
-                whatsappNumber: profile.mobileNumber ?? "",
                 exam: profile.preparingFor ?? "",
                 stage: profile.currentStage ?? "",
               }));
+              // Older APIs only return the 10-digit Indian form.
+              setPhone(phoneFromStored(profile.mobileE164 ?? (profile.mobileNumber ? `91${profile.mobileNumber}` : null)));
             })
             .catch(() => undefined);
         }
@@ -158,7 +149,7 @@ export function RegisterDialog({
 
   const planner = session.included[0]?.title;
 
-  const set = (key: FieldKey, value: string) => {
+  const set = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: "" }));
   };
@@ -168,16 +159,17 @@ export function RegisterDialog({
     setFailure(null);
 
     const parsed = schema.safeParse(form);
-    if (!parsed.success) {
+    const checkedPhone = validatePhone(phone);
+    if (!parsed.success || checkedPhone.error) {
       const next: Partial<Record<FieldKey, string>> = {};
-      for (const issue of parsed.error.issues) next[issue.path[0] as FieldKey] = issue.message;
+      for (const issue of parsed.error?.issues ?? []) next[issue.path[0] as FieldKey] = issue.message;
+      if (checkedPhone.error) next.whatsappNumber = checkedPhone.error;
       setErrors(next);
       return;
     }
 
-    const { name, whatsappNumber, ...rest } = parsed.data;
-    // The API rejects an empty string, so an unfilled number is left out.
-    const answers = whatsappNumber ? { ...rest, whatsappNumber } : rest;
+    const { name, ...rest } = parsed.data;
+    const answers = { ...rest, whatsappNumber: checkedPhone.e164! };
     const outcome = await pay(session, answers, { name, email: user!.email });
 
     if (outcome.status === "paid") setStage("done");
@@ -296,29 +288,16 @@ export function RegisterDialog({
                   <span className="text-xs font-medium text-destructive">{errors.name}</span>
                 )}
               </label>
-              <label className="field-label">
-                <span>
-                  Mobile number <span className="font-normal text-muted-foreground">(optional)</span>
-                </span>
-                <input
-                  className="field"
-                  inputMode="numeric"
-                  autoComplete="tel-national"
-                  value={form.whatsappNumber}
-                  maxLength={10}
-                  // Digits only, capped at ten: a pasted "+91 98765 43210"
-                  // still works instead of failing validation over spaces or
-                  // a country code the field was never meant to hold.
-                  onChange={(event) => set("whatsappNumber", event.target.value.replace(/\D/g, "").slice(-10))}
-                  placeholder="Enter your 10 digit mobile number"
-                />
-                <span className="text-xs font-normal text-muted-foreground">
-                  If you add one, make sure you have access to it.
-                </span>
-                {errors.whatsappNumber && (
-                  <span className="text-xs font-medium text-destructive">{errors.whatsappNumber}</span>
-                )}
-              </label>
+              <PhoneField
+                id="register-mobile"
+                value={phone}
+                onChange={(value) => {
+                  setPhone(value);
+                  setErrors((current) => ({ ...current, whatsappNumber: "" }));
+                }}
+                hint="Make sure you have access to the provided mobile number."
+                error={errors.whatsappNumber}
+              />
               <ChipGroup
                 label="Preparing for"
                 values={options.exams}

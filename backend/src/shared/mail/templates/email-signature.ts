@@ -25,7 +25,7 @@ const SOCIALS = [
     alt: 'Instagram',
   },
   {
-    href: 'https://www.youtube.com/@Jabstudiesmetfun',
+    href: 'https://www.youtube.com/@DrAngadRai',
     icon: 'https://cdn-icons-png.flaticon.com/32/1384/1384060.png',
     alt: 'YouTube',
   },

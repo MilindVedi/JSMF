@@ -17,7 +17,7 @@ function Index() {
           <span className="eyebrow"><Sparkles size={13}/> NEET-PG · FMGE · INI-CET</span>
           <h1 className="mt-6 max-w-3xl font-display text-5xl font-semibold leading-[1.08] text-brand-deep md:text-6xl">Revise what matters. Understand why it matters.</h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">Doctor-led, exam-calibrated resources built to turn complex medicine into clear, memorable revision.</p>
-          <div className="mt-8 flex flex-wrap gap-3"><Button asChild size="lg"><a href="/browse">Explore resources <ArrowRight size={17}/></a></Button><Button asChild variant="secondary" size="lg"><a href="https://youtube.com" target="_blank" rel="noreferrer"><Play size={16}/> Watch on YouTube</a></Button></div>
+          <div className="mt-8 flex flex-wrap gap-3"><Button asChild size="lg"><a href="/browse">Explore resources <ArrowRight size={17}/></a></Button><Button asChild variant="secondary" size="lg"><a href="https://www.youtube.com/@DrAngadRai" target="_blank" rel="noreferrer"><Play size={16}/> Watch on YouTube</a></Button></div>
         </div>
         <div className="relative mx-auto w-full max-w-md lg:col-span-5">
           <div className="doctor-placeholder" aria-label="Portrait placeholder for Dr. Angad Rai"><div className="doctor-monogram">AR</div><p>Portrait coming soon</p></div>

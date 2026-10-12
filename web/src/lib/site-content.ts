@@ -12,7 +12,7 @@ export const businessAddress = {
 
 export const links = {
   telegram: "https://t.me/JABSTUDIESMETFUN",
-  youtube: "https://www.youtube.com/@jsmf",
+  youtube: "https://www.youtube.com/@DrAngadRai",
   instagram: "https://www.instagram.com/drangadrai09/",
 };
 

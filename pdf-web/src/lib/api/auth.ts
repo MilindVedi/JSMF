@@ -161,15 +161,18 @@ export interface CodeIssued {
 
 export interface ProfileInput {
   name: string;
-  /** 10 digits, no country code. Optional — left out when not given. */
-  mobileNumber?: string;
+  /** E.164 with country code (`+919876543210`). */
+  mobileNumber: string;
   preparingFor: string;
   currentStage: string;
 }
 
 export interface Profile {
   name: string;
+  /** Last ten digits only — kept for older pages; read `mobileE164`. */
   mobileNumber: string | null;
+  /** `+919876543210`. Absent from APIs older than the country picker. */
+  mobileE164?: string | null;
   preparingFor: string | null;
   currentStage: string | null;
   completed: boolean;
