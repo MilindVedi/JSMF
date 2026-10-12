@@ -4,8 +4,15 @@ import { LegalDocumentPage } from "@/components/legal/legal-document-page";
 import { LEGAL_LABEL, legalTypeFromSlug } from "@/lib/legal";
 import { getLegalVersion } from "@/lib/server/legal";
 
-/** A published version never changes, so this can be cached far longer than the current one. */
-export const revalidate = 3600;
+/**
+ * Rendered per request, never pre-rendered at build time: the build runs in
+ * Cloud Build, which cannot reach the private backend (no Cloud Run metadata
+ * server there to mint the service-to-service token), so a build-time render
+ * would bake in a permanent "could not be loaded" page. The underlying fetch
+ * still caches its own result (see src/lib/server/legal.ts), so this costs
+ * nothing beyond that.
+ */
+export const dynamic = "force-dynamic";
 
 type Params = Promise<{ type: string; version: string }>;
 

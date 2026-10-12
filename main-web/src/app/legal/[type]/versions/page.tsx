@@ -9,7 +9,15 @@ import { getLegalVersions } from "@/lib/server/legal";
 
 export const metadata: Metadata = { title: "Previous versions — JSMF" };
 
-export const revalidate = 60;
+/**
+ * Rendered per request, never pre-rendered at build time: the build runs in
+ * Cloud Build, which cannot reach the private backend (no Cloud Run metadata
+ * server there to mint the service-to-service token), so a build-time render
+ * would bake in a permanent "could not be loaded" page. The underlying fetch
+ * still caches its own result (see src/lib/server/legal.ts), so this costs
+ * nothing beyond that.
+ */
+export const dynamic = "force-dynamic";
 
 /** Every published version of one document, newest first — each links to its full text. */
 export default async function LegalVersionsPage({ params }: { params: Promise<{ type: string }> }) {
