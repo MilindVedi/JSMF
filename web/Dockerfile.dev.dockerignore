@@ -1,0 +1,19 @@
+# Used when docker-compose.dev.yml builds web/Dockerfile.dev from the repo
+# root (BuildKit reads <Dockerfile>.dockerignore next to the Dockerfile).
+# Same allow-list as web/Dockerfile.dockerignore: only the workspace
+# manifests, packages/core and web reach the build — backend/, main-web/,
+# pdf-web/, docs/, the *-design folders, .git and any future app never do.
+*
+!package.json
+!package-lock.json
+!packages/core
+!web
+
+# ...and, inside those, nothing that is built, installed or secret.
+**/node_modules
+**/.next
+**/.env*
+**/*.log
+**/*.tsbuildinfo
+**/.DS_Store
+web/next-env.d.ts

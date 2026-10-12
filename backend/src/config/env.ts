@@ -457,6 +457,31 @@ const schema = z
     /// free practice at all.
     PYQ_FREE_DAILY_QUESTIONS: z.coerce.number().int().min(0).default(20),
 
+    /// Whether signed-in users must accept the current Terms and acknowledge
+    /// the current Privacy Policy before using the API. Off: acceptances are
+    /// still recorded and reported, nothing is blocked and no app shows the
+    /// mandatory screen. On: after a MAJOR version, every authenticated request
+    /// outside sign-in and the legal endpoints answers 403
+    /// LEGAL_ACCEPTANCE_REQUIRED until the user accepts.
+    LEGAL_ACCEPTANCE_REQUIRED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+
+    /// First-party activity analytics (docs/analytics). Off: POST
+    /// /analytics/events still answers 204 but stores nothing, so the websites
+    /// behave identically either way and need no redeploy to follow the switch.
+    ANALYTICS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
+    /// Batches a single caller may send per minute to POST /analytics/events.
+    /// One open tab sends about 12 (a flush every 5 seconds at most, and only
+    /// when something happened), so 120 leaves room for several tabs or a
+    /// shared network. Over the limit the batch is simply lost — the page never
+    /// notices. Read from process.env by the route's @Throttle as well.
+    ANALYTICS_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(120),
+
     SEED_ADMIN_EMAIL: z.string().email().default('admin@jsmf.local'),
     SEED_ADMIN_PASSWORD: z.string().min(8).default('ChangeMe123!'),
     SEED_ADMIN_NAME: z.string().default('JSMF Admin'),

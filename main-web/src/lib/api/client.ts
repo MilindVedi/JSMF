@@ -165,10 +165,25 @@ async function send<T>(path: string, options: RequestOptions, isRetry = false): 
   const parsed: unknown = text ? safeJson(text) : null;
 
   if (!response.ok) {
+    // The backend refuses signed-in calls with this code while a required
+    // legal document is unaccepted. The gate (components/legal/legal-gate.tsx)
+    // listens and opens; the caller still gets its error as usual.
+    if (response.status === 403 && isLegalAcceptanceRequired(parsed) && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(LEGAL_REQUIRED_EVENT));
+    }
     throw new ApiError(response.status, extractMessage(parsed, response.status), parsed);
   }
 
   return parsed as T;
+}
+
+/** Dispatched on `window` when an API call fails for want of a legal acceptance. */
+export const LEGAL_REQUIRED_EVENT = "jsmf:legal-required";
+
+function isLegalAcceptanceRequired(body: unknown): boolean {
+  return Boolean(
+    body && typeof body === "object" && (body as { code?: unknown }).code === "LEGAL_ACCEPTANCE_REQUIRED",
+  );
 }
 
 function safeJson(text: string): unknown {

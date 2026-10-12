@@ -14,6 +14,7 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
+import { LegalGate } from "@/components/legal/legal-gate";
 import { storeButton } from "@/components/store/store-button";
 import { StoreFooter } from "@/components/store/store-footer";
 import { cn } from "@/lib/utils";
@@ -212,6 +213,9 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
           </nav>
         )}
       </header>
+
+      {/* Renders nothing signed out, or while the user is up to date. */}
+      <LegalGate />
 
       <main className="flex-1">{children}</main>
 

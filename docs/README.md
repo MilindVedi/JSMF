@@ -19,6 +19,8 @@ This `docs/` folder is the single source of truth for what is being built, why, 
 | [PDF Platform](./pdf-platform/) | The JSMF PDF & digital-content storefront — a **separate product** from the PYQ question bank, shipping before it, and the first part of JSMF with a real backend, payments, and accounts. Has its own scope, architecture, and data model. |
 | [Main website](./main-website/) | jsmf.me — paid live sessions with Dr. Angad Rai. Same backend and database as the PDF platform (a session is a product), its own Next.js app `main-web/`. |
 | [PYQ app](./pyq/) | `web/` — the question bank and practice app. Real backend module `questions` in its own `pyq` Postgres schema, mock/api data source switch, phase status. Includes a full [feature inventory](./pyq/features.md) and the [end-to-end user flows](./pyq/user-flows.md) with diagrams. |
+| [Mobile app](./mobile/) | `mobile/` — the Expo (Android + iOS) app for the PYQ product, "JSMF Med Prep": how to run it, what it shares with web through `@jsmf/core`, the store-rules decisions (no in-app purchases, account-deletion path) and what is needed before store submission. |
+| [Analytics](./analytics/) | First-party website analytics: what main-web tracks and where, the privacy stance, the `ANALYTICS_ENABLED` kill switch, the ingest and admin endpoints, how to read the admin Analytics page, and Cloud Logging queries for the backend's own activity events. |
 | [Identity](./identity/) | The centralized login, account, and role system shared by **every** JSMF application — not a feature of any one product. Has its own architecture and data model. |
 
 ## How this documentation is split

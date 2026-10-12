@@ -1,4 +1,4 @@
-import type { Question } from "@/types";
+import type { Question } from "@jsmf/core/domain";
 
 export const MICROBIOLOGY_QUESTIONS: Question[] = [
   {

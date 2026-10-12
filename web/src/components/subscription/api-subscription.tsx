@@ -6,9 +6,9 @@ import { PageHeader } from "@/components/common/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { useAccess } from "@/hooks/pyq";
-import { usePlanCheckout, usePlans } from "@/hooks/pyq/plans";
-import type { PyqPlan } from "@/lib/data-source";
+import { useAccess, usePlans } from "@/hooks/pyq";
+import { usePlanCheckout } from "@/hooks/pyq/plans";
+import type { PyqPlan } from "@jsmf/core/data-source";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 

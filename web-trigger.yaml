@@ -10,9 +10,12 @@ build:
     - --no-cache
     - -t
     - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
-    - web
+    - .
     - -f
     - web/Dockerfile
+    # BuildKit, so web/Dockerfile.dockerignore trims the repo-root context.
+    env:
+    - DOCKER_BUILDKIT=1
     id: Build
     name: gcr.io/cloud-builders/docker
   - args:
@@ -40,12 +43,12 @@ build:
     _AR_REPOSITORY: cloud-run-source-deploy
     _DEPLOY_REGION: asia-south1
     _PLATFORM: managed
-    _SERVICE_NAME: jsmf-web
+    _SERVICE_NAME: jsmf-web-pyqs
   tags:
   - gcp-cloud-build-deploy-cloud-run
   - gcp-cloud-build-deploy-cloud-run-managed
-  - jsmf-web
-description: Build and deploy to Cloud Run service jsmf-web on push to "main"
+  - jsmf-web-pyqs
+description: Build and deploy to Cloud Run service jsmf-web-pyqs on push to "main"
 github:
   name: JSMF
   owner: MilindVedi
@@ -53,4 +56,7 @@ github:
     branch: ^main$
 includedFiles:
 - web/**
-name: jsmf-web-deploy
+- packages/core/**
+- package.json
+- package-lock.json
+name: jsmf-web-pyqs-deploy

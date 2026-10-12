@@ -4,15 +4,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { z } from "zod";
+import type { z } from "zod";
 import { toast } from "sonner";
-import { AuthCard } from "@/components/layout/auth-card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { ArrowRight } from "lucide-react";
+import { AUTH_ASIDES, AuthCard, FieldError } from "@/components/layout/auth-card";
+import { PasswordInput } from "@/components/auth/password-input";
+import { storeButton } from "@/components/ui/store-button";
 import { useAuthStore } from "@/store/auth-store";
 import { GoogleSignIn, safeNext } from "@/components/auth/google-sign-in";
 import { DATA_SOURCE_KIND } from "@/lib/data-source";
+import { loginSchema } from "@jsmf/core/schemas";
 
 const IS_API = DATA_SOURCE_KIND === "api";
 
@@ -20,13 +21,7 @@ function nextParam() {
   return typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("next");
 }
 
-const schema = z.object({
-  email: z.string().email("Enter a valid email address"),
-  // The real API deliberately has no minimum at login (it would leak policy).
-  password: IS_API
-    ? z.string().min(1, "Enter your password")
-    : z.string().min(6, "Password must be at least 6 characters"),
-});
+const schema = loginSchema({ api: IS_API });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -53,44 +48,61 @@ export default function LoginPage() {
 
   return (
     <AuthCard
-      title="Log in to JSMF"
-      description="Continue your NEET-PG, FMGE, or INI-CET preparation."
+      title="Welcome back"
+      aside={AUTH_ASIDES.login}
       footer={
-        <span className="text-muted-foreground">
-          New to JSMF?{" "}
-          <Link href="/signup" className="font-medium text-primary hover:underline">
+        <>
+          New here?{" "}
+          <Link href="/signup" className="font-semibold text-primary hover:underline">
             Create an account
           </Link>
-        </span>
+        </>
       }
     >
       <GoogleSignIn next={safeNext(nextParam())} />
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="email">Email</Label>
-          <Input id="email" type="email" placeholder="you@example.com" {...register("email")} />
-          {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
-        </div>
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="password">Password</Label>
-            <Link href="/forgot-password" className="text-xs font-medium text-primary hover:underline">
-              Forgot password?
-            </Link>
-          </div>
-          <Input id="password" type="password" placeholder="••••••••" {...register("password")} />
-          {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
-        </div>
-        {errors.root && <p className="text-sm text-destructive">{errors.root.message}</p>}
-        <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
-          {isSubmitting ? "Logging in…" : "Log in"}
-        </Button>
+      <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+        <label className="field-label" htmlFor="email">
+          Email
+          <input
+            id="email"
+            type="email"
+            autoComplete="username"
+            className="field"
+            placeholder="you@example.com"
+            {...register("email")}
+          />
+          <FieldError message={errors.email?.message} />
+        </label>
+        <label className="field-label" htmlFor="password">
+          Password
+          <PasswordInput
+            id="password"
+            autoComplete="current-password"
+            placeholder="Your password"
+            {...register("password")}
+          />
+          <FieldError message={errors.password?.message} />
+        </label>
+        {errors.root && (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+            {errors.root.message}
+          </p>
+        )}
+        <button type="submit" className={storeButton({ className: "w-full" })} disabled={isSubmitting}>
+          {isSubmitting ? "Signing in…" : "Sign in"}
+          {!isSubmitting && <ArrowRight className="size-4" />}
+        </button>
         {!IS_API && (
           <p className="text-center text-xs text-muted-foreground">
             This is a prototype — any email and password will work.
           </p>
         )}
       </form>
+      <p className="text-center text-sm">
+        <Link href="/forgot-password" className="font-semibold text-primary hover:underline">
+          Forgot your password?
+        </Link>
+      </p>
     </AuthCard>
   );
 }

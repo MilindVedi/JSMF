@@ -2,6 +2,14 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { EXAM_OPTIONS, STAGE_OPTIONS } from '../../../events/domain/session-display';
 
+export class UpdateNameDto {
+  @ApiProperty({ example: 'Ananya Rao' })
+  @IsString()
+  @MinLength(2, { message: 'Enter your full name' })
+  @MaxLength(120)
+  name!: string;
+}
+
 /** The questions asked once, right after email signup. */
 export class UpdateProfileDto {
   @ApiProperty({ example: 'Ananya Rao' })

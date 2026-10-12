@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Flame, Trophy } from "lucide-react";
+import { CheckCircle2, Trophy } from "lucide-react";
+import { StreakEmbers } from "@/components/streak/streak-embers";
+import { StreakFlame } from "@/components/streak/streak-flame";
 import { Progress } from "@/components/ui/progress";
 import { useStreakState } from "@/lib/use-streak-state";
 import { isApiDataSource, useRefreshStreak } from "@/hooks/pyq";
 import { useStreakStore } from "@/store/streak-store";
 import { useAuthStore } from "@/store/auth-store";
 import { useStreakAnimationStore } from "@/store/streak-animation-store";
-import { getStreakLevel, isMilestoneDay } from "@/lib/streak-config";
+import { getStreakLevel, isMilestoneDay } from "@jsmf/core/domain";
 import { cn } from "@/lib/utils";
 
 const RAMP_STEP_MS = 220;
@@ -25,6 +27,7 @@ export function StreakCard() {
   const updateProfile = useAuthStore((s) => s.updateProfile);
   const markCelebrated = useStreakAnimationStore((s) => s.markCelebrated);
   const beginPending = useStreakAnimationStore((s) => s.beginPending);
+  const cancelPending = useStreakAnimationStore((s) => s.cancelPending);
   const triggerFly = useStreakAnimationStore((s) => s.trigger);
   const refreshStreak = useRefreshStreak();
 
@@ -37,12 +40,24 @@ export function StreakCard() {
   const [burst, setBurst] = useState(false);
   const badgeRef = useRef<HTMLDivElement>(null);
   const hasCompletedRef = useRef(false);
+  const flyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Leaving the dashboard before the badge flies must not leave the topbar
+  // frozen at the pre-celebration count for the rest of the session.
+  useEffect(
+    () => () => {
+      if (flyTimer.current) clearTimeout(flyTimer.current);
+      cancelPending();
+    },
+    [cancelPending]
+  );
 
   function completeToday() {
     const today = streak.lastCompletedDate ?? new Date().toISOString().slice(0, 10);
-    // Live data already counts today; the mock demo extends the streak here.
-    const fromStreak = isApiDataSource ? Math.max(streak.currentStreak - 1, 0) : streak.currentStreak;
-    const newStreak = fromStreak + 1;
+    // Live data already counts today, so the count shown everywhere is already
+    // right and only celebrates; the mock demo extends the streak here.
+    const fromStreak = streak.currentStreak;
+    const newStreak = isApiDataSource ? Math.max(streak.currentStreak, 1) : streak.currentStreak + 1;
 
     setBurst(true);
     setTimeout(() => setBurst(false), 900);
@@ -54,7 +69,7 @@ export function StreakCard() {
     // badgeRef so a missing badge (should never happen while mounted) can't
     // leave the freeze stuck on with no flight to ever clear it.
     if (badgeRef.current) {
-      beginPending(fromStreak);
+      beginPending(fromStreak, newStreak);
     }
 
     // The count updates immediately and independently of the animation, so
@@ -70,8 +85,9 @@ export function StreakCard() {
       const milestoneHit = isMilestoneDay(newStreak) ? newStreak : null;
       // A short delay lets the burst read as "the card celebrating" before
       // the badge detaches and travels to the topbar.
-      setTimeout(() => {
+      flyTimer.current = setTimeout(() => {
         if (badgeRef.current) triggerFly(badgeRef.current, milestoneHit);
+        else cancelPending();
       }, 500);
     }
   }
@@ -150,15 +166,18 @@ export function StreakCard() {
         <div
           ref={badgeRef}
           className={cn(
-            "flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-1 transition-transform duration-300",
+            "relative flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 transition-transform duration-300",
             level.idlePulse && "animate-streak-idle-pulse",
             burst && "scale-110"
           )}
+          // The box carries the level's colour; the flame is always fire.
           style={{
             backgroundColor: `color-mix(in oklch, ${level.accent} 16%, transparent)`,
+            borderColor: `color-mix(in oklch, ${level.accent} 30%, transparent)`,
           }}
         >
-          <Flame className="size-3.5" strokeWidth={2} style={{ color: level.accent }} />
+          {burst && <StreakEmbers />}
+          <StreakFlame className="size-4" glow={level.glowIntensity} />
           <span className="text-xs font-semibold" style={{ color: level.accent }}>
             {streak.currentStreak} day{streak.currentStreak === 1 ? "" : "s"}
           </span>

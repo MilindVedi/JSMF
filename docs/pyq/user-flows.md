@@ -24,13 +24,13 @@ Diagram: [`diagrams/data-source-switch.puml`](./diagrams/data-source-switch.puml
 Nothing else in this document makes sense until you know that a PYQ screen never talks to the backend directly.
 
 ```
-screen → hook (web/src/hooks/pyq) → PyqDataSource → mock adapter | api adapter → /api proxy → NestJS
+screen → hook (@jsmf/core hooks via web/src/hooks/pyq) → PyqDataSource → mock adapter | api adapter → /api proxy → NestJS
 ```
 
-- `web/src/lib/data-source/types.ts` defines the port. The shapes on it are the UI's, not the wire's; adapters translate.
-- `web/src/lib/data-source/index.ts` picks the adapter, from `DATA_SOURCE_KIND` in `kind.ts`, which is `NEXT_PUBLIC_DATA_SOURCE === "api" ? "api" : "mock"`. Next inlines that at build time, so changing it needs a rebuild, not a restart.
-- `web/src/hooks/pyq/index.ts` wraps every port call in react-query. Query keys matter: `["pyq","taxonomy"]` is public content cached forever (`staleTime: Infinity`), and everything under `["pyq","user",…]` is the signed-in user's and is invalidated as a group after any write that changes progress (`useInvalidateUser`).
-- `web/src/lib/data-source/api-adapter.ts` turns a 403 whose body carries `code: "PYQ_DAILY_LIMIT_REACHED"` into a typed `DailyLimitError`, and a 404 into `NotFoundError`. That is the only reason the hooks can show an upgrade prompt instead of a generic failure.
+- `packages/core/src/data-source/types.ts` defines the port. The shapes on it are the UI's, not the wire's; adapters translate.
+- `web/src/lib/data-source/index.ts` picks the adapter (passed to `configureCore` in `web/src/lib/core.ts`), from `DATA_SOURCE_KIND` in `kind.ts`, which is `NEXT_PUBLIC_DATA_SOURCE === "api" ? "api" : "mock"`. Next inlines that at build time, so changing it needs a rebuild, not a restart.
+- `packages/core/src/hooks/pyq.ts` wraps every port call in react-query (web re-exports it from `web/src/hooks/pyq/index.ts`). Query keys matter: `["pyq","taxonomy"]` is public content cached forever (`staleTime: Infinity`), and everything under `["pyq","user",…]` is the signed-in user's and is invalidated as a group after any write that changes progress (`useInvalidateUser`).
+- `packages/core/src/data-source/api-adapter.ts` turns a 403 whose body carries `code: "PYQ_DAILY_LIMIT_REACHED"` into a typed `DailyLimitError`, and a 404 into `NotFoundError`. That is the only reason the hooks can show an upgrade prompt instead of a generic failure.
 - `dataSource.capabilities` tells a screen what the active adapter cannot do. Free-text search and smart custom-test ordering are mock-only, so those controls are hidden when `isApiDataSource` is true.
 
 The practical consequence: if a screen behaves differently on your machine than in staging, check `NEXT_PUBLIC_DATA_SOURCE` before anything else.
@@ -64,7 +64,7 @@ This is the core loop. Routes: `/question-bank` to choose, `/practice/[sessionId
 
 ### Starting
 
-`useStartSession()` (`web/src/hooks/pyq/index.ts`) calls `POST pyq/sessions` → `PracticeService.start`. In order:
+`useStartSession()` (`web/src/hooks/pyq/index.ts`, wrapping the core hook with router navigation) calls `POST pyq/sessions` → `PracticeService.start`. In order:
 
 1. Resolve the question ids. An explicit `questionIds` list wins and is filtered to visible questions; otherwise `QuestionBankService.matchingIds` plus a crypto-random shuffle, capped at `MAX_SESSION_QUESTIONS` (200).
 2. Empty set → 400.
@@ -150,7 +150,7 @@ Hitting the limit mid-session does not destroy the session: already-answered que
 
 ### Buying
 
-`/subscription` (`web/src/app/(app)/subscription/page.tsx`) branches on `isApiDataSource`: mock mode keeps illustrative plans backed by the zustand auth store, api mode renders `web/src/components/subscription/api-subscription.tsx` on `usePlans` and `usePlanCheckout` (`web/src/hooks/pyq/plans.ts`).
+`/subscription` (`web/src/app/(app)/subscription/page.tsx`) branches on `isApiDataSource`: mock mode keeps illustrative plans backed by the zustand auth store, api mode renders `web/src/components/subscription/api-subscription.tsx` on `usePlans` (core) and `usePlanCheckout` (`web/src/hooks/pyq/plans.ts`).
 
 A plan is not a special entity. It is an ordinary `COURSE` product, `PUBLISHED`, `accessType PAID`, whose `metadata` carries `{"pyqSubscription": true, "durationDays": N, …}`. `backend/src/shared/pyq-plan.ts` is the only file that reads that shape — `readPyqPlan`, the `IS_PYQ_PLAN` / `NOT_A_PYQ_PLAN` Prisma filters that hide plans from the PDF storefront and the library, and `extendedExpiry`.
 

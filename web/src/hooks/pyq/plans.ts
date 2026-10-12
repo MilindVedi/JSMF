@@ -1,21 +1,21 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError } from "@/lib/api/client";
-import { dataSource, type PyqPlan } from "@/lib/data-source";
-import { pyqKeys } from "./index";
+import { useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@jsmf/core/api";
+import type { PyqPlan } from "@jsmf/core/data-source";
+import { pyqKeys } from "@jsmf/core/hooks";
+import { dataSource } from "@/lib/data-source";
 
 /**
- * Subscription plans and buying one. Kept beside the other PYQ hooks; the
- * Razorpay flow is a copy of main-web's use-session-checkout (same script
- * loading, stub shortcut, retry-aware failure and dismiss handling) rather
- * than an import, because the two apps do not share code.
+ * Buying a subscription plan in the browser (the plan list itself is
+ * `usePlans`, re-exported from @jsmf/core by `@/hooks/pyq`). Web-only because
+ * it drives Razorpay's web checkout script; the mobile app will use the native
+ * SDK against the same endpoints. The flow is a copy of main-web's
+ * use-session-checkout (same script loading, stub shortcut, retry-aware
+ * failure and dismiss handling) rather than an import, because the two apps
+ * do not share code.
  */
-
-export function usePlans() {
-  return useQuery({ queryKey: ["pyq", "plans"], queryFn: () => dataSource.listPlans() });
-}
 
 const CHECKOUT_SCRIPT = "https://checkout.razorpay.com/v1/checkout.js";
 

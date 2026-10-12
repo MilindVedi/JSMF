@@ -5,6 +5,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { AppConfig, AppConfigModule } from './config/config.module';
 import { PrismaModule } from './shared/prisma/prisma.module';
+import { CacheModule } from './shared/cache/cache.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuditModule } from './shared/audit/audit.service';
 import { MailModule } from './shared/mail/mail.module';
@@ -25,6 +26,9 @@ import {
 } from './common/guards/identity-throttler.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { LegalAcceptanceGuard } from './common/guards/legal-acceptance.guard';
+import { LegalModule } from './modules/legal/legal.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 
 @Module({
   imports: [
@@ -70,6 +74,7 @@ import { RolesGuard } from './common/guards/roles.guard';
           : undefined,
       }),
     }),
+    CacheModule,
     AuditModule,
     MailModule,
     SmsModule,
@@ -84,6 +89,8 @@ import { RolesGuard } from './common/guards/roles.guard';
     HealthModule,
     SettingsModule,
     QuestionsModule,
+    LegalModule,
+    AnalyticsModule,
   ],
   providers: [
     // Order matters: throttling runs first (cheapest, and should apply to
@@ -97,6 +104,9 @@ import { RolesGuard } from './common/guards/roles.guard';
     { provide: APP_GUARD, useClass: IdentityThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    // Last: only an authenticated, authorised request is worth checking for
+    // pending Terms/Privacy acceptance. A no-op unless LEGAL_ACCEPTANCE_REQUIRED.
+    { provide: APP_GUARD, useClass: LegalAcceptanceGuard },
   ],
 })
 export class AppModule {}

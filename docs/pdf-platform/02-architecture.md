@@ -358,7 +358,7 @@ was 1.7 MB and the served JPEG is ~107 KB at the same dimensions.
 
 ### Status: built — the admin panel
 
-`pdf-web/src/app/(admin)/admin/` with supporting pieces in `pdf-web/src/lib/api/`, `pdf-web/src/store/session-store.ts` and `pdf-web/src/components/admin/`. Routes: `/admin/login`, `/admin/accept-invite`, `/admin/products`, `/admin/products/new`, `/admin/products/[id]`, `/admin/featured`, `/admin/sessions`, `/admin/sessions/[id]` (live sessions sold on jsmf.me — see `docs/main-website/README.md`), `/admin/taxonomy`, `/admin/orders`, `/admin/team`, `/admin/settings` (platform-wide toggles shared with jsmf.me, `docs/main-website/README.md` §7).
+`pdf-web/src/app/(admin)/admin/` with supporting pieces in `pdf-web/src/lib/api/`, `pdf-web/src/store/session-store.ts` and `pdf-web/src/components/admin/`. Routes: `/admin/login`, `/admin/accept-invite`, `/admin/products`, `/admin/products/new`, `/admin/products/[id]`, `/admin/featured`, `/admin/sessions`, `/admin/sessions/[id]` (live sessions sold on jsmf.me — see `docs/main-website/README.md`), `/admin/taxonomy`, `/admin/orders`, `/admin/analytics` (main-website visitors and booking funnel — `docs/analytics/README.md`), `/admin/team`, `/admin/settings` (platform-wide toggles shared with jsmf.me, `docs/main-website/README.md` §7).
 
 This is the **first part of the frontend that talks to the real backend** — everything else under `web/` is still the PYQ mock over hardcoded data. The two are deliberately not merged: `session-store.ts` (real) is separate from `auth-store.ts` (mock), because a mock login must never be able to put the app into a state the real backend never issued.
 

@@ -1,16 +1,13 @@
-import Link from "next/link";
-import { Logo } from "@/components/common/logo";
+import { MarketingHeader } from "@/components/layout/marketing-header";
+import { MarketingFooter } from "@/components/layout/marketing-footer";
 
+/** Same frame as jsmf.me's sign-in: the site header, the auth stage, the footer. */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-muted/40 px-4 py-12">
-      <Link href="/" className="mb-8">
-        <Logo />
-      </Link>
-      <div className="w-full max-w-sm">{children}</div>
-      <p className="mt-8 text-center text-xs text-muted-foreground">
-        JSMF is a memory-based PYQ preparation platform for NEET-PG, FMGE, and INI-CET.
-      </p>
+    <div className="flex min-h-dvh flex-col bg-background">
+      <MarketingHeader />
+      <main className="flex-1">{children}</main>
+      <MarketingFooter />
     </div>
   );
 }

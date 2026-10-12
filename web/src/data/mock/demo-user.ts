@@ -1,4 +1,4 @@
-import type { UserProfile } from "@/types";
+import type { UserProfile } from "@jsmf/core/domain";
 
 export const DEMO_USER: UserProfile = {
   id: "u-demo-1",

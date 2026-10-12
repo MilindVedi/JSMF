@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { backendOrigin, getGoogleIdToken } from "@/lib/server/backend";
 
 /**
  * Two jobs, kept separate:
@@ -16,39 +17,16 @@ import type { NextRequest } from "next/server";
  *    either is unset (local dev), the gate is skipped entirely.
  */
 
-/**
- * Cached Google Cloud ID token for service-to-service authentication to a
- * private Cloud Run backend. Refreshed 5 minutes before its ~1h expiry.
- */
-let cachedToken: { token: string; expiry: number } | null = null;
-
-/** Null when not on GCP (local dev) or the metadata server is unreachable. */
-async function getGoogleIdToken(audience: string): Promise<string | null> {
-  if (cachedToken && Date.now() < cachedToken.expiry) return cachedToken.token;
-
-  try {
-    const url = `http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${encodeURIComponent(audience)}`;
-    const res = await fetch(url, { headers: { "Metadata-Flavor": "Google" } });
-    if (!res.ok) return null;
-    const token = await res.text();
-    cachedToken = { token, expiry: Date.now() + 55 * 60 * 1000 };
-    return token;
-  } catch {
-    return null;
-  }
-}
-
 async function proxyToBackend(request: NextRequest) {
-  const rawBackendUrl = process.env.BACKEND_API_URL || "http://localhost:4000";
-  const backendOrigin = rawBackendUrl.replace(/\/api\/?$/, "").replace(/\/+$/, "");
-  const targetUrl = `${backendOrigin}${request.nextUrl.pathname}${request.nextUrl.search}`;
+  const origin = backendOrigin();
+  const targetUrl = `${origin}${request.nextUrl.pathname}${request.nextUrl.search}`;
 
   const requestHeaders = new Headers(request.headers);
   // Marks the request as having come through a public frontend. Set, never
   // copied, so a caller cannot strip it; the backend refuses /internal routes
   // that carry it (InternalOnlyGuard).
   requestHeaders.set(VIA_FRONTEND_HEADER, "1");
-  const idToken = await getGoogleIdToken(backendOrigin);
+  const idToken = await getGoogleIdToken(origin);
   if (idToken) {
     // Cloud Run IAM reads X-Serverless-Authorization, leaving Authorization
     // free for the app's own user JWT.

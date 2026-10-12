@@ -79,7 +79,7 @@ export function ResourceCard({ resource }: { resource: Resource }) {
 export function SocialLinks() {
   return <div className="flex justify-center gap-3">
     <Button asChild variant="secondary" size="sm"><a href="https://youtube.com" target="_blank" rel="noreferrer"><Youtube size={15}/> YouTube <ExternalLink size={12}/></a></Button>
-    <Button asChild variant="secondary" size="sm"><a href="https://instagram.com" target="_blank" rel="noreferrer"><Instagram size={15}/> Instagram <ExternalLink size={12}/></a></Button>
+    <Button asChild variant="secondary" size="sm"><a href="https://www.instagram.com/drangadrai09/" target="_blank" rel="noreferrer"><Instagram size={15}/> Instagram <ExternalLink size={12}/></a></Button>
   </div>;
 }
 

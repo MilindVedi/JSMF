@@ -20,7 +20,8 @@ export function QuestionPreviewDemo() {
     <section className="py-20 sm:py-28">
       <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="font-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+          <span className="eyebrow mx-auto">Live demo</span>
+          <h2 className="mt-5 font-display text-3xl font-semibold leading-tight text-brand-deep dark:text-foreground sm:text-4xl">
             Try a real question
           </h2>
           <p className="mt-3 text-muted-foreground">

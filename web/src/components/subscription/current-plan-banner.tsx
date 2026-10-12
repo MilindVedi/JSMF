@@ -2,7 +2,7 @@ import { CreditCard } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EXAMS } from "@/data/mock/exams";
-import type { SubscriptionPlan } from "@/types";
+import type { SubscriptionPlan } from "@jsmf/core/domain";
 
 export function CurrentPlanBanner({ plan }: { plan: SubscriptionPlan }) {
   const unlockedExams = plan.entitlements.examIds

@@ -1,0 +1,22 @@
+{
+  // Type-check only: the package ships as source and each app transpiles it
+  // (web: Next `transpilePackages`; mobile: Metro). `lib` includes DOM only
+  // for the fetch/FormData/AbortSignal types React Native also provides —
+  // core must never reach for `window`, `document` or `localStorage`; those
+  // are injected through configureCore().
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": []
+  },
+  "include": ["src/**/*.ts"]
+}

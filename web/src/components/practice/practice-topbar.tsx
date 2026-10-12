@@ -54,7 +54,8 @@ export function PracticeTopbar({
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
-        {timed && durationSec && <TimerDisplay durationSec={durationSec} onTimeUp={onTimeUp} />}
+        {/* Also at 0: a test reopened after its time ran out must still auto-submit. */}
+        {timed && durationSec !== undefined && <TimerDisplay durationSec={durationSec} onTimeUp={onTimeUp} />}
         <FlagButton isFlagged={isFlagged} onToggle={onToggleFlag} />
         <BookmarkButton isBookmarked={isBookmarked} onToggle={onToggleBookmark} />
         <KeyboardShortcutsPopover />

@@ -10,6 +10,9 @@ import { ComingSoonStrip } from "@/components/marketing/coming-soon-strip";
 import { CtaSection } from "@/components/marketing/cta-section";
 import { FaqAccordion } from "@/components/marketing/faq-accordion";
 
+// Static, refreshed in the background with the plans it shows.
+export const revalidate = 300;
+
 export default function MarketingHomePage() {
   return (
     <>

@@ -7,3 +7,6 @@ Thumbs.db
 
 .vercel
 .env*
+
+# npm workspaces (packages/core + web) install into the repo root
+node_modules/

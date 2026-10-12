@@ -41,7 +41,8 @@ const entitlements = new EntitlementService(prisma);
 const orders = new OrderService(prisma, provider, entitlements);
 const payments = new PaymentService(prisma, provider, entitlements, mail, whatsapp, config, new OrderEvents());
 const access = new PyqAccessService(prisma, entitlements, config);
-const plans = new PyqPlansService(prisma);
+// Pass-through: these tests change plans between reads.
+const plans = new PyqPlansService(prisma, { wrap: (_key: string, _ttl: number, load: () => unknown) => load(), del: async () => {} } as never);
 
 const PRICE = 99_900n;
 const DAYS = 30;

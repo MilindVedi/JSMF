@@ -16,6 +16,8 @@ import { EntitlementService } from '../../entitlements/application/entitlement.s
 import { PracticeService } from './practice.service';
 import { ProgressService } from './progress.service';
 import { PYQ_SUBSCRIPTION_METADATA_KEY, PyqAccessService } from './pyq-access.service';
+import { CacheService } from '../../../shared/cache/cache.service';
+import { QuestionStateService } from './question-state.service';
 import { QuestionBankService } from './question-bank.service';
 import { QuestionImportService, type ImportInput } from './question-import.service';
 
@@ -40,9 +42,11 @@ const config = {
 const prisma = new PrismaService();
 const entitlements = new EntitlementService(prisma);
 const access = new PyqAccessService(prisma, entitlements, config);
-const bank = new QuestionBankService(prisma);
+const cache = new CacheService({ get: () => false } as never);
+const bank = new QuestionBankService(prisma, cache);
+const states = new QuestionStateService(prisma);
 const importer = new QuestionImportService(prisma);
-const practice = new PracticeService(prisma, bank, access);
+const practice = new PracticeService(prisma, bank, access, states);
 const progress = new ProgressService(prisma, bank);
 
 const run = randomUUID().slice(0, 8);
@@ -381,5 +385,118 @@ describe('bookmarks and reports', () => {
     });
     expect(report.status).toBe('OPEN');
     await prisma.questionReport.delete({ where: { id: report.id } });
+  });
+});
+
+describe('search, sort and session ordering', () => {
+  it('searches stems case-insensitively and sorts by exam year', async () => {
+    const user = await createUser();
+    const hit = await bank.list(user.id, { ...filters, search: 'question 3' }, 1, 50);
+    expect(hit.items.map((q) => q.stem)).toEqual([expect.stringMatching(/^Question 3/)]);
+
+    const oldest = await bank.list(user.id, filters, 1, 50, 'oldest-exam-year');
+    expect(oldest.items.map((q) => q.year)).toEqual([2020, 2020, 2020, 2021, 2021]);
+    const newest = await bank.list(user.id, filters, 1, 50, 'newest-exam-year');
+    expect(newest.items[0].year).toBe(2021);
+  });
+
+  it('draws the priority group first, then fills the rest', async () => {
+    const user = await createUser();
+    const rows = await questionIds();
+    await progress.addBookmark(user.id, rows[4].id);
+
+    const session = await practice.start(user.id, {
+      mode: PracticeMode.PRACTICE,
+      filters,
+      count: 5,
+      order: 'bookmarked-first',
+    });
+    expect(session.questions).toHaveLength(5);
+    expect(session.questions[0].id).toBe(rows[4].id);
+
+    const wrong = rows[2];
+    const first = await practice.start(user.id, { mode: PracticeMode.PRACTICE, questionIds: [wrong.id] });
+    await practice.answer(user.id, first.id, {
+      questionId: wrong.id,
+      selectedOptionId: wrong.options[1].id,
+    });
+    const retry = await practice.start(user.id, {
+      mode: PracticeMode.PRACTICE,
+      filters,
+      count: 2,
+      order: 'incorrect-first',
+    });
+    expect(retry.questions[0].id).toBe(wrong.id);
+
+    const fresh = await practice.start(user.id, {
+      mode: PracticeMode.PRACTICE,
+      filters,
+      count: 4,
+      order: 'unattempted-first',
+    });
+    expect(fresh.questions.map((q) => q.id)).not.toContain(wrong.id);
+  });
+
+  it('describes history from the questions and gives the bookmark status', async () => {
+    const user = await createUser();
+    const rows = await questionIds();
+    const session = await practice.start(user.id, {
+      mode: PracticeMode.PRACTICE,
+      questionIds: [rows[0].id, rows[1].id],
+    });
+    await practice.answer(user.id, session.id, {
+      questionId: rows[0].id,
+      selectedOptionId: rows[0].options[1].id,
+    });
+
+    const [item] = (await practice.history(user.id, 1, 10)).items;
+    expect(item).toMatchObject({
+      examIds: [EXAM],
+      subjectIds: [SUBJECT],
+      newestYear: 2021,
+      oldestYear: 2020,
+      resumeIndex: 1,
+    });
+    expect(item.lastWrongAt).toBeInstanceOf(Date);
+
+    await progress.addBookmark(user.id, rows[0].id);
+    const [bookmark] = await progress.listBookmarks(user.id);
+    expect(bookmark.userStatus).toBe('incorrect');
+  });
+});
+
+describe('read models', () => {
+  it('stay exact under repeated refreshes, flags and an unsubmitted test', async () => {
+    const user = await createUser();
+    const rows = await questionIds();
+    const practiceRun = await practice.start(user.id, { mode: PracticeMode.PRACTICE, questionIds: [rows[0].id] });
+    await practice.answer(user.id, practiceRun.id, { questionId: rows[0].id, selectedOptionId: rows[0].options[0].id });
+    await states.refresh(user.id, [rows[0].id]);
+    await states.refresh(user.id, [rows[0].id]);
+    expect(
+      await prisma.userQuestionState.findUnique({
+        where: { userId_questionId: { userId: user.id, questionId: rows[0].id } },
+      }),
+    ).toMatchObject({ latestCorrect: true, attemptCount: 1, incorrectCount: 0 });
+
+    // A flag set and cleared with no answer behind it leaves nothing.
+    const flagRun = await practice.start(user.id, { mode: PracticeMode.PRACTICE, questionIds: [rows[1].id] });
+    await practice.flag(user.id, flagRun.id, rows[1].id, true);
+    await practice.flag(user.id, flagRun.id, rows[1].id, false);
+    expect(
+      await prisma.userQuestionState.count({ where: { userId: user.id, questionId: rows[1].id } }),
+    ).toBe(0);
+
+    // A running test's wrong answer is invisible until submit.
+    const test = await practice.start(user.id, { mode: PracticeMode.TEST, questionIds: [rows[2].id] });
+    await practice.answer(user.id, test.id, { questionId: rows[2].id, selectedOptionId: rows[2].options[1].id });
+    expect((await bank.list(user.id, { ...filters, status: 'incorrect' }, 1, 50)).total).toBe(0);
+    expect((await practice.history(user.id, 1, 10, 'IN_PROGRESS')).items.map((s) => s.id)).toContain(test.id);
+    await practice.submit(user.id, test.id);
+    expect((await bank.list(user.id, { ...filters, status: 'incorrect' }, 1, 50)).total).toBe(1);
+    expect((await practice.history(user.id, 1, 10, 'SUBMITTED')).items.map((s) => s.id)).toContain(test.id);
+
+    const stats = await progress.stats(user.id);
+    expect(stats).toMatchObject({ attempted: 2, correct: 1, incorrect: 1 });
   });
 });

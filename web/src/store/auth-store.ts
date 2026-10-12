@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { ExamId, UserProfile } from "@/types";
+import type { ExamId, UserProfile } from "@jsmf/core/domain";
 import { DEMO_USER } from "@/data/mock/demo-user";
 import { safeLocalStorage } from "./persist-storage";
 import { usePracticeStore } from "./practice-store";
@@ -10,13 +10,12 @@ import { useCollectionsStore } from "./collections-store";
 import { buildSeedBookmarkIds, buildSeedCollections, buildSeedSessions } from "@/lib/seed-demo-data";
 import { DATA_SOURCE_KIND } from "@/lib/data-source/kind";
 import {
-  ensureRefreshed,
-  getStoredRefreshToken,
+  createAuthSession,
   setAccessToken,
   setSessionLostHandler,
-  setStoredRefreshToken,
-} from "@/lib/api/client";
-import { authApi, type AuthSession, type AuthUser } from "@/lib/api/auth";
+  type AuthSession,
+  type AuthUser,
+} from "@jsmf/core/api";
 import { queryClient } from "@/lib/query-client";
 
 /**
@@ -53,6 +52,8 @@ interface AuthState {
   /** Restores a session after a reload; a no-op in mock mode. */
   restore: () => Promise<void>;
   updateProfile: (patch: Partial<UserProfile>) => void;
+  /** Saves the display name (server-side in api mode). */
+  rename: (name: string) => Promise<void>;
   upgradePlan: (planId: string) => void;
 }
 
@@ -102,6 +103,9 @@ const createMockAuthStore = () => create<AuthState>()(
       restore: async () => {},
       updateProfile: (patch) =>
         set((state) => ({ profile: { ...state.profile, ...patch } })),
+      rename: async (name) => {
+        set((state) => ({ profile: { ...state.profile, name } }));
+      },
       upgradePlan: (planId) =>
         set((state) => ({ profile: { ...state.profile, currentPlanId: planId } })),
     }),
@@ -123,6 +127,10 @@ const createMockAuthStore = () => create<AuthState>()(
 
 // ---------------------------------------------------------------------------
 // API mode — the shared identity API, same tokens and storage as jsmf.me.
+// The session itself (token handling, restore, logout, cache clearing) is
+// @jsmf/core's `createAuthSession`, shared with the mobile app; this store
+// only mirrors its results into the profile the screens read. The browser
+// storage it uses is wired in src/lib/core.ts.
 // ---------------------------------------------------------------------------
 
 function profileFrom(user: AuthUser, previous?: UserProfile): UserProfile {
@@ -130,25 +138,23 @@ function profileFrom(user: AuthUser, previous?: UserProfile): UserProfile {
     id: user.id,
     name: user.name,
     email: user.email ?? "",
-    // Not stored server-side yet; kept as a local preference.
+    // Server-side in pyq preferences; screens read it from usePreferences.
     targetExamId: previous?.id === user.id ? previous.targetExamId : "neet-pg",
-    joinedAt: previous?.id === user.id ? previous.joinedAt : new Date().toISOString(),
-    currentPlanId: previous?.id === user.id ? previous.currentPlanId : "free",
+    // Not on the token; /profile fetches the real date when it is shown.
+    joinedAt: previous?.id === user.id ? previous.joinedAt : "",
+    // Unused in api mode: plan badges read the server's access (usePlanLabel).
+    currentPlanId: "free",
     streakDays: previous?.id === user.id ? previous.streakDays : 0,
     lastActiveAt: new Date().toISOString(),
   };
 }
 
-/** Guards against two components restoring the same session concurrently. */
-let restoreInFlight: Promise<void> | null = null;
-
 const createApiAuthStore = () =>
   create<AuthState>()((set, get) => {
-    function adopt(session: AuthSession) {
-      setAccessToken(session.tokens.accessToken);
-      setStoredRefreshToken(session.tokens.refreshToken);
-      queryClient.removeQueries({ queryKey: ["pyq", "user"] });
-      set({ isAuthenticated: true, hasHydrated: true, profile: profileFrom(session.user, get().profile) });
+    const session = createAuthSession({ queryClient });
+
+    function signedIn(user: AuthUser) {
+      set({ isAuthenticated: true, hasHydrated: true, profile: profileFrom(user, get().profile) });
     }
 
     function signedOut() {
@@ -161,45 +167,34 @@ const createApiAuthStore = () =>
       profile: { ...DEMO_USER, id: "", name: "", email: "", currentPlanId: "free", streakDays: 0 },
       hasHydrated: false,
       setHasHydrated: (value) => set({ hasHydrated: value }),
-      adopt,
-      login: async (email, password) => adopt(await authApi.login({ email, password })),
+      adopt: (auth) => signedIn(session.adopt(auth)),
+      login: async (email, password) => signedIn(await session.login(email, password)),
       signup: async (name, email, password, targetExamId) => {
-        adopt(await authApi.register({ name, email, password }));
+        // The exam chosen on the form is the PYQ preference; core saves it
+        // once the account exists and never fails the signup over it.
+        signedIn(await session.signup({ name, email, password, targetExamId }));
         set((state) => ({ profile: { ...state.profile, targetExamId } }));
       },
       logout: async () => {
-        const refreshToken = getStoredRefreshToken();
-        // Revoke server-side first so the refresh-token family is really dead.
-        if (refreshToken) await authApi.logout(refreshToken).catch(() => {});
-        setStoredRefreshToken(null);
-        queryClient.removeQueries({ queryKey: ["pyq", "user"] });
+        await session.logout();
         signedOut();
       },
       /**
        * The access token is memory-only, so a reload leaves just the refresh
-       * token. Exchanged through the client's single shared refresh: tokens
-       * are single-use, and a duplicate exchange (Strict Mode double effects)
-       * would read as replay and revoke the whole family.
+       * token. Core restores it through the client's single shared refresh
+       * (single-use tokens: a duplicate exchange would revoke the family).
        */
-      restore: () => {
-        restoreInFlight ??= (async () => {
-          if (get().hasHydrated) return;
-          try {
-            if (!getStoredRefreshToken() || !(await ensureRefreshed())) return signedOut();
-            const user = await authApi.me();
-            set({ isAuthenticated: true, hasHydrated: true, profile: profileFrom(user, get().profile) });
-          } catch {
-            // Unreachable API: treat as signed out but keep the refresh token,
-            // so the next load signs straight back in. `hasHydrated` must flip
-            // either way or every gated page would spin forever.
-            signedOut();
-          }
-        })().finally(() => {
-          restoreInFlight = null;
-        });
-        return restoreInFlight;
+      restore: async () => {
+        if (get().hasHydrated) return;
+        const user = await session.restore();
+        if (user) signedIn(user);
+        else signedOut();
       },
       updateProfile: (patch) => set((state) => ({ profile: { ...state.profile, ...patch } })),
+      rename: async (name) => {
+        const user = await session.rename(name);
+        set((state) => ({ profile: { ...state.profile, name: user.name } }));
+      },
       upgradePlan: (planId) => set((state) => ({ profile: { ...state.profile, currentPlanId: planId } })),
     };
   });

@@ -102,6 +102,8 @@ This document provides a reference for all environment variables, flags, and sec
 | `REDIS_ENABLED` | Boolean | `false` | Cloud Run Env Var | Keep `false` in V1 for lowest cost ($0). |
 | `RATE_LIMIT_PER_MINUTE` | Number | *(leave unset — 120)* | Cloud Run Env Var | Per-caller limit, counted per account when signed in. Tunable without a rebuild; the default is an estimate that real traffic should settle. |
 | `RATE_LIMIT_IP_CEILING_PER_MINUTE` | Number | *(leave unset — 3000)* | Cloud Run Env Var | Per-IP backstop. Must be >= `RATE_LIMIT_PER_MINUTE` or the app refuses to start. |
+| `ANALYTICS_ENABLED` | Boolean | *(leave unset — `true`)* | Cloud Run Env Var | Website analytics kill switch. `false`: `POST /api/analytics/events` still answers 204 but stores nothing — the sites behave identically. See `docs/analytics/README.md`. |
+| `ANALYTICS_RATE_LIMIT_PER_MINUTE` | Number | *(leave unset — 120)* | Cloud Run Env Var | Analytics batches per caller per minute. Over it, batches are dropped silently (the page never notices). |
 | `TRUST_PROXY_RANGES` | CSV String | *(leave unset)* | Cloud Run Env Var | Which upstream addresses are trusted proxies, for resolving the real client IP that rate limiting counts on. The built-in default already covers Cloud Run, Firebase Hosting and Google load balancers - **only set this if a new proxy is added**. See *Phase 9.1*. |
 | `PASSWORD_SIGNUP_ENABLED` | Boolean | `true` (default) | Cloud Run Env Var | Buyers may sign up with a password or with Google. Registration sends no email, so the mail quota cannot block it. Set `false` to make `POST /auth/register` answer 404. |
 | `GOOGLE_OAUTH_ENABLED` | Boolean | `true` | Cloud Run Env Var | Enables Google OAuth 2.0 authentication. |
@@ -192,6 +194,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `BACKEND_API_URL` | Same as pdf-web — runtime proxy target. | `https://jsmf-backend-67890.a.run.app` |
 | `NEXT_PUBLIC_SITE_URL` | Canonical address. | `https://jsmf.me` |
 | `EXTERNAL_CHECKOUT_URL` | When set, the landing page links out to this URL instead of using the in-app registration/checkout. Clear it to enable the real flow. | *(empty to use in-app checkout)* |
+| `NEXT_PUBLIC_ANALYTICS_ENABLED` | **Build time.** Unset = analytics on; `"false"` strips tracking from the bundle (needs a rebuild — use the backend's `ANALYTICS_ENABLED=false` to stop collection without one). No build arg needed for the default. | *(unset)* |
 | `PORT` | Listening port. | `3002` |
 | `NODE_ENV` | Production environment. | `production` |
 

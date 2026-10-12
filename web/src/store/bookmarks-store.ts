@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
-import type { BookmarkEntry } from "@/types";
+import type { BookmarkEntry } from "@jsmf/core/domain";
 import { safeLocalStorage } from "./persist-storage";
 
 interface BookmarksState {

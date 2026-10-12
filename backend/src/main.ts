@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import compression from 'compression';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { requestLogger } from './common/middleware/request-logger';
@@ -59,6 +60,10 @@ async function bootstrap(): Promise<void> {
   // the proxy says arrived over plain HTTP is refused rather than served.
   if (config.isProduction) app.use(requireHttps);
   app.use(helmet());
+  // JSON lists (questions, revision, history) shrink several-fold gzipped;
+  // nothing in front of the API on Cloud Run compresses for it. Below 1 KB the
+  // CPU is not worth the bytes saved.
+  app.use(compression({ threshold: 1024 }));
   app.enableCors({
     origin: config.get('CORS_ORIGINS'),
     credentials: true,

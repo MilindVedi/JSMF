@@ -12,16 +12,21 @@ This file is the orientation: how the app is wired, what the API is, how access 
 ## 1. Shape
 
 ```
+packages/core (@jsmf/core — shared by web/ and the mobile/ Expo app, see docs/mobile/README.md)
+  hooks (react-query) ──► PyqDataSource port ──► api adapter → api client → {baseUrl}/… → backend
+  domain types, selectors, sorting, streak config, legal parsing, auth form schemas
 web/ (Next.js)
-  screens ──► hooks/pyq (react-query) ──► PyqDataSource (lib/data-source/types.ts)
-                                            ├─ mock adapter  → data/mock + zustand (browser only)
-                                            └─ api adapter   → lib/api/client → /api proxy → backend
+  screens ──► @/hooks/pyq (core hooks + Next router/toasts) ──► configureCore({ dataSource })
+                                            ├─ mock adapter  → data/mock + zustand (web-only demo)
+                                            └─ core api adapter, baseUrl "/api" → middleware proxy → backend
 backend/src/modules/questions   (NestJS module, owns the `pyq` Postgres schema)
 ```
 
 - Screens never import mock data or the API client — only the hooks. Swapping data source is one env var.
-- `NEXT_PUBLIC_DATA_SOURCE=mock|api` (default `mock`; build-time, needs a rebuild).
-- `BACKEND_API_URL` — where `web/src/middleware.ts` forwards `/api/*` (same as main-web).
+- **Shared core (`packages/core`, `@jsmf/core`).** Everything platform-free lives there so the Expo app can reuse it: domain types (`/domain`), the API client with its refresh-once-on-401 logic and error classes (`/api`), the `PyqDataSource` port and API adapter (`/data-source`), every react-query hook and query key (`/hooks`), the query-client defaults (`/query`), legal document types and body parsing (`/legal`) and the auth form zod schemas (`/schemas`). It is source-only (no build step): web compiles it through `transpilePackages`. Core never touches `window`, storage, env vars or a router; each app calls `configureCore({ baseUrl, storage, dataSource, onLegalRequired, notify })` once — web does it in `web/src/lib/core.ts`. The signed-in session itself (login, signup + exam preference, Google code exchange, reset, restore, logout, rename) is core's `createAuthSession`; web's zustand auth store only mirrors it. Web keeps only what is browser- or Next-specific: the mock adapter and demo data, the zustand stores, Google's redirect flow (`lib/google-auth.ts`), Razorpay web checkout (`hooks/pyq/plans.ts`), router-driven `useStartSession`, and every React component.
+- **Workspaces.** The repo root `package.json` declares npm workspaces `packages/*`, `web` and `mobile` with one root `package-lock.json` (`npm install` at the root, never inside `web/`). backend/, main-web/ and pdf-web/ are not workspaces and keep their own lockfiles. Because of that, `web/Dockerfile` is built from the **repo root** (`docker build -f web/Dockerfile .`; `web/Dockerfile.dockerignore` lets only the root manifests, `packages/core` and `web` in), and the standalone server lands at `web/server.js` inside the image. The Cloud Build trigger (`web-trigger.yaml`) builds with context `.`; note its `includedFiles` is still `web/**`, so a change only under `packages/core/` does not trigger a deploy on its own.
+- `NEXT_PUBLIC_DATA_SOURCE=api|mock` — build-time, inlined by `next build`. `web/Dockerfile` (built from the repo root) builds `api` by default (`--build-arg NEXT_PUBLIC_DATA_SOURCE=mock` for a self-contained demo); unset outside Docker means `mock`.
+- `BACKEND_API_URL` — runtime, where `web/src/middleware.ts` forwards `/api/*` and where server-rendered pages (`/pricing`, the home page's plan cards) fetch public data. Required on the `jsmf-web-pyqs` Cloud Run service in api mode.
 - `MOCK_UI_BASIC_AUTH_USER` / `_PASSWORD` — optional pre-launch gate on pages (never on `/api`).
 - Auth in api mode is the shared JSMF account: bearer access token in memory, rotating refresh token in `localStorage["jsmf.refreshToken"]`. Google sign-in returns to `/auth/callback`, which must be listed in the backend's `OAUTH_ALLOWED_REDIRECTS`.
 
@@ -34,7 +39,8 @@ Why one database, separate schema: subscriptions are ordinary products/entitleme
 Migrations (additive only, so an older app version runs against them unchanged):
 - `20261004120000_pyq_question_bank` — the schema, types and Phase 1 tables.
 - `20261005130000_pyq_report_resolution` — `admin_note`, `resolved_by_id` on `question_reports` (both nullable).
-- `20261005120000_pyq_learning` — `collections` (user-named lists), `collection_questions` (membership + `added_at`), `user_preferences` (target exam slug, daily goal; one row per user, absent = defaults). Streaks, revision and reinforce are computed from attempts, never stored.
+- `20261005120000_pyq_learning` — `collections` (user-named lists), `collection_questions` (membership + `added_at`), `user_preferences` (target exam slug, daily goal; one row per user, absent = defaults).
+- `20261011120000_pyq_read_models` — `user_question_states` (one row per user per answered-or-flagged question: latest result, last answered/correct/wrong, attempt and incorrect counts, flagged) and `user_daily_activity` (answers per user per India-time day). Both are **derived** from `attempts` and backfilled by the migration itself; see §7.
 
 ## 3. API (all under `/api`, sign-in required unless noted)
 
@@ -43,13 +49,15 @@ Migrations (additive only, so an older app version runs against them unchanged):
 | `GET pyq/taxonomy` | Exams → subjects → topics with question counts (public) |
 | `GET pyq/access` | Subscribed? Free answers left today; current plan + expiry |
 | `GET pyq/plans` | Plans on sale (public) — buy via `POST orders` |
-| `GET pyq/questions` | Filter by exam, subject, topic, year, difficulty, status (unattempted/correct/incorrect/bookmarked), own collections; paginated; never includes answers |
+| `GET pyq/taxonomy` years | The taxonomy also lists `years` (with counts) that have published questions; the year filters use it |
+| `GET pyq/questions` | Filter by exam, subject, topic, year, difficulty, status (unattempted/correct/incorrect/bookmarked), own collections, `search` (case-insensitive stem text); `sort` = `newest-exam-year` (default) / `oldest-exam-year` / `name-az` / `name-za` (subject name); paginated; rows are summaries (no options), never answers |
 | `POST pyq/questions/:id/reports` | Report a problem with a question |
-| `POST/GET pyq/sessions`, `GET pyq/sessions/:id` | Start a session / history / load one |
+| `POST/GET pyq/sessions`, `GET pyq/sessions/:id` | Start a session (with filters: optional `order` = `random` / `unattempted-first` / `incorrect-first` / `bookmarked-first`) / history (optional `status=IN_PROGRESS\|SUBMITTED`; each row carries `examIds`, `subjectIds`, `newestYear`, `oldestYear`, `lastWrongAt`, `resumeIndex` computed from its questions) / load one |
 | `POST pyq/sessions/:id/answers` | PRACTICE: returns correctness + explanation; TEST: stored only |
 | `PATCH pyq/sessions/:id/questions/:qid/flag` | Flag for review |
 | `POST pyq/sessions/:id/submit`, `GET …/review` | Score; answers + explanations after submit |
-| `GET/PUT/DELETE pyq/bookmarks(/:qid)` | Bookmarks |
+| `GET/PUT/DELETE pyq/bookmarks(/:qid)` | Bookmarks (the list carries each question's `userStatus`) |
+| `GET pyq/bookmarks/ids` | Just the bookmarked ids — what every bookmark icon reads |
 | `GET pyq/wrong-questions`, `GET pyq/stats` | Revision lists and statistics |
 | `GET/POST pyq/collections`, `PATCH/DELETE pyq/collections/:id` | My collections (with question ids) / create / rename / delete |
 | `PUT/DELETE pyq/collections/:id/questions/:qid` | Add / remove a question (another user's collection is 404) |
@@ -57,6 +65,7 @@ Migrations (additive only, so an older app version runs against them unchanged):
 | `GET pyq/revision` | Every attempted/bookmarked/collected question with facts (latest result, last wrong/correct, incorrect count, never-corrected, flagged, bookmarked/collected at, `due` = wrong, flagged, or correct >30 days ago) |
 | `GET pyq/reinforce?recentDays=7` | Latest-correct questions, split recent / not revisited |
 | `GET/PUT pyq/preferences` | Target exam and daily goal |
+| `PATCH auth/me/name` | Change the display name (identity module, platform-wide) without re-answering the signup questions. `GET auth/me/profile` also returns `memberSince` |
 | `POST admin/pyq/questions/import` | Admin bulk import (idempotent by `externalKey`; whole file validated before any write) |
 | `GET admin/pyq/questions` | Admin list with answers; filter `examId`, `subjectId`, `topicId`, `status`, `q` (stem text), `reported=true` (open reports); paginated; each row has `reports: { open, total }` |
 | `GET/PATCH/DELETE admin/pyq/questions/:id`, `POST admin/pyq/questions` | Get / edit / soft-delete / create. 2–6 options, exactly one correct. Options are matched by `id` on edit; one a student has chosen can be reworded but not removed (409) |
@@ -107,14 +116,25 @@ Admin workflow (pdf-web `/admin/pyq/*`):
 
 Closing a report writes `admin_note` and `resolved_by_id` on the row (migration `20261005130000_pyq_report_resolution`), so the decision and its author survive beyond the activity log and show on the closed row in the queue.
 
-## 6. Status (Phase 2 learning features done)
+## 6. Status
 
-Wired to the backend: login/signup/password reset/Google, dashboard, question bank, practice, results, review, bookmarks, wrong questions, history, custom test, statistics, revision, reinforce, streaks (topbar chip; dashboard card celebrates when the real count reaches the goal), collections (create from the collection button on any question; add/remove; filter bank, custom test, history), profile target exam.
+Every student screen runs against the backend in api mode, including question-bank search and sort, smart custom-test ordering, history sort keys, the real plan badge, name changes and "member since" on `/profile`, the exam picked at signup (saved as the PYQ preference), and the marketing `/pricing` page (server-rendered from `GET pyq/plans`).
+
+Still not built: profile photo upload (no upload endpoint yet, so the photo control is hidden in api mode) and changing the sign-in email. See [features.md §12](./features.md).
 
 A **timed custom test** runs as a TEST session: answers are saved but correctness and explanations stay hidden (palette shows "answered") until submit. Every other mode is PRACTICE.
 
-Subscription purchase is wired in api mode too: `/subscription` lists real plans and runs the Razorpay checkout (§4). The marketing `/pricing` page and mock mode keep illustrative plans.
+Tests: `pyq.integration.spec.ts` (import idempotency, hidden answers, practice/test flows, scoring, free limit, isolation, search/sort/ordering, history fields, read models), `pyq-admin.integration.spec.ts` (editor validation, option-id stability, soft delete, taxonomy rules, reports, ADMIN-only) and `learning.integration.spec.ts` (collections, streaks across IST midnight, revision/reinforce, preferences, timed test as TEST).
 
-Still mock-only: profile name/email/photo. Admin question editor, taxonomy manager, report triage and JSON import are done (pdf-web `/admin/pyq`). Search/sort and smart custom-test ordering are hidden in api mode.
+## 7. Performance and scale
 
-Tests: `backend/src/modules/questions/application/pyq.integration.spec.ts` (import idempotency, hidden answers, practice/test flows, scoring, free limit, cross-user isolation) and `pyq-admin.integration.spec.ts` (editor validation, option-id stability, soft delete keeps review, taxonomy rules, report resolution, ADMIN-only guard) and `learning.integration.spec.ts` (collections CRUD + isolation, streaks across IST midnight, revision/reinforce contents, preferences, timed custom test as TEST).
+Written for many students with long histories. The rules:
+
+- **No request scans a student's whole history.** Per-question facts live in `user_question_states` and per-day counts in `user_daily_activity`, so status filters, list labels, stats, wrong questions, revision, reinforce, smart ordering and streaks are indexed lookups. `QuestionStateService` keeps both tables current inside the same transaction as the write that changes them (a practice answer, a flag outside a running test, a test submit), and always *recomputes* the affected row from `attempts`, never increments, so retries and races converge.
+- **Rebuild if they could be stale.** `cd backend && npm run db:pyq:rebuild-read-models` recomputes both tables from `attempts` in one transaction. Needed only if the app was rolled back past `20261011120000_pyq_read_models` and forward again (the older version writes attempts without updating them). Safe to run any time.
+- **Lists are summaries.** `GET pyq/questions`, bookmarks, wrong questions, revision and reinforce return id/exam/subject/topic/year/stem/difficulty, no options; only a session's own questions carry options. Responses over 1 KB are gzip-compressed (`compression` in `main.ts`).
+- **History is aggregated in SQL.** A page of sessions is three queries regardless of how many questions they hold; the dashboard asks for 1 open + 4 finished sessions, `/history` loads finished sessions 50 at a time.
+- **Shared data is cached.** `CacheService` (`backend/src/shared/cache`) caches the taxonomy (5 min, dropped by any admin PYQ write via `InvalidateTaxonomyInterceptor`) and the plans list (1 min). It uses this process's memory by default and **Redis when `REDIS_ENABLED=true`** (the same switch that moves rate-limit counters there), so every instance shares one cache and an invalidation on one is seen by all. If Redis is unreachable, requests fall through to the database and nothing fails. Public responses also carry `Cache-Control` (taxonomy 5 min, plans 1 min).
+- **The web app requests only what a screen shows.** An answer updates the cached session from its own response (one request per answer); the allowance and streak move locally, and the streak is re-read only on the day's first answer. A bookmark toggle flips the icon immediately and refetches only the bookmarks list if it is on screen. Other writes mark data stale so it reloads when next opened, never all at once. Bookmark icons read `GET pyq/bookmarks/ids`, not the bookmark list. Search is debounced (300 ms).
+
+When to switch Redis on: more than one API instance (or autoscaling past one), which is also when in-memory rate limiting stops being correct.

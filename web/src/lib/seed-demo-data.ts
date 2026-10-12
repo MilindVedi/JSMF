@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import type { Attempt, Collection, Question, TestSession } from "@/types";
+import type { Attempt, Collection, Question, TestSession } from "@jsmf/core/domain";
 import { QUESTIONS } from "@/data/mock/questions";
 
 /**

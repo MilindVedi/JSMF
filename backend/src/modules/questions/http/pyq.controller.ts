@@ -10,6 +10,7 @@ import {
   Post,
   Put,
   Query,
+  Header,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -23,7 +24,7 @@ import {
   AnswerDto,
   FlagDto,
   ListQuestionsQueryDto,
-  PageQueryDto,
+  HistoryQueryDto,
   ReportQuestionDto,
   StartSessionDto,
 } from './dto/questions.dto';
@@ -44,6 +45,7 @@ export class PyqController {
   ) {}
 
   @Get('taxonomy')
+  @Header('Cache-Control', 'public, max-age=300')
   @Public()
   @ApiOperation({
     summary: 'Exams, subjects and topics with published question counts',
@@ -65,8 +67,8 @@ export class PyqController {
     summary: 'Browse questions (never includes answers or explanations)',
   })
   questions(@CurrentUser() user: AuthenticatedUser, @Query() query: ListQuestionsQueryDto) {
-    const { page, pageSize, ...filters } = query;
-    return this.bank.list(user.id, filters, page, pageSize);
+    const { page, pageSize, sort, ...filters } = query;
+    return this.bank.list(user.id, filters, page, pageSize, sort);
   }
 
   @Post('questions/:id/reports')
@@ -91,8 +93,8 @@ export class PyqController {
 
   @Get('sessions')
   @ApiOperation({ summary: 'Session history, newest first' })
-  history(@CurrentUser() user: AuthenticatedUser, @Query() query: PageQueryDto) {
-    return this.practice.history(user.id, query.page, query.pageSize);
+  history(@CurrentUser() user: AuthenticatedUser, @Query() query: HistoryQueryDto) {
+    return this.practice.history(user.id, query.page, query.pageSize, query.status);
   }
 
   @Get('sessions/:id')
@@ -138,6 +140,12 @@ export class PyqController {
   }
 
   // --- Progress ---------------------------------------------------------------
+
+  @Get('bookmarks/ids')
+  @ApiOperation({ summary: 'Ids of my bookmarked questions — enough to draw every bookmark icon' })
+  bookmarkIds(@CurrentUser() user: AuthenticatedUser) {
+    return this.progress.bookmarkIds(user.id);
+  }
 
   @Get('bookmarks')
   bookmarks(@CurrentUser() user: AuthenticatedUser) {

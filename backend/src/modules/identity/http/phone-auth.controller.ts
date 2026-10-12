@@ -1,3 +1,4 @@
+import { SkipLegalCheck } from '../../../common/decorators/skip-legal-check.decorator';
 import { Body, Controller, HttpCode, HttpStatus, NotFoundException, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -26,6 +27,8 @@ import { RegisterPhoneDto, StartPhoneDto, VerifyPhoneDto } from './dto/phone.dto
  * service cover the two shapes abuse takes.
  */
 @ApiTags('auth')
+// Signing in, out and managing one's own account must work before accepting.
+@SkipLegalCheck()
 @Controller('auth')
 export class PhoneAuthController {
   constructor(private readonly phone: PhoneSignInService) {}

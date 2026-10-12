@@ -18,7 +18,7 @@ import {
 import { SubjectPerformanceChart } from "@/components/statistics/subject-performance-chart";
 import { AccuracyTrendChart } from "@/components/statistics/accuracy-trend-chart";
 import { DonutBreakdown } from "@/components/statistics/donut-breakdown";
-import { getCollectionStats } from "@/lib/selectors";
+import { getCollectionStats } from "@jsmf/core/domain";
 import { pyqCapabilities, useCollections, useStats, useTaxonomyLookup } from "@/hooks/pyq";
 import { PageLoading, QueryError } from "@/components/pyq/query-states";
 import { cn } from "@/lib/utils";
@@ -85,7 +85,9 @@ export default function StatisticsPage() {
           title="No practice data yet"
           description="Attempt some questions to start seeing your performance statistics here."
           action={
-            <Button render={<Link href="/question-bank" />}>Browse question bank</Button>
+            <Button nativeButton={false} render={<Link href="/question-bank" />}>
+              Browse question bank
+            </Button>
           }
         />
       ) : (

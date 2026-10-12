@@ -27,6 +27,8 @@ import {
   QuestionAdminService,
   type AdminQuestionInput,
 } from "./question-admin.service";
+import { CacheService } from '../../../shared/cache/cache.service';
+import { QuestionStateService } from './question-state.service';
 import { QuestionBankService } from "./question-bank.service";
 
 /**
@@ -48,8 +50,10 @@ const access = new PyqAccessService(
   new EntitlementService(prisma),
   config,
 );
-const bank = new QuestionBankService(prisma);
-const practice = new PracticeService(prisma, bank, access);
+const cache = new CacheService({ get: () => false } as never);
+const bank = new QuestionBankService(prisma, cache);
+const states = new QuestionStateService(prisma);
+const practice = new PracticeService(prisma, bank, access, states);
 const progress = new ProgressService(prisma, bank);
 const admin = new QuestionAdminService(prisma);
 const taxonomy = new PyqTaxonomyAdminService(prisma);

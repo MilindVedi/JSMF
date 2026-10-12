@@ -1,91 +1,36 @@
 import Link from "next/link";
-import { Logo } from "@/components/common/logo";
-import { EXAMS } from "@/data/mock/exams";
-import { DoctorSocialLinks } from "@/components/marketing/doctor-social-links";
+import { ContactButton } from "@/components/marketing/contact-button";
 
+const LEGAL_LINKS = [
+  { href: "/about", label: "About Us" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/contact", label: "Contact" },
+  { href: "/privacy", label: "Privacy Policy" },
+  { href: "/terms", label: "Terms & Conditions" },
+  { href: "/refund-policy", label: "Refund Policy" },
+];
+
+/** The same footer as jsmf.me: contact first, then the legal links, then the fine print. */
 export function MarketingFooter() {
   return (
-    <footer className="border-t border-border bg-card">
-      <div className="mx-auto grid w-full max-w-[1280px] gap-10 px-4 py-12 sm:px-6 sm:py-16 md:grid-cols-[1.5fr_1fr_1fr_1fr]">
-        <div className="space-y-3">
-          <Logo />
-          <p className="max-w-xs text-sm text-muted-foreground">
-            Doctor-authored, memory-based PYQ practice for NEET-PG, FMGE, and INI-CET.
+    <footer className="border-t border-border bg-card py-10">
+      <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 sm:px-6">
+        <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
+          <ContactButton />
+          <p className="text-sm font-semibold text-brand-deep dark:text-foreground">
+            Doctor-led preparation for NEET-PG, FMGE and INI-CET.
           </p>
-          <p className="text-xs text-muted-foreground">Founded and led by Dr. Angad Rai.</p>
-          <DoctorSocialLinks />
         </div>
-
-        <div className="space-y-3">
-          <h3 className="font-heading text-sm font-semibold text-foreground">Product</h3>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            <li>
-              <Link href="/pricing" className="hover:text-foreground">
-                Pricing
-              </Link>
-            </li>
-            <li>
-              <Link href="/#features" className="hover:text-foreground">
-                Features
-              </Link>
-            </li>
-            <li>
-              <Link href="/#how-it-works" className="hover:text-foreground">
-                How it works
-              </Link>
-            </li>
-            <li>
-              <Link href="/signup" className="hover:text-foreground">
-                Get started
-              </Link>
-            </li>
-          </ul>
-        </div>
-
-        <div className="space-y-3">
-          <h3 className="font-heading text-sm font-semibold text-foreground">Exams</h3>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            {EXAMS.map((exam) => (
-              <li key={exam.id}>
-                <Link href="/#exams" className="hover:text-foreground">
-                  {exam.shortName}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="space-y-3">
-          <h3 className="font-heading text-sm font-semibold text-foreground">Company</h3>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            <li>
-              <Link href="/about" className="hover:text-foreground">
-                About
-              </Link>
-            </li>
-            <li>
-              <Link href="/contact" className="hover:text-foreground">
-                Contact
-              </Link>
-            </li>
-            <li>
-              <Link href="/privacy" className="hover:text-foreground">
-                Privacy Policy
-              </Link>
-            </li>
-            <li>
-              <Link href="/terms" className="hover:text-foreground">
-                Terms of Service
-              </Link>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="border-t border-border">
-        <div className="mx-auto flex w-full max-w-[1280px] flex-col items-center justify-between gap-2 px-4 py-6 text-xs text-muted-foreground sm:flex-row sm:px-6">
-          <p>© {new Date().getFullYear()} JSMF. All rights reserved.</p>
-          <p>Memory-based PYQ practice — not affiliated with NBEMS, AIIMS, or any exam-conducting body.</p>
+        <nav className="flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-5 text-xs font-semibold text-muted-foreground">
+          {LEGAL_LINKS.map((link) => (
+            <Link key={link.href} href={link.href} className="hover:text-primary">
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+        <div className="flex flex-col gap-2 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
+          <p>© {new Date().getFullYear()} JSMF · Dr. Angad Rai</p>
+          <p>JSMF is not affiliated with NBEMS, AIIMS, or any exam-conducting body.</p>
         </div>
       </div>
     </footer>

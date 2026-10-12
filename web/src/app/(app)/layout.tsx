@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { StreakFlyOverlay } from "@/components/layout/streak-fly-overlay";
+import { StreakGoalCelebrator } from "@/components/layout/streak-goal-celebrator";
 import { useRequireAuth } from "@/lib/use-require-auth";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -20,6 +21,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh bg-background">
       <StreakFlyOverlay />
+      <StreakGoalCelebrator />
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />

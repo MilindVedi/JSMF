@@ -1,3 +1,5 @@
+import { UseInterceptors } from "@nestjs/common";
+import { InvalidateTaxonomyInterceptor } from "./invalidate-taxonomy.interceptor";
 import { Body, Controller, HttpCode, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../../common/decorators/current-user.decorator";
@@ -9,6 +11,7 @@ import { ImportQuestionsDto } from "./dto/questions.dto";
 @ApiTags("admin: pyq")
 @ApiBearerAuth()
 @Roles("ADMIN")
+@UseInterceptors(InvalidateTaxonomyInterceptor)
 @Controller("admin/pyq/questions")
 export class AdminQuestionsController {
   constructor(private readonly importer: QuestionImportService) {}

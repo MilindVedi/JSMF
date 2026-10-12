@@ -1,14 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Difficulty, Prisma, QuestionStatus } from '@prisma/client';
+import { CacheService } from '../../../shared/cache/cache.service';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import {
+  QUESTION_SUMMARY_SELECT,
   QUESTION_VIEW_INCLUDE,
   VISIBLE_QUESTION,
   toAnsweredQuestionView,
-  toQuestionView,
+  toQuestionSummary,
 } from '../domain/question-view';
 
-export type UserQuestionState = 'unattempted' | 'correct' | 'incorrect' | 'bookmarked';
+export type QuestionStatusFilter = 'unattempted' | 'correct' | 'incorrect' | 'bookmarked';
 
 export interface QuestionFilters {
   examIds?: string[];
@@ -17,29 +19,65 @@ export interface QuestionFilters {
   years?: number[];
   difficulties?: Difficulty[];
   /** Per-user state; needs a userId. */
-  status?: UserQuestionState;
+  status?: QuestionStatusFilter;
   /** In any of these collections of the user (union). Needs a userId. */
   collectionIds?: string[];
+  /** Case-insensitive substring of the stem. */
+  search?: string;
 }
 
-export interface LatestAttempt {
-  questionId: string;
-  isCorrect: boolean;
-  answeredAt: Date;
+export const QUESTION_SORTS = ['newest-exam-year', 'oldest-exam-year', 'name-az', 'name-za'] as const;
+export type QuestionSort = (typeof QUESTION_SORTS)[number];
+
+/** `name-*` is the subject's name — the web app's label, not the stem. Ties break stably on externalKey. */
+const ORDER_BY: Record<QuestionSort, Prisma.QuestionOrderByWithRelationInput[]> = {
+  'newest-exam-year': [{ year: 'desc' }, { externalKey: 'asc' }],
+  'oldest-exam-year': [{ year: 'asc' }, { externalKey: 'asc' }],
+  'name-az': [{ subject: { name: 'asc' } }, { year: 'desc' }, { externalKey: 'asc' }],
+  'name-za': [{ subject: { name: 'desc' } }, { year: 'desc' }, { externalKey: 'asc' }],
+};
+
+/** The per-user facts list screens show next to a question. */
+export interface QuestionUserFacts {
+  bookmarked: boolean;
+  userStatus: 'unattempted' | 'correct' | 'incorrect';
 }
+
+export const TAXONOMY_CACHE_KEY = 'pyq:taxonomy';
+/** Public and identical for everyone; admin writes drop it, so this is only a backstop. */
+const TAXONOMY_TTL_SECONDS = 300;
+
+/** Answered at least once (outside a running test): what "attempted" means everywhere. */
+export const ANSWERED = { latestCorrect: { not: null } } as const;
 
 /**
  * The question bank as students and admins read it. Taxonomy filters take
  * slugs, matching how the PYQ web app already addresses exams, subjects and
  * topics.
+ *
+ * Per-user state comes from `user_question_states` (see QuestionStateService),
+ * so a filter or a page label is an indexed lookup whose cost does not grow
+ * with how many questions the student has answered.
  */
 @Injectable()
 export class QuestionBankService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
-  /** Exams, subjects and topics, each with its count of published questions. */
-  async taxonomy() {
-    const [exams, subjects, topics, byExam, bySubject, byTopic] = await Promise.all([
+  /** Exams, subjects, topics and years, each with its count of published questions. */
+  taxonomy() {
+    return this.cache.wrap(TAXONOMY_CACHE_KEY, TAXONOMY_TTL_SECONDS, () => this.loadTaxonomy());
+  }
+
+  /** After any admin write that changes what students can see or how it is named. */
+  invalidateTaxonomy(): Promise<void> {
+    return this.cache.del(TAXONOMY_CACHE_KEY);
+  }
+
+  private async loadTaxonomy() {
+    const [exams, subjects, topics, byExam, bySubject, byTopic, byYear] = await Promise.all([
       this.prisma.exam.findMany({
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       }),
@@ -64,6 +102,12 @@ export class QuestionBankService {
         by: ['topicId'],
         where: VISIBLE_QUESTION,
         _count: true,
+      }),
+      this.prisma.question.groupBy({
+        by: ['year'],
+        where: VISIBLE_QUESTION,
+        _count: true,
+        orderBy: { year: 'desc' },
       }),
     ]);
 
@@ -93,60 +137,89 @@ export class QuestionBankService {
         name: topic.name,
         questionCount: topicCount.get(topic.id) ?? 0,
       })),
+      years: byYear.map((row) => ({ year: row.year, questionCount: row._count })),
     };
   }
 
-  /** Paginated, answer-free list for students. */
-  async list(userId: string, filters: QuestionFilters, page: number, pageSize: number) {
-    const where = await this.whereFor(userId, filters);
-    const [total, rows, latest, bookmarks] = await Promise.all([
-      this.prisma.question.count({ where }),
-      this.prisma.question.findMany({
-        where,
-        include: QUESTION_VIEW_INCLUDE,
-        orderBy: [{ year: 'desc' }, { externalKey: 'asc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+  /** Status and bookmark for exactly these questions, never the whole history. */
+  async factsFor(userId: string, questionIds: string[]): Promise<Map<string, QuestionUserFacts>> {
+    const [states, bookmarks] = await Promise.all([
+      this.prisma.userQuestionState.findMany({
+        where: { userId, questionId: { in: questionIds }, ...ANSWERED },
+        select: { questionId: true, latestCorrect: true },
       }),
-      this.latestAttempts(userId),
       this.prisma.bookmark.findMany({
-        where: { userId },
+        where: { userId, questionId: { in: questionIds } },
         select: { questionId: true },
       }),
     ]);
+    const latest = new Map(states.map((row) => [row.questionId, row.latestCorrect]));
     const bookmarked = new Set(bookmarks.map((row) => row.questionId));
+    return new Map(
+      questionIds.map((id): [string, QuestionUserFacts] => {
+        const correct = latest.get(id);
+        return [
+          id,
+          {
+            bookmarked: bookmarked.has(id),
+            userStatus: correct == null ? 'unattempted' : correct ? 'correct' : 'incorrect',
+          },
+        ];
+      }),
+    );
+  }
+
+  /** Paginated, answer-free list for students. */
+  async list(
+    userId: string,
+    filters: QuestionFilters,
+    page: number,
+    pageSize: number,
+    sort: QuestionSort = 'newest-exam-year',
+  ) {
+    const where = this.whereFor(userId, filters);
+    const [total, rows] = await Promise.all([
+      this.prisma.question.count({ where }),
+      this.prisma.question.findMany({
+        where,
+        select: QUESTION_SUMMARY_SELECT,
+        orderBy: ORDER_BY[sort],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    const facts = await this.factsFor(
+      userId,
+      rows.map((row) => row.id),
+    );
 
     return {
       total,
       page,
       pageSize,
-      items: rows.map((row) => {
-        const last = latest.get(row.id);
-        return {
-          ...toQuestionView(row),
-          bookmarked: bookmarked.has(row.id),
-          userStatus: !last ? 'unattempted' : last.isCorrect ? 'correct' : 'incorrect',
-        };
-      }),
+      items: rows.map((row) => ({ ...toQuestionSummary(row), ...facts.get(row.id)! })),
     };
   }
 
-  /** Ids of visible questions matching filters — what a new session draws from. */
+  /** Ids of visible questions matching filters: what a new session draws from. */
   async matchingIds(userId: string, filters: QuestionFilters): Promise<string[]> {
     const rows = await this.prisma.question.findMany({
-      where: await this.whereFor(userId, filters),
+      where: this.whereFor(userId, filters),
       select: { id: true },
     });
     return rows.map((row) => row.id);
   }
 
-  async whereFor(userId: string, filters: QuestionFilters): Promise<Prisma.QuestionWhereInput> {
+  /** Every filter is a join or subquery on an index; no id lists are built in memory. */
+  whereFor(userId: string, filters: QuestionFilters): Prisma.QuestionWhereInput {
     const and: Prisma.QuestionWhereInput[] = [VISIBLE_QUESTION];
     if (filters.examIds?.length) and.push({ exam: { slug: { in: filters.examIds } } });
     if (filters.subjectIds?.length) and.push({ subject: { slug: { in: filters.subjectIds } } });
     if (filters.topicIds?.length) and.push({ topic: { slug: { in: filters.topicIds } } });
     if (filters.years?.length) and.push({ year: { in: filters.years } });
     if (filters.difficulties?.length) and.push({ difficulty: { in: filters.difficulties } });
+    const search = filters.search?.trim();
+    if (search) and.push({ stem: { contains: search, mode: 'insensitive' } });
     if (filters.collectionIds?.length) {
       and.push({
         collectionItems: {
@@ -157,40 +230,12 @@ export class QuestionBankService {
 
     if (filters.status === 'bookmarked') {
       and.push({ bookmarks: { some: { userId } } });
+    } else if (filters.status === 'unattempted') {
+      and.push({ userStates: { none: { userId, ...ANSWERED } } });
     } else if (filters.status) {
-      const latest = await this.latestAttempts(userId);
-      const attempted = [...latest.keys()];
-      if (filters.status === 'unattempted') {
-        and.push({ id: { notIn: attempted } });
-      } else {
-        const wantCorrect = filters.status === 'correct';
-        and.push({
-          id: {
-            in: attempted.filter((id) => latest.get(id)!.isCorrect === wantCorrect),
-          },
-        });
-      }
+      and.push({ userStates: { some: { userId, latestCorrect: filters.status === 'correct' } } });
     }
     return { AND: and };
-  }
-
-  /**
-   * Each question's most recent answer by this user — the web app's
-   * definition of "correct" / "wrong". Answers inside a TEST that has not
-   * been submitted are excluded: counting them would reveal correctness
-   * through the wrong-questions list before the test is over.
-   */
-  async latestAttempts(userId: string): Promise<Map<string, LatestAttempt>> {
-    const rows = await this.prisma.$queryRaw<LatestAttempt[]>`
-      SELECT DISTINCT ON (a.question_id)
-        a.question_id AS "questionId", a.is_correct AS "isCorrect", a.answered_at AS "answeredAt"
-      FROM pyq.attempts a
-      JOIN pyq.practice_sessions s ON s.id = a.session_id
-      WHERE a.user_id = ${userId}::uuid
-        AND a.answered_at IS NOT NULL
-        AND NOT (s.mode = 'TEST' AND s.status = 'IN_PROGRESS')
-      ORDER BY a.question_id, a.answered_at DESC`;
-    return new Map(rows.map((row) => [row.questionId, row]));
   }
 
   async viewsByIds(ids: string[]) {

@@ -75,7 +75,7 @@ export default function AdminLoginPage() {
           <CardDescription>Sign in to manage PDFs and orders.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" autoComplete="username" {...register("email")} />

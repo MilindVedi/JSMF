@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { track } from "@/lib/analytics";
 import { ApiError } from "@/lib/api/client";
 import { sessionsApi } from "@/lib/api/sessions";
 import type { RegistrationAnswers } from "@/lib/api/types";
@@ -66,10 +67,15 @@ export function useSessionCheckout() {
       try {
         const order = await sessionsApi.register(session.id, answers);
 
-        if (order.kind === "FREE") return { status: "paid" };
+        if (order.kind === "FREE") {
+          track("payment_success", { kind: "free" });
+          return { status: "paid" };
+        }
 
         if (order.checkoutKeyId === STUB_CHECKOUT_KEY) {
+          track("checkout_open", { kind: "stub" });
           const result = await sessionsApi.simulatePayment(order.orderId);
+          track(result.success ? "payment_success" : "payment_error", { kind: "stub" });
           return result.success
             ? { status: "paid" }
             : { status: "failed", message: "The payment did not go through." };
@@ -101,6 +107,7 @@ export function useSessionCheckout() {
             },
             theme: { color: "#5b21b6" },
             handler: (response: RazorpayResponse) => {
+              track("payment_success");
               sessionsApi
                 .verifyPayment({
                   razorpayOrderId: response.razorpay_order_id,
@@ -118,7 +125,8 @@ export function useSessionCheckout() {
                 );
             },
             modal: {
-              ondismiss: () =>
+              ondismiss: () => {
+                track("checkout_dismiss", { afterFailure: Boolean(lastFailure) });
                 resolve(
                   lastFailure
                     ? {
@@ -126,15 +134,18 @@ export function useSessionCheckout() {
                         message: `${lastFailure} You can try again. If your bank shows a debit, it is reversed automatically.`,
                       }
                     : { status: "dismissed" },
-                ),
+                );
+              },
             },
           });
 
           razorpay.on("payment.failed", (payload) => {
+            track("payment_error");
             lastFailure = payload.error?.description ?? "The payment did not go through.";
           });
 
           razorpay.open();
+          track("checkout_open");
         });
       } catch (error) {
         return {

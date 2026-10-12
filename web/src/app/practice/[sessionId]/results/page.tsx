@@ -5,48 +5,34 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Circle, XCircle } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
-import { getSessionSubjectPerformance, getSessionSummary } from "@/lib/selectors";
+import {
+  completionKicker,
+  formatDuration,
+  getSessionSubjectPerformance,
+  getSessionSummary,
+  resultsNextAction,
+  type ResultsNextTarget,
+  type TestSession,
+} from "@jsmf/core/domain";
 import { useSessionDetail, useTaxonomyLookup } from "@/hooks/pyq";
 import { PageLoading, QueryError } from "@/components/pyq/query-states";
-import { NotFoundError } from "@/lib/data-source";
+import { NotFoundError } from "@jsmf/core/data-source";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { SubjectBadge } from "@/components/common/subject-badge";
 import { cn } from "@/lib/utils";
-import type { TestSession } from "@/types";
 
-function formatDuration(sec: number) {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
-
-/** The wording adapts to how the session was started — "Test completed" is
- *  wrong for a question-bank browse, and vice versa. */
-function completionKicker(session: TestSession) {
-  switch (session.mode) {
-    case "custom-test":
-      return "Test completed";
-    case "wrong-questions":
-      return "Revision complete";
-    case "bookmarks":
-      return "Bookmark review complete";
-    default:
-      return session.label;
-  }
-}
+// The wording and the next step are @jsmf/core's (shared with mobile); the routes are this app's.
+const NEXT_HREF: Record<ResultsNextTarget, string> = {
+  "custom-test": "/custom-test/new",
+  revision: "/revision",
+  "question-bank": "/question-bank",
+};
 
 function nextAction(session: TestSession): { label: string; href: string } {
-  switch (session.mode) {
-    case "custom-test":
-      return { label: "Start another test", href: "/custom-test/new" };
-    case "wrong-questions":
-    case "bookmarks":
-      return { label: "Back to Revision", href: "/revision" };
-    default:
-      return { label: "Back to Question Bank", href: "/question-bank" };
-  }
+  const { label, target } = resultsNextAction(session);
+  return { label, href: NEXT_HREF[target] };
 }
 
 type ResultFilter = "all" | "correct" | "incorrect" | "unattempted";

@@ -1,4 +1,4 @@
-import type { Exam } from "@/types";
+import type { Exam } from "@jsmf/core/domain";
 
 export const EXAMS: Exam[] = [
   {

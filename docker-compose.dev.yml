@@ -118,10 +118,14 @@ services:
       - /app/node_modules
       - /app/.next
 
+  # Built from the repo root (web is an npm workspace next to packages/core),
+  # so inside the container the repo layout is mirrored under /app: the
+  # workspace root is /app, the app /app/web, the shared package
+  # /app/packages/core. Edits to packages/core/src hot-reload like web/src.
   web:
     build:
-      context: ./web
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: web/Dockerfile.dev
     env_file:
       - ./web/.env.local
     environment:
@@ -129,13 +133,18 @@ services:
       # host reach the container.
       WATCHPACK_POLLING: "true"
       BACKEND_API_URL: http://api:4000
+    working_dir: /app/web
     command: ["npx", "next", "dev", "-p", "3003", "--webpack"]
     volumes:
-      - ./web/src:/app/src
-      - ./web/public:/app/public
-      - ./web/next.config.ts:/app/next.config.ts
-      - ./web/tsconfig.json:/app/tsconfig.json
-      - ./web/postcss.config.mjs:/app/postcss.config.mjs
-      - ./web/components.json:/app/components.json
+      - ./web/src:/app/web/src
+      - ./web/public:/app/web/public
+      - ./web/next.config.ts:/app/web/next.config.ts
+      - ./web/tsconfig.json:/app/web/tsconfig.json
+      - ./web/postcss.config.mjs:/app/web/postcss.config.mjs
+      - ./web/components.json:/app/web/components.json
+      - ./packages/core/src:/app/packages/core/src
+      # Workspace installs land in the root node_modules (plus web/node_modules
+      # for anything npm could not hoist) — both stay container-owned.
       - /app/node_modules
-      - /app/.next
+      - /app/web/node_modules
+      - /app/web/.next

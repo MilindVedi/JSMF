@@ -1,3 +1,4 @@
+import { SkipLegalCheck } from '../../../common/decorators/skip-legal-check.decorator';
 import {
   Body,
   Controller,
@@ -10,7 +11,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { ProfileService, type Profile } from '../application/profile.service';
-import { UpdateProfileDto } from './dto/profile.dto';
+import { UpdateNameDto, UpdateProfileDto } from './dto/profile.dto';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
@@ -41,6 +42,8 @@ import {
 } from './dto/verification.dto';
 
 @ApiTags('auth')
+// Signing in, out and managing one's own account must work before accepting.
+@SkipLegalCheck()
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -279,6 +282,17 @@ export class AuthController {
     @Body() dto: UpdateProfileDto,
   ): Promise<AuthenticatedUser> {
     return this.profiles.update(user.id, dto);
+  }
+
+  @Patch('me/name')
+  @ApiBearerAuth()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Change your display name' })
+  updateName(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateNameDto,
+  ): Promise<AuthenticatedUser> {
+    return this.profiles.rename(user.id, dto.name);
   }
 
   @Public()

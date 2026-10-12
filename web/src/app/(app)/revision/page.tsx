@@ -8,7 +8,6 @@ import { EmptyState } from "@/components/common/empty-state";
 import { SubjectBadge } from "@/components/common/subject-badge";
 import { QuestionListRow } from "@/components/question-bank/question-list-row";
 import { MultiSelectPopover } from "@/components/question-bank/multi-select-popover";
-import { RECENT_YEARS } from "@/components/question-bank/filter-panel";
 import { SortDropdown } from "@/components/common/sort-dropdown";
 import { DateRangePicker } from "@/components/common/date-range-picker";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -16,27 +15,32 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageLoading, QueryError } from "@/components/pyq/query-states";
-import { useCollections, useRevision, useTaxonomyLookup } from "@/hooks/pyq";
-import type { RevisionItem } from "@/lib/data-source";
+import { useCollections, useRevision, useStartSession, useTaxonomyLookup } from "@/hooks/pyq";
+import type { RevisionItem } from "@jsmf/core/data-source";
 import {
   getCollectionStats,
   getQuestionsInCollections,
   getWrongFacetsFromRevision,
-  type DayRange,
   type QuestionStatus,
-} from "@/lib/selectors";
-import {
   REVISION_SECTION_SORT_OPTIONS,
   QUESTION_SORT_LABELS,
   QUESTION_SORT_GROUPS,
   buildQuestionSortContextFromRevision,
   sortQuestions,
   type QuestionSortOption,
-} from "@/lib/question-sort";
+  type Collection,
+  type ExamId,
+  type PublicQuestion,
+  DATE_PRESETS,
+  computeDateRange,
+  dateRangeDescription,
+  filterByStem,
+  groupBySubject,
+  isWithinRange,
+  type DatePreset,
+} from "@jsmf/core/domain";
 import { useClientSnapshot } from "@/lib/use-client-snapshot";
-import { useStartSession } from "@/lib/use-start-session";
 import { cn } from "@/lib/utils";
-import type { Collection, ExamId, PublicQuestion } from "@/types";
 
 type Question = PublicQuestion;
 const NO_ITEMS: RevisionItem[] = [];
@@ -44,17 +48,7 @@ const NO_COLLECTIONS: Collection[] = [];
 
 const MAX_ROWS = 50;
 
-/** Shared across all four Revision sections' date-range filters. */
-type DatePreset = "7d" | "14d" | "30d" | "90d" | "all" | "custom";
-
-const DATE_PRESETS: { value: DatePreset; label: string; days?: number }[] = [
-  { value: "7d", label: "Last 7 days", days: 7 },
-  { value: "14d", label: "Last 14 days", days: 14 },
-  { value: "30d", label: "Last 30 days", days: 30 },
-  { value: "90d", label: "Last 90 days", days: 90 },
-  { value: "all", label: "All time" },
-  { value: "custom", label: "Custom range" },
-];
+// Date windows, grouping and stem search are @jsmf/core's, shared with mobile.
 const MAX_COLLECTION_ROWS = 15;
 
 type Mode = "wrong" | "never" | "subject";
@@ -62,74 +56,12 @@ type Mode = "wrong" | "never" | "subject";
  *  subject" — they don't have Wrong's extra "never corrected" slice. */
 type SimpleMode = "recent" | "subject";
 
-function computeDateRange(
-  preset: DatePreset,
-  from: string,
-  to: string,
-  todayISO: string | null
-): DayRange | null {
-  if (preset === "custom") {
-    if (!from && !to) return null;
-    return { from: from || null, to: to || null };
-  }
-  if (preset === "all") return { from: null, to: null };
-  if (!todayISO) return null;
-  const days = DATE_PRESETS.find((p) => p.value === preset)?.days;
-  if (!days) return null;
-  const from_ = new Date(new Date(todayISO).getTime() - days * 86_400_000).toISOString().slice(0, 10);
-  return { from: from_, to: null };
-}
-
-function isWithinRange(dayISO: string, range: DayRange): boolean {
-  const afterFrom = !range.from || dayISO >= range.from;
-  const beforeTo = !range.to || dayISO <= range.to;
-  return afterFrom && beforeTo;
-}
-
-function dateRangeDescription(
-  preset: DatePreset,
-  from: string,
-  to: string,
-  verb: string,
-  allTimeText: string
-): string {
-  if (preset === "custom") {
-    if (from && to) return `${verb} between ${from} and ${to}.`;
-    if (from) return `${verb} since ${from}.`;
-    if (to) return `${verb} up to ${to}.`;
-    return "Pick a custom date range above.";
-  }
-  if (preset === "all") return allTimeText;
-  const days = DATE_PRESETS.find((p) => p.value === preset)?.days;
-  return `${verb} in the last ${days} days.`;
-}
-
-function groupBySubject(questions: Question[]): { subjectId: string; questions: Question[] }[] {
-  const map = new Map<string, Question[]>();
-  for (const q of questions) {
-    const list = map.get(q.subjectId);
-    if (list) list.push(q);
-    else map.set(q.subjectId, [q]);
-  }
-  return Array.from(map.entries())
-    .map(([subjectId, qs]) => ({ subjectId, questions: qs }))
-    .sort((a, b) => b.questions.length - a.questions.length);
-}
-
 function sectionSortDropdownOptions(section: keyof typeof REVISION_SECTION_SORT_OPTIONS) {
   return REVISION_SECTION_SORT_OPTIONS[section].map((value) => ({
     value,
     label: QUESTION_SORT_LABELS[value],
     group: QUESTION_SORT_GROUPS[value],
   }));
-}
-
-/** Substring match against the question stem — the only text a search box
- *  over a question list can meaningfully search. */
-function filterByStem(questions: Question[], search: string): Question[] {
-  const term = search.trim().toLowerCase();
-  if (!term) return questions;
-  return questions.filter((q) => q.stem.toLowerCase().includes(term));
 }
 
 function SectionSearch({
@@ -187,7 +119,7 @@ function ExamYearFilterRow({
       />
       <MultiSelectPopover
         label="Year"
-        options={RECENT_YEARS.map((y) => ({ id: String(y), label: String(y) }))}
+        options={taxonomy.years.map((y) => ({ id: String(y), label: String(y) }))}
         selected={years.map(String)}
         onChange={(ids) => onYearsChange(ids.map(Number))}
       />
@@ -508,6 +440,9 @@ export default function RevisionPage() {
     [selectedCollectionIds, defaultCollectionId]
   );
   const collectionsPool = useMemo(() => {
+    // An empty selection means "no restriction" to the selector, which here
+    // would offer every revision question as if it were collected.
+    if (effectiveCollectionIds.length === 0) return [];
     const inCollections = getQuestionsInCollections(collections, effectiveCollectionIds, allQuestions);
     return inCollections.filter(
       (q) =>

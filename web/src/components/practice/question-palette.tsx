@@ -2,7 +2,7 @@
 
 import { LayoutGrid } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { Attempt } from "@/types";
+import type { Attempt } from "@jsmf/core/domain";
 import { cn } from "@/lib/utils";
 
 export function QuestionPalette({

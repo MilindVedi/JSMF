@@ -14,7 +14,8 @@ const DEFAULT_STAGES = ["1st / 2nd year", "3rd year", "Final year", "Intern"];
 
 const schema = z.object({
   name: z.string().trim().min(2, "Enter your full name").max(120),
-  mobileNumber: z.string().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit mobile number"),
+  // Optional: left empty, it is simply not sent. Filled in, it must be valid.
+  mobileNumber: z.union([z.literal(""), z.string().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit mobile number")]),
   preparingFor: z.string().min(1, "Choose the exam you're preparing for"),
   currentStage: z.string().min(1, "Select where you are right now"),
 });
@@ -62,7 +63,9 @@ export function ProfileForm({ onSaved }: { onSaved: (user: AuthUser) => void }) 
 
     setBusy(true);
     try {
-      onSaved(await accountApi.updateProfile(parsed.data));
+      const { mobileNumber, ...rest } = parsed.data;
+      // The API rejects an empty string, so an unfilled number is left out.
+      onSaved(await accountApi.updateProfile(mobileNumber ? { ...rest, mobileNumber } : rest));
     } catch (error) {
       setFailure(
         error instanceof ApiError && error.status === 400
@@ -90,7 +93,9 @@ export function ProfileForm({ onSaved }: { onSaved: (user: AuthUser) => void }) 
       </label>
 
       <label className="field-label" htmlFor="mobileNumber">
-        Mobile number
+        <span>
+          Mobile number <span className="font-normal text-muted-foreground">(optional)</span>
+        </span>
         <input
           id="mobileNumber"
           className="field"

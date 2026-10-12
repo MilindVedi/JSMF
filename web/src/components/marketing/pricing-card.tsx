@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SubscriptionPlan } from "@/types";
+import { storeButton } from "@/components/ui/store-button";
+import type { MarketingPlan } from "@/lib/server/marketing-plans";
 
-export function PricingCard({ plan }: { plan: SubscriptionPlan }) {
+export function PricingCard({ plan }: { plan: MarketingPlan }) {
   return (
     <div
       className={cn(
@@ -25,17 +26,15 @@ export function PricingCard({ plan }: { plan: SubscriptionPlan }) {
       <div>
         <div className="flex items-baseline gap-1">
           <span className="font-heading text-3xl font-bold text-foreground">
-            ₹{plan.priceMonthly}
+            ₹{plan.price.toLocaleString("en-IN")}
           </span>
-          <span className="text-sm text-muted-foreground">/month</span>
+          <span className="text-sm text-muted-foreground">/{plan.periodLabel}</span>
         </div>
-        {plan.priceYearly !== undefined && (
-          <p className="mt-1 text-xs text-muted-foreground">or ₹{plan.priceYearly}/year</p>
-        )}
+        {plan.note && <p className="mt-1 text-xs text-muted-foreground">{plan.note}</p>}
       </div>
 
       <ul className="flex flex-1 flex-col gap-2.5">
-        {plan.entitlements.features.map((feature) => (
+        {plan.features.map((feature) => (
           <li key={feature} className="flex items-start gap-2 text-sm text-foreground">
             <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
             {feature}
@@ -46,10 +45,7 @@ export function PricingCard({ plan }: { plan: SubscriptionPlan }) {
       <Link
         href="/signup"
         className={cn(
-          "inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold transition-colors",
-          plan.highlight
-            ? "bg-primary text-primary-foreground hover:bg-primary/80"
-            : "border border-border bg-background text-foreground hover:bg-muted"
+          storeButton({ variant: plan.highlight ? "primary" : "secondary" })
         )}
       >
         Get started

@@ -10,6 +10,8 @@ export interface Profile {
   preparingFor: string | null;
   currentStage: string | null;
   completed: boolean;
+  /** When the account was created, ISO. */
+  memberSince: string;
 }
 
 /**
@@ -35,7 +37,21 @@ export class ProfileService {
       preparingFor: user.preparingFor,
       currentStage: user.currentStage,
       completed: user.profileCompletedAt !== null,
+      memberSince: user.createdAt.toISOString(),
     };
+  }
+
+  /** Just the display name — for apps that let you edit it without the signup questions. */
+  async rename(userId: string, name: string): Promise<AuthenticatedUser> {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { name: name.trim() },
+      include: { roles: { include: { role: true } } },
+    });
+
+    activity(this.logger, 'auth.name_updated', { userId });
+
+    return toAuthenticatedUser(user);
   }
 
   async update(

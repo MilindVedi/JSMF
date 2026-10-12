@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CheckCircle2, Clock, FileText, Library, Loader2, Send, Sparkles, X } from "lucide-react";
 import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { GoogleButton } from "@/components/ui/google-button";
+import { track } from "@/lib/analytics";
 import { accountApi, googleAuth } from "@/lib/api/auth";
 import { sessionsApi } from "@/lib/api/sessions";
 import type { LiveSession } from "@/lib/api/types";
@@ -29,7 +30,11 @@ const schema = z.object({
   // Kept out of RegistrationAnswers: this names the attendee on the payment and
   // the confirmation, it is not one of the session's questions.
   name: z.string().trim().min(2, "Enter your full name"),
-  whatsappNumber: z.string().regex(MOBILE_NUMBER_PATTERN, "Enter a valid 10-digit mobile number"),
+  // Optional: left empty, it is simply not sent. Filled in, it must be valid.
+  whatsappNumber: z.union([
+    z.literal(""),
+    z.string().regex(MOBILE_NUMBER_PATTERN, "Enter a valid 10-digit mobile number"),
+  ]),
   exam: z.string().min(1, "Choose the exam you're preparing for"),
   stage: z.string().min(1, "Select where you are right now"),
 });
@@ -136,6 +141,19 @@ export function RegisterDialog({
     };
   }, [open, ready, user, session.id]);
 
+  // Analytics only — observes the dialog, changes nothing about it.
+  const lastStep = useRef<string | null>(null);
+  useEffect(() => {
+    if (open) track("register_open");
+    else lastStep.current = null;
+  }, [open]);
+  const step = !open || !ready ? null : !user ? "sign_in" : stage === "loading" ? null : stage;
+  useEffect(() => {
+    if (!step || step === lastStep.current) return;
+    lastStep.current = step;
+    track("register_step", { step });
+  }, [step]);
+
   if (!open) return null;
 
   const planner = session.included[0]?.title;
@@ -157,7 +175,9 @@ export function RegisterDialog({
       return;
     }
 
-    const { name, ...answers } = parsed.data;
+    const { name, whatsappNumber, ...rest } = parsed.data;
+    // The API rejects an empty string, so an unfilled number is left out.
+    const answers = whatsappNumber ? { ...rest, whatsappNumber } : rest;
     const outcome = await pay(session, answers, { name, email: user!.email });
 
     if (outcome.status === "paid") setStage("done");
@@ -213,7 +233,10 @@ export function RegisterDialog({
               <GoogleButton
                 label="Continue with Google"
                 className="w-full shadow-sm"
-                onClick={() => googleAuth.start({ next: returnTo })}
+                onClick={() => {
+                  track("signin_start", { method: "google", from: "register" });
+                  googleAuth.start({ next: returnTo });
+                }}
               />
               <p className="mt-3 text-center text-xs text-muted-foreground">
                 One tap — no password. Fastest sign in / sign up.
@@ -225,6 +248,7 @@ export function RegisterDialog({
               Rather use email?{" "}
               <Link
                 href={`/account/signup?next=${encodeURIComponent(returnTo)}`}
+                onClick={() => track("signin_start", { method: "email", from: "register" })}
                 className="font-semibold text-primary hover:underline"
               >
                 Create an account
@@ -273,7 +297,9 @@ export function RegisterDialog({
                 )}
               </label>
               <label className="field-label">
-                Mobile number
+                <span>
+                  Mobile number <span className="font-normal text-muted-foreground">(optional)</span>
+                </span>
                 <input
                   className="field"
                   inputMode="numeric"
@@ -287,7 +313,7 @@ export function RegisterDialog({
                   placeholder="Enter your 10 digit mobile number"
                 />
                 <span className="text-xs font-normal text-muted-foreground">
-                  Make sure you have access to the provided mobile number.
+                  If you add one, make sure you have access to it.
                 </span>
                 {errors.whatsappNumber && (
                   <span className="text-xs font-medium text-destructive">{errors.whatsappNumber}</span>

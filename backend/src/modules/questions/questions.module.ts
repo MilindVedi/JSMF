@@ -4,6 +4,7 @@ import { EntitlementsModule } from '../entitlements/entitlements.module';
 import { PracticeService } from './application/practice.service';
 import { ProgressService } from './application/progress.service';
 import { PyqAccessService } from './application/pyq-access.service';
+import { QuestionStateService } from './application/question-state.service';
 import { QuestionBankService } from './application/question-bank.service';
 import { QuestionImportService } from './application/question-import.service';
 import { PyqTaxonomyAdminService } from './application/pyq-taxonomy-admin.service';
@@ -36,6 +37,7 @@ import { PyqPlansService } from './application/pyq-plans.service';
   ],
   providers: [
     QuestionBankService,
+    QuestionStateService,
     QuestionImportService,
     PracticeService,
     ProgressService,
@@ -46,6 +48,6 @@ import { PyqPlansService } from './application/pyq-plans.service';
     QuestionAdminService,
     PyqTaxonomyAdminService,
   ],
-  exports: [QuestionImportService],
+  exports: [QuestionImportService, QuestionStateService],
 })
 export class QuestionsModule {}

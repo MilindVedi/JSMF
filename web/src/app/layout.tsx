@@ -19,17 +19,22 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["500", "600"],
 });
 
-// Vercel sets `VERCEL_URL` to the deployment's own hostname (no protocol);
-// falling back to localhost for local dev. Needed so absolute URLs Next
-// generates for the OG/share-preview image resolve to the real deployed
-// domain instead of "localhost" once this is live on Vercel.
-const siteUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
+// The public address, so the share-preview image and other absolute URLs
+// point at the live site rather than wherever the build ran.
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://pyqs.jsmf.me";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "JSMF — Medical Exam Preparation",
+  title: "JSMF — Med Prep",
   description:
-    "Memory-based PYQ preparation for NEET-PG, FMGE, and INI-CET, covering all 19 MBBS subjects.",
+    "Practice PYQs. Master concepts. Prepare smarter. Memory-based previous-year questions for NEET-PG, FMGE and INI-CET, with explanations, revision and progress tracking.",
+  openGraph: {
+    title: "JSMF — Med Prep",
+    description: "Practice PYQs. Master concepts. Prepare smarter.",
+    type: "website",
+  },
+  // The same mark as jsmf.me and the store.
+  icons: { icon: "/favicon.png", apple: "/favicon.png" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -39,7 +44,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${sora.variable} ${manrope.variable} ${jetbrainsMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      {/* Browser extensions (Grammarly and others) add attributes to <body>
+          before React loads; only this element's own attributes are exempted. */}
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider delay={200}>
             <Providers>{children}</Providers>

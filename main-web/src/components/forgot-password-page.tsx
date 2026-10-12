@@ -181,7 +181,7 @@ function ForgotPasswordForm() {
 
         {/* --- Step 1: email ------------------------------------------------ */}
         {step === "email" && (
-          <form
+          <form method="post"
             onSubmit={(event) => {
               event.preventDefault();
               void requestCode();
@@ -234,7 +234,7 @@ function ForgotPasswordForm() {
 
         {/* --- Step 3: new password + confirm ------------------------------- */}
         {step === "password" && (
-          <form onSubmit={submitReset} className="mt-7 space-y-4" noValidate>
+          <form method="post" onSubmit={submitReset} className="mt-7 space-y-4" noValidate>
             <label className="field-label" htmlFor="new-password">
               New password
               <span className="relative block">

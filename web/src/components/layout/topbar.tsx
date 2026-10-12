@@ -20,7 +20,7 @@ import { SidebarNav } from "./sidebar-nav";
 import { TopbarStreakChip } from "./topbar-streak-chip";
 import { useStreakState } from "@/lib/use-streak-state";
 import { useAuthStore } from "@/store/auth-store";
-import { getPlanById } from "@/data/mock/plans";
+import { usePlanLabel } from "@/lib/use-plan-label";
 
 function initials(name: string) {
   return name
@@ -36,7 +36,7 @@ export function Topbar() {
   const profile = useAuthStore((s) => s.profile);
   const { currentStreak } = useStreakState();
   const logout = useAuthStore((s) => s.logout);
-  const plan = getPlanById(profile.currentPlanId);
+  const planLabel = usePlanLabel();
   const [navOpen, setNavOpen] = useState(false);
 
   return (
@@ -68,13 +68,13 @@ export function Topbar() {
             a failed achievement rather than an invitation; the dashboard's
             streak card already carries that invitation instead. */}
         {currentStreak > 0 && <TopbarStreakChip streakDays={currentStreak} />}
-        {plan && (
+        {planLabel && (
           <Link
             href="/subscription"
             className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted"
           >
             <CreditCard className="size-3.5 sm:hidden" />
-            <span className="hidden sm:inline">{plan.name}</span>
+            <span className="hidden sm:inline">{planLabel}</span>
           </Link>
         )}
 

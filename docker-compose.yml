@@ -100,9 +100,11 @@ services:
       - "3002:3002"
 
   # The PYQ app (previous-year questions). Same backend, same accounts.
+  # Built from the repo root: web is an npm workspace that uses packages/core.
   web:
     build:
-      context: ./web
+      context: .
+      dockerfile: web/Dockerfile
     container_name: jsmf-web
     restart: unless-stopped
     environment:

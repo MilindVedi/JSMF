@@ -1,3 +1,4 @@
+import { SkipLegalCheck } from '../../../common/decorators/skip-legal-check.decorator';
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -16,6 +17,8 @@ import { ExchangeOAuthCodeDto } from './dto/admin-invitation.dto';
  * single-use code exchanged over POST rather than tokens in the URL.
  */
 @ApiTags('auth: oauth')
+// Signing in, out and managing one's own account must work before accepting.
+@SkipLegalCheck()
 @Controller('auth/google')
 export class OAuthController {
   constructor(private readonly oauth: OAuthService) {}

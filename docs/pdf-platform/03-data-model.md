@@ -307,6 +307,7 @@ These are specified so the tables above do not need reshaping when they arrive. 
 | 16 | `entitlements` | ✅ | **Access control** |
 | 17 | `content_access_events` | ✅ | Download audit + analytics |
 | 18 | `audit_logs` | ✅ | Admin action trail (catalog + taxonomy only, see §6) |
+| 18a | `analytics_events` | ✅ | First-party website activity (page views, booking funnel) — no IP or user agent stored. See [`docs/analytics`](../analytics/README.md) |
 | 19 | `coupons` / `coupon_redemptions` | ⬜ | Designed only |
 | 20 | `product_bundle_items` | ⬜ | Designed only |
 | 21 | `publisher_profiles` | ⬜ | Designed only |

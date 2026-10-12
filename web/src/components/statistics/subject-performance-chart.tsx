@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { useTaxonomyLookup } from "@/hooks/pyq";
-import type { SubjectPerformance } from "@/types";
+import type { SubjectPerformance } from "@jsmf/core/domain";
 
 function accuracyColor(accuracy: number) {
   if (accuracy < 50) return "var(--color-error)";

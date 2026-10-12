@@ -1,14 +1,10 @@
 import Link from "next/link";
 import { format } from "date-fns";
-import type { SessionMode, TestSession } from "@/types";
+import { SESSION_MODE_LABEL, type TestSession } from "@jsmf/core/domain";
 import { cn } from "@/lib/utils";
 
-export const SESSION_MODE_LABEL: Record<SessionMode, string> = {
-  browse: "Question Bank",
-  "custom-test": "Custom Test",
-  bookmarks: "Bookmarks Revision",
-  "wrong-questions": "Wrong Questions Revision",
-};
+// The labels are @jsmf/core's (shared with mobile); re-exported for the history page.
+export { SESSION_MODE_LABEL };
 
 export function SessionHistoryRow({
   session,

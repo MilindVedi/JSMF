@@ -15,16 +15,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { ReportReason } from "@/types";
+import { REPORT_REASONS as REASONS, type ReportReason } from "@jsmf/core/domain";
 import { useReportQuestion } from "@/hooks/pyq";
-
-const REASONS: { id: ReportReason; label: string }[] = [
-  { id: "wrong-answer", label: "The marked answer is wrong" },
-  { id: "wrong-explanation", label: "The explanation is wrong or unclear" },
-  { id: "incorrect-question", label: "The question itself is incorrect or ambiguous" },
-  { id: "image-issue", label: "There's an issue with an image" },
-  { id: "other", label: "Something else" },
-];
 
 export function ReportQuestionModal({ questionId }: { questionId: string }) {
   const [open, setOpen] = useState(false);

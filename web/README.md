@@ -14,8 +14,12 @@ See the repository root [`README.md`](../README.md) and [`docs/`](../docs/README
 
 ## Getting started
 
+`web/` is an npm workspace (with [`packages/core`](../packages/core), the `@jsmf/core` code it shares with the mobile app), so dependencies install from the repo root into the root `node_modules`, from the single root `package-lock.json`:
+
 ```bash
+# from the repo root
 npm install
+cd web
 npm run dev
 ```
 

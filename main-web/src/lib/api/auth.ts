@@ -99,8 +99,8 @@ export interface CodeIssued {
 
 export interface ProfileInput {
   name: string;
-  /** 10 digits, no country code. */
-  mobileNumber: string;
+  /** 10 digits, no country code. Optional — left out when not given. */
+  mobileNumber?: string;
   preparingFor: string;
   currentStage: string;
 }

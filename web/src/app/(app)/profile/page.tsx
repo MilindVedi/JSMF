@@ -3,7 +3,8 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { Camera, Flame, Loader2, LogOut, Trophy, X } from "lucide-react";
+import { Camera, Loader2, LogOut, Trophy, X } from "lucide-react";
+import { StreakFlame } from "@/components/streak/streak-flame";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/page-header";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -18,8 +19,13 @@ import { useAuthStore } from "@/store/auth-store";
 import { usePreferences, useTaxonomyLookup, useUpdatePreferences } from "@/hooks/pyq";
 import { useStreakState } from "@/lib/use-streak-state";
 import { QueryError } from "@/components/pyq/query-states";
-import { getPlanById } from "@/data/mock/plans";
-import type { ExamId, UserProfile } from "@/types";
+import { usePlanLabel } from "@/lib/use-plan-label";
+import { DATA_SOURCE_KIND } from "@/lib/data-source";
+import { authApi } from "@jsmf/core/api";
+import { useQuery } from "@tanstack/react-query";
+import type { ExamId, UserProfile } from "@jsmf/core/domain";
+
+const IS_API = DATA_SOURCE_KIND === "api";
 
 // 2MB — a mock-only ceiling to keep the data-URL (stored directly in the
 // persisted profile, since there's no real upload endpoint) from bloating
@@ -45,6 +51,15 @@ export default function ProfilePage() {
   const preferences = usePreferences();
   const { exam: getExamById } = useTaxonomyLookup();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const planLabel = usePlanLabel();
+  // Fetched only here, and once: the join date never changes.
+  const memberSince = useQuery({
+    queryKey: ["account", "member-since"],
+    queryFn: () => authApi.memberSince(),
+    enabled: IS_API,
+    staleTime: Infinity,
+  });
+  const joinedAt = IS_API ? memberSince.data : profile.joinedAt;
 
   if (preferences.error) {
     return (
@@ -62,7 +77,6 @@ export default function ProfilePage() {
 
   const targetExamId = preferences.data.targetExamId ?? profile.targetExamId;
   const targetExam = getExamById(targetExamId);
-  const currentPlan = getPlanById(profile.currentPlanId);
 
   function handleLogout() {
     logout();
@@ -97,9 +111,13 @@ export default function ProfilePage() {
         <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="group/avatar-upload relative shrink-0">
             <Avatar size="lg">
-              {profile.avatarUrl && <AvatarImage src={profile.avatarUrl} alt={profile.name} />}
+              {!IS_API && profile.avatarUrl && <AvatarImage src={profile.avatarUrl} alt={profile.name} />}
               <AvatarFallback>{initials(profile.name)}</AvatarFallback>
             </Avatar>
+            {/* Photo upload is a mock-only demo: there is no upload endpoint
+                yet, and a data URL in the browser would not follow the account. */}
+            {!IS_API && (
+            <>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -130,6 +148,8 @@ export default function ProfilePage() {
               className="hidden"
               onChange={handlePhotoChange}
             />
+            </>
+            )}
           </div>
           <div className="flex-1 space-y-1">
             <p className="font-heading text-lg font-semibold text-foreground">{profile.name}</p>
@@ -139,16 +159,18 @@ export default function ProfilePage() {
             </p>
           </div>
           <div className="flex flex-col items-start gap-2 sm:items-end">
-            {currentPlan && <Badge variant="secondary">{currentPlan.name}</Badge>}
-            <p className="text-xs text-muted-foreground">
-              Member since {format(new Date(profile.joinedAt), "MMMM yyyy")}
-            </p>
+            {planLabel && <Badge variant="secondary">{planLabel}</Badge>}
+            {joinedAt && (
+              <p className="text-xs text-muted-foreground">
+                Member since {format(new Date(joinedAt), "MMMM yyyy")}
+              </p>
+            )}
           </div>
         </CardContent>
         <Separator />
         <CardContent className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <Flame className="size-4 text-accent-foreground" strokeWidth={2} />
+            <StreakFlame className="size-4" live={false} />
             <span className="text-sm text-muted-foreground">
               Current streak <span className="font-semibold text-foreground">{streak.currentStreak}d</span>
             </span>
@@ -180,7 +202,9 @@ export default function ProfilePage() {
 
 function ProfileForm({ profile, targetExamId: savedExamId }: { profile: UserProfile; targetExamId: ExamId }) {
   const updateProfile = useAuthStore((s) => s.updateProfile);
+  const rename = useAuthStore((s) => s.rename);
   const updatePreferences = useUpdatePreferences();
+  const [saving, setSaving] = useState(false);
   const { taxonomy } = useTaxonomyLookup();
 
   const [name, setName] = useState(profile.name);
@@ -190,27 +214,31 @@ function ProfileForm({ profile, targetExamId: savedExamId }: { profile: UserProf
   const isDirty =
     name.trim() !== profile.name || email.trim() !== profile.email || targetExamId !== savedExamId;
 
-  function handleSave() {
-    updateProfile({ name: name.trim(), email: email.trim(), targetExamId });
-    if (targetExamId === savedExamId) {
-      toast.success("Profile updated");
-      return;
-    }
-    // The exam preference lives with the PYQ data (server-side in api mode).
-    updatePreferences.mutate(
-      { targetExamId },
-      {
-        onSuccess: () => toast.success("Profile updated"),
-        onError: (error) => toast.error(error.message || "Could not save your target exam."),
+  async function handleSave() {
+    setSaving(true);
+    try {
+      // Only what changed is sent — an unchanged field costs no request.
+      if (name.trim() !== profile.name) await rename(name.trim());
+      if (!IS_API && email.trim() !== profile.email) updateProfile({ email: email.trim() });
+      if (targetExamId !== savedExamId) {
+        await updatePreferences.mutateAsync({ targetExamId });
+        if (!IS_API) updateProfile({ targetExamId });
       }
-    );
+      toast.success("Profile updated");
+    } catch (error) {
+      toast.error(error instanceof Error && error.message ? error.message : "Could not save your profile.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Edit profile</CardTitle>
-        <CardDescription>Update your name, email, and target exam.</CardDescription>
+        <CardDescription>
+          {IS_API ? "Update your name and target exam." : "Update your name, email, and target exam."}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1.5">
@@ -224,6 +252,10 @@ function ProfileForm({ profile, targetExamId: savedExamId }: { profile: UserProf
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            // The sign-in address: changing it needs verification, which only
+            // the account itself can do — not editable from here.
+            readOnly={IS_API}
+            disabled={IS_API}
           />
         </div>
         <div className="space-y-1.5">
@@ -249,7 +281,7 @@ function ProfileForm({ profile, targetExamId: savedExamId }: { profile: UserProf
         <div className="flex justify-end">
           <Button
             onClick={handleSave}
-            disabled={!isDirty || !name.trim() || !email.trim() || updatePreferences.isPending}
+            disabled={!isDirty || name.trim().length < 2 || !email.trim() || saving}
           >
             Save changes
           </Button>

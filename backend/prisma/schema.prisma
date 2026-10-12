@@ -63,38 +63,44 @@ model User {
   preparingFor          String?          @map("preparing_for") @db.VarChar(40)
   currentStage          String?          @map("current_stage") @db.VarChar(40)
   profileCompletedAt    DateTime?        @map("profile_completed_at") @db.Timestamptz(6)
-  status             UserStatus       @default(ACTIVE)
+  status                UserStatus       @default(ACTIVE)
   lastLoginAt           DateTime?        @map("last_login_at") @db.Timestamptz(6)
   createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  roles                UserRole[]
-  refreshTokens        RefreshToken[]
-  oauthAccounts        OAuthAccount[]
-  verificationCodes    VerificationCode[]
-  authoredProducts     Product[]               @relation("ProductAuthor")
-  createdProducts      Product[]               @relation("ProductCreatedBy")
-  updatedProducts      Product[]               @relation("ProductUpdatedBy")
-  uploadedAssets       ProductAsset[]
-  orders               Order[]
-  entitlements         Entitlement[]
-  grantedRoles         UserRole[]              @relation("RoleGrantedBy")
-  initiatedRefunds     Refund[]
-  accessEvents         ContentAccessEvent[]
-  auditLogs            AuditLog[]
-  publisherProfile     PublisherProfile?
-  couponRedemptions    CouponRedemption[]
-  sessionRegistrations SessionRegistration[]
-  bundleDeliveries     SessionBundleDelivery[]
-  dateAnnouncements    SessionDateAnnouncement[]
-  sessionTestimonials  SessionTestimonial[]
-  practiceSessions     PracticeSession[]
-  pyqAttempts          Attempt[]
-  pyqBookmarks         Bookmark[]
-  pyqReports           QuestionReport[]
-  pyqReportsResolved   QuestionReport[]     @relation("QuestionReportResolver")
-  pyqCollections       QuestionCollection[]
-  pyqPreferences       PyqPreference?
+  roles                  UserRole[]
+  refreshTokens          RefreshToken[]
+  oauthAccounts          OAuthAccount[]
+  verificationCodes      VerificationCode[]
+  authoredProducts       Product[]                 @relation("ProductAuthor")
+  createdProducts        Product[]                 @relation("ProductCreatedBy")
+  updatedProducts        Product[]                 @relation("ProductUpdatedBy")
+  uploadedAssets         ProductAsset[]
+  orders                 Order[]
+  entitlements           Entitlement[]
+  grantedRoles           UserRole[]                @relation("RoleGrantedBy")
+  initiatedRefunds       Refund[]
+  accessEvents           ContentAccessEvent[]
+  auditLogs              AuditLog[]
+  publisherProfile       PublisherProfile?
+  couponRedemptions      CouponRedemption[]
+  sessionRegistrations   SessionRegistration[]
+  bundleDeliveries       SessionBundleDelivery[]
+  dateAnnouncements      SessionDateAnnouncement[]
+  sessionTestimonials    SessionTestimonial[]
+  practiceSessions       PracticeSession[]
+  pyqAttempts            Attempt[]
+  pyqBookmarks           Bookmark[]
+  pyqReports             QuestionReport[]
+  pyqReportsResolved     QuestionReport[]          @relation("QuestionReportResolver")
+  pyqCollections         QuestionCollection[]
+  pyqPreferences         PyqPreference?
+  pyqQuestionStates      UserQuestionState[]
+  pyqDailyActivity       UserDailyActivity[]
+  legalAcceptances       LegalAcceptance[]
+  legalVersionsCreated   LegalDocumentVersion[]    @relation("LegalVersionCreatedBy")
+  legalVersionsPublished LegalDocumentVersion[]    @relation("LegalVersionPublishedBy")
+  analyticsEvents        AnalyticsEvent[]
 
   @@map("users")
   @@schema("public")
@@ -1164,12 +1170,12 @@ model LiveSession {
 
   /// Restrict: a session that has been sold must keep its product forever,
   /// the same rule every other product follows (archive, never delete).
-  product       Product                 @relation(fields: [productId], references: [id], onDelete: Restrict)
-  days          LiveSessionDay[]
-  registrations SessionRegistration[]
-  deliveries         SessionBundleDelivery[]
-  dateAnnouncements  SessionDateAnnouncement[]
-  testimonials       SessionTestimonial[]
+  product           Product                   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  days              LiveSessionDay[]
+  registrations     SessionRegistration[]
+  deliveries        SessionBundleDelivery[]
+  dateAnnouncements SessionDateAnnouncement[]
+  testimonials      SessionTestimonial[]
 
   @@index([startsAt])
   @@map("live_sessions")
@@ -1514,6 +1520,7 @@ model Question {
   bookmarks        Bookmark[]
   reports          QuestionReport[]
   collectionItems  CollectionQuestion[]
+  userStates       UserQuestionState[]
 
   @@index([status, subjectId, topicId])
   @@index([status, examId, year])
@@ -1672,21 +1679,21 @@ enum QuestionReportStatus {
 
 /// A student flagging a problem with a question for content review.
 model QuestionReport {
-  id         String               @id @default(uuid(7)) @db.Uuid
-  userId     String               @map("user_id") @db.Uuid
-  questionId String               @map("question_id") @db.Uuid
-  reason     QuestionReportReason
-  details    String?              @db.VarChar(2000)
-  status     QuestionReportStatus @default(OPEN)
-  resolvedAt DateTime?            @map("resolved_at") @db.Timestamptz(6)
+  id           String               @id @default(uuid(7)) @db.Uuid
+  userId       String               @map("user_id") @db.Uuid
+  questionId   String               @map("question_id") @db.Uuid
+  reason       QuestionReportReason
+  details      String?              @db.VarChar(2000)
+  status       QuestionReportStatus @default(OPEN)
+  resolvedAt   DateTime?            @map("resolved_at") @db.Timestamptz(6)
   /// What the admin did about it, written when the report is resolved or
   /// dismissed. Kept so the decision survives beyond the activity log.
-  adminNote    String? @map("admin_note") @db.VarChar(2000)
+  adminNote    String?              @map("admin_note") @db.VarChar(2000)
   /// Which admin closed it. Null while OPEN, and for reports closed before
   /// this column existed.
-  resolvedById String? @map("resolved_by_id") @db.Uuid
-  createdAt  DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  resolvedById String?              @map("resolved_by_id") @db.Uuid
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
@@ -1748,4 +1755,225 @@ model PyqPreference {
 
   @@map("user_preferences")
   @@schema("pyq")
+}
+
+/// One row per student per question they have answered or flagged: the
+/// latest result and the running facts behind it. Lists, status filters,
+/// statistics and revision read these indexed rows instead of re-deriving
+/// everything from `attempts` on each request, which grows with a student's
+/// whole history.
+///
+/// Derived, never edited directly: QuestionStateService rebuilds a row from
+/// `attempts` whenever an attempt it depends on changes, and
+/// `npm run db:pyq:rebuild-read-models` rebuilds every row (run it after
+/// rolling the app back past this table and forward again). Answers inside a
+/// TEST that is still in progress are left out, as everywhere else.
+model UserQuestionState {
+  userId         String    @map("user_id") @db.Uuid
+  questionId     String    @map("question_id") @db.Uuid
+  /// The most recent answer's result; null when only flagged, never answered.
+  latestCorrect  Boolean?  @map("latest_correct")
+  lastAnsweredAt DateTime? @map("last_answered_at") @db.Timestamptz(6)
+  lastCorrectAt  DateTime? @map("last_correct_at") @db.Timestamptz(6)
+  lastWrongAt    DateTime? @map("last_wrong_at") @db.Timestamptz(6)
+  attemptCount   Int       @default(0) @map("attempt_count")
+  incorrectCount Int       @default(0) @map("incorrect_count")
+  /// Flagged in any session.
+  flagged        Boolean   @default(false)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, questionId])
+  @@index([userId, latestCorrect, lastAnsweredAt(sort: Desc)], map: "user_question_states_user_latest_idx")
+  @@map("user_question_states")
+  @@schema("pyq")
+}
+
+/// Answers given per India-time calendar day, per student — what streaks
+/// read, so the topbar's streak on every page is a scan of active days rather
+/// than of every attempt. Derived like UserQuestionState; unlike it, answers
+/// inside a running TEST count (they keep the day alive).
+model UserDailyActivity {
+  userId   String   @map("user_id") @db.Uuid
+  day      DateTime @db.Date
+  answered Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day])
+  @@map("user_daily_activity")
+  @@schema("pyq")
+}
+
+// ─── Legal documents ────────────────────────────────────────────────────────
+//
+// Terms, Privacy and Refund are versioned records, shared by every JSMF app:
+// one document per type, whose sections are either shared or scoped to some
+// apps. A published version is immutable and can never be deleted, and an
+// acceptance is insert-only — both enforced by triggers in the migration, not
+// only by this code. See docs/legal/README.md.
+
+enum LegalDocumentType {
+  TERMS
+  PRIVACY
+  REFUND
+
+  @@schema("public")
+}
+
+enum LegalVersionStatus {
+  DRAFT
+  PUBLISHED
+
+  @@schema("public")
+}
+
+/// MAJOR bumps 1.x → 2.0 and asks users to accept again (when acceptance is
+/// enforced); MINOR bumps 1.0 → 1.1 and is a notice only.
+enum LegalChangeKind {
+  MAJOR
+  MINOR
+
+  @@schema("public")
+}
+
+enum LegalAcceptanceKind {
+  /// Agreement to a contract (Terms).
+  ACCEPTED
+  /// Confirmation of having been shown a policy (Privacy, Refund) — not consent.
+  ACKNOWLEDGED
+
+  @@schema("public")
+}
+
+enum LegalAcceptanceContext {
+  SIGNUP
+  RE_ACCEPT
+  CHECKOUT
+
+  @@schema("public")
+}
+
+/// Which JSMF app something was shown on or accepted from.
+enum JsmfApp {
+  MAIN
+  PYQ
+  STORE
+
+  @@schema("public")
+}
+
+model LegalDocumentVersion {
+  id               String             @id @default(uuid(7)) @db.Uuid
+  type             LegalDocumentType
+  /// "1.0", "1.1", "2.0" — assigned by the server at publish. Null while a draft.
+  version          String?            @db.VarChar(16)
+  status           LegalVersionStatus @default(DRAFT)
+  title            String             @db.VarChar(200)
+  /// Ordered `{ id, heading, body, apps }` objects; `apps` empty = every app.
+  /// The body is plain text: paragraphs, "- " bullets and [text](url) links.
+  sections         Json
+  /// sha256 of title + sections, fixed at publish — proof the text is unchanged.
+  contentHash      String?            @map("content_hash") @db.Char(64)
+  changeKind       LegalChangeKind?   @map("change_kind")
+  /// What changed, in the admin's words. Shown in history and to users.
+  changeSummary    String?            @map("change_summary") @db.VarChar(2000)
+  /// When this version takes over. Defaults to the publish time.
+  effectiveAt      DateTime?          @map("effective_at") @db.Timestamptz(6)
+  /// The version a draft was started from — the trail of a rollback.
+  basedOnVersionId String?            @map("based_on_version_id") @db.Uuid
+  createdById      String?            @map("created_by_id") @db.Uuid
+  publishedById    String?            @map("published_by_id") @db.Uuid
+  publishedAt      DateTime?          @map("published_at") @db.Timestamptz(6)
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  basedOn     LegalDocumentVersion?  @relation("LegalVersionBasedOn", fields: [basedOnVersionId], references: [id], onDelete: Restrict)
+  derived     LegalDocumentVersion[] @relation("LegalVersionBasedOn")
+  createdBy   User?                  @relation("LegalVersionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  publishedBy User?                  @relation("LegalVersionPublishedBy", fields: [publishedById], references: [id], onDelete: Restrict)
+  acceptances LegalAcceptance[]
+
+  @@unique([type, version])
+  @@index([type, status, effectiveAt])
+  @@map("legal_document_versions")
+  @@schema("public")
+}
+
+/// One user's agreement to (or acknowledgement of) one exact version.
+/// Insert-only: accepting a newer version adds a row and never erases this one.
+model LegalAcceptance {
+  id         String                 @id @default(uuid(7)) @db.Uuid
+  userId     String                 @map("user_id") @db.Uuid
+  versionId  String                 @map("version_id") @db.Uuid
+  kind       LegalAcceptanceKind
+  context    LegalAcceptanceContext
+  app        JsmfApp
+  /// The order a checkout acknowledgement was given for.
+  orderId    String?                @map("order_id") @db.Uuid
+  /// Server clock, UTC. Never taken from the client.
+  acceptedAt DateTime               @default(now()) @map("accepted_at") @db.Timestamptz(6)
+  ipAddress  String?                @map("ip_address") @db.VarChar(45)
+  userAgent  String?                @map("user_agent") @db.VarChar(512)
+
+  user    User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  version LegalDocumentVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@index([userId, versionId])
+  @@index([versionId, acceptedAt])
+  @@map("legal_acceptances")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// First-party activity analytics
+// ---------------------------------------------------------------------------
+
+/// One thing a visitor did on a JSMF website — a page view, a click on "Book",
+/// the payment window opening. Written in batches by POST /analytics/events and
+/// read only in aggregate by the admin Analytics page. See docs/analytics.
+///
+/// Deliberately anonymous: no IP address and no user agent are stored, only a
+/// coarse device class derived from the user agent at write time. `visitorId`
+/// is a random id the browser generated for itself, not a fingerprint.
+///
+/// Never authoritative for money or accounts — orders, payments and users are.
+/// The admin page shows both side by side for that reason.
+model AnalyticsEvent {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  /// Which website sent it. MAIN only today; STORE and PYQ share the table.
+  app         JsmfApp
+  /// From a server-side allowlist; anything else is dropped before insert.
+  name        String   @db.VarChar(64)
+  /// Random, generated in the browser and kept in localStorage.
+  visitorId   String   @map("visitor_id") @db.Uuid
+  /// Per tab, rotated after 30 minutes idle.
+  sessionId   String   @map("session_id") @db.VarChar(64)
+  /// Set only when the request carried a valid access token. SetNull: deleting
+  /// an account leaves its anonymous activity counted but no longer linked.
+  userId      String?  @map("user_id") @db.Uuid
+  /// Pathname only — the query string is stripped by the client and again here.
+  path        String   @db.VarChar(512)
+  /// External referrer as host + path, query stripped. Null for direct visits
+  /// and for navigation within the site.
+  referrer    String?  @db.VarChar(512)
+  utmSource   String?  @map("utm_source") @db.VarChar(128)
+  utmMedium   String?  @map("utm_medium") @db.VarChar(128)
+  utmCampaign String?  @map("utm_campaign") @db.VarChar(128)
+  /// Small flat object of strings / numbers / booleans, at most ~2 KB.
+  props       Json?
+  /// mobile | tablet | desktop, from the user agent on the server.
+  deviceType  String   @map("device_type") @db.VarChar(16)
+  /// Server clock. The client's own timestamp is never trusted.
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([app, occurredAt])
+  @@index([app, name, occurredAt])
+  @@index([visitorId])
+  @@map("analytics_events")
+  @@schema("public")
 }

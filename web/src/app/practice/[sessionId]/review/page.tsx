@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { useSessionReview } from "@/hooks/pyq";
 import { PageLoading, QueryError } from "@/components/pyq/query-states";
-import { NotFoundError } from "@/lib/data-source";
+import { NotFoundError } from "@jsmf/core/data-source";
 import { QuestionCard } from "@/components/practice/question-card";
 import { ReviewExplanationPanel } from "@/components/practice/review-explanation-panel";
 import { ReviewNavStrip } from "@/components/practice/review-nav-strip";
@@ -14,35 +14,16 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/common/logo";
 import { EmptyState } from "@/components/common/empty-state";
-import type { TestSession } from "@/types";
-
-type ReviewFilter = "all" | "correct" | "incorrect" | "unattempted";
-type QuestionStatus = "correct" | "incorrect" | "unattempted";
-
-function statusOf(session: TestSession, questionId: string): QuestionStatus {
-  const attempt = session.attempts[questionId];
-  if (!attempt) return "unattempted";
-  return attempt.isCorrect ? "correct" : "incorrect";
-}
-
-/** First question in the session matching a filter, so switching filters (or
- *  landing with none set) lands somewhere that filter actually shows. */
-function firstIndexForFilter(session: TestSession, filter: ReviewFilter): number {
-  if (filter === "all") return 0;
-  const i = session.questionIds.findIndex((id) => statusOf(session, id) === filter);
-  return i === -1 ? 0 : i;
-}
-
-/** The nearest question in `indices` on one side of `current` — wraps around
- *  so Prev/Next always has somewhere to go within the active filter. */
-function neighborIndex(indices: number[], current: number, direction: 1 | -1): number | null {
-  if (indices.length === 0) return null;
-  if (direction === 1) {
-    return indices.find((i) => i > current) ?? indices[0];
-  }
-  const before = indices.filter((i) => i < current);
-  return before.length > 0 ? before[before.length - 1] : indices[indices.length - 1];
-}
+// How review filters, counts and steps through questions is @jsmf/core's, shared with mobile.
+import {
+  defaultReviewFilter,
+  firstIndexForFilter,
+  neighborIndex,
+  reviewCounts,
+  reviewIndices,
+  reviewStatusOf as statusOf,
+  type ReviewFilter,
+} from "@jsmf/core/domain";
 
 export default function ReviewPage() {
   const params = useParams<{ sessionId: string }>();
@@ -56,23 +37,12 @@ export default function ReviewPage() {
   const filterParam = searchParams.get("filter") as ReviewFilter | null;
   const iParam = searchParams.get("i");
 
-  const counts = useMemo(() => {
-    if (!session) return { all: 0, correct: 0, incorrect: 0, unattempted: 0 };
-    let correct = 0;
-    let incorrect = 0;
-    let unattempted = 0;
-    for (const id of session.questionIds) {
-      const s = statusOf(session, id);
-      if (s === "correct") correct += 1;
-      else if (s === "incorrect") incorrect += 1;
-      else unattempted += 1;
-    }
-    return { all: session.questionIds.length, correct, incorrect, unattempted };
-  }, [session]);
+  const counts = useMemo(
+    () => (session ? reviewCounts(session) : { all: 0, correct: 0, incorrect: 0, unattempted: 0 }),
+    [session]
+  );
 
-  // Land on "incorrect" by default when there's anything to review — that's
-  // the whole point of opening review from a completed test.
-  const defaultFilter: ReviewFilter = counts.incorrect > 0 ? "incorrect" : "all";
+  const defaultFilter: ReviewFilter = defaultReviewFilter(counts);
   const filter: ReviewFilter = filterParam ?? defaultFilter;
 
   const total = session?.questionIds.length ?? 0;
@@ -115,10 +85,7 @@ export default function ReviewPage() {
   const question = detail.questions.find((q) => q.id === questionId);
   if (!question) return <PageLoading className="min-h-dvh" />;
 
-  const filteredIndices = session.questionIds
-    .map((id, i) => ({ id, i }))
-    .filter(({ id }) => filter === "all" || statusOf(session, id) === filter)
-    .map(({ i }) => i);
+  const filteredIndices = reviewIndices(session, filter);
 
   function setFilter(next: ReviewFilter) {
     const nextIndex = firstIndexForFilter(session!, next);

@@ -11,7 +11,7 @@ JSMF/
   docs/     Product, architecture, and planning documentation (start here)
   web/      Next.js + TypeScript web application (marketing site + logged-in app)
   backend/  (not yet created) NestJS + TypeScript API — planned per docs/03-architecture.md
-  mobile/   (not yet created) Flutter app for Android + iOS — planned per docs/03-architecture.md
+  mobile/   Expo (React Native) app for Android + iOS — "JSMF Med Prep", see docs/mobile/README.md
 ```
 
 ## Current stage
@@ -22,9 +22,11 @@ This stage runs as a build → deploy (Vercel) → share for feedback → iterat
 
 ## Getting started (web app)
 
+`web/`, `mobile/` and `packages/core` (`@jsmf/core`, shared by both apps) are npm workspaces of the repo root, so install from the root (the mobile app is run as described in [`docs/mobile/README.md`](./docs/mobile/README.md)):
+
 ```bash
-cd web
 npm install
+cd web
 npm run dev
 ```
 

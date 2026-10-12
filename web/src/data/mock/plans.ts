@@ -1,4 +1,4 @@
-import type { SubscriptionPlan } from "@/types";
+import type { SubscriptionPlan } from "@jsmf/core/domain";
 
 /**
  * Pricing is illustrative only — final plans/pricing are not decided yet

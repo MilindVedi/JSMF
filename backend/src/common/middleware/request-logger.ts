@@ -8,6 +8,13 @@ const logger = new Logger('Http');
 const QUIET_PATHS = new Set(['/api/health', '/api/health/ready']);
 
 /**
+ * Logged only when they fail. Website analytics batches arrive every few
+ * seconds from every open tab; a line for each successful one would be most of
+ * the log volume and say nothing the analytics table does not already hold.
+ */
+const QUIET_WHEN_OK_PATHS = new Set(['/api/analytics/events']);
+
+/**
  * One `http.request` line per API call: method, path, status, how long it took
  * and — when signed in — who made it. The authenticated user is read when the
  * response finishes, because the auth guard attaches it after this runs.
@@ -27,6 +34,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
     if (QUIET_PATHS.has(path)) return;
 
     const status = res.statusCode;
+    if (status < 400 && QUIET_WHEN_OK_PATHS.has(path)) return;
     const user = (req as Request & { user?: { id?: string } }).user;
 
     activity(

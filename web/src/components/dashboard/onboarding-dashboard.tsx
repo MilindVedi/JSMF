@@ -2,8 +2,8 @@ import { ArrowRight, BookOpen, CheckCircle2, Circle, Repeat, Sparkles, TrendingU
 import { StreakCard } from "./streak-card";
 import { QuickActionCard } from "./quick-action-card";
 import { Button } from "@/components/ui/button";
-import { EXAMS } from "@/data/mock/exams";
-import type { ExamId } from "@/types";
+import { useTaxonomyLookup } from "@/hooks/pyq";
+import type { ExamId } from "@jsmf/core/domain";
 import { cn } from "@/lib/utils";
 
 const HOW_IT_WORKS = [
@@ -32,7 +32,8 @@ export function OnboardingDashboard({
   hasStreak?: boolean;
   onStartFirstPractice: () => void;
 }) {
-  const exam = EXAMS.find((e) => e.id === targetExamId);
+  const { exam: examById } = useTaxonomyLookup();
+  const exam = examById(targetExamId);
 
   const checklist = [
     { label: "Choose your exam", done: true },

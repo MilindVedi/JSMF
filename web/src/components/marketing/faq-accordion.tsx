@@ -7,11 +7,11 @@ export function FaqAccordion() {
     <section id="faq" className="border-t border-border py-20 sm:py-28">
       <div className="mx-auto w-full max-w-3xl px-4 sm:px-6">
         <div className="mx-auto max-w-2xl text-center">
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-foreground">
+          <span className="eyebrow mx-auto">
             <HelpCircle className="size-3.5" />
             FAQ
-          </div>
-          <h2 className="font-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+          </span>
+          <h2 className="mt-5 font-display text-3xl font-semibold leading-tight text-brand-deep dark:text-foreground sm:text-4xl">
             Frequently asked questions
           </h2>
         </div>

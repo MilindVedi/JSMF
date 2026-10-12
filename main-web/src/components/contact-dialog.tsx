@@ -3,11 +3,16 @@
 import { useEffect, useState } from "react";
 import { Check, Clock, Copy, Mail, MapPin, X } from "lucide-react";
 import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/social-icons";
+import { track } from "@/lib/analytics";
 import { businessAddress, links, supportEmail } from "@/lib/site-content";
 
 /** How to reach JSMF: email first, the channels underneath. */
 export function ContactDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (open) track("contact_open");
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

@@ -1,0 +1,20 @@
+# Used by `docker build -f web/Dockerfile .` (BuildKit reads
+# <Dockerfile>.dockerignore next to the Dockerfile). The context is the repo
+# root, so this is an allow-list: everything is excluded, then only what the
+# web image needs — the workspace manifests, packages/core and web — is let
+# back in. backend/, main-web/, pdf-web/, docs/, the *-design folders, .git
+# and any future app (mobile/) never reach the build.
+*
+!package.json
+!package-lock.json
+!packages/core
+!web
+
+# ...and, inside those, nothing that is built, installed or secret.
+**/node_modules
+**/.next
+**/.env*
+**/*.log
+**/*.tsbuildinfo
+**/.DS_Store
+web/next-env.d.ts

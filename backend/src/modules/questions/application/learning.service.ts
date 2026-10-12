@@ -1,8 +1,12 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { activity } from '../../../shared/logging/activity';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
-import { toQuestionView } from '../domain/question-view';
-import { QuestionBankService } from './question-bank.service';
+import {
+  QUESTION_SUMMARY_SELECT,
+  VISIBLE_QUESTION,
+  toQuestionSummary,
+  type QuestionSummaryRow,
+} from '../domain/question-view';
 
 /** India is UTC+5:30 with no DST, so a fixed offset is exact. */
 const IST_OFFSET_MS = 330 * 60_000;
@@ -46,22 +50,12 @@ export function computeStreak(activeDays: string[], today: string) {
   return { current, longest, lastActiveDay: previous };
 }
 
-interface AttemptAggregate {
-  questionId: string;
-  attemptCount: number;
-  incorrectCount: number;
-  everCorrect: boolean;
-  lastAttemptedAt: Date | null;
-  lastCorrectAt: Date | null;
-  lastWrongAt: Date | null;
-  flagged: boolean;
-}
 
 /**
  * The learning loop built on a student's attempts: streaks, the revision and
- * reinforce lists, and PYQ preferences. Everything here except preferences is
- * computed from attempts, bookmarks and collections on read — nothing to keep
- * in step, nothing to drift.
+ * reinforce lists, and PYQ preferences. Reads the derived per-question and
+ * per-day tables (QuestionStateService keeps them in step with attempts), so
+ * none of these scan a student's full answer history.
  */
 @Injectable()
 export class LearningService {
@@ -69,27 +63,26 @@ export class LearningService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly bank: QuestionBankService,
   ) {}
 
   // --- Streak -------------------------------------------------------------------
 
   async streak(userId: string, now: Date = new Date()) {
+    // One row per active day: a few hundred rows a year, however many answers.
     const [rows, prefs] = await Promise.all([
-      this.prisma.$queryRaw<{ day: string; answered: number }[]>`
-        SELECT to_char(answered_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS day,
-               count(*)::int AS answered
-        FROM pyq.attempts
-        WHERE user_id = ${userId}::uuid AND answered_at IS NOT NULL
-        GROUP BY 1`,
+      this.prisma.userDailyActivity.findMany({
+        where: { userId, answered: { gt: 0 } },
+        select: { day: true, answered: true },
+      }),
       this.preferences(userId),
     ]);
+    const days = rows.map((row) => ({ day: row.day.toISOString().slice(0, 10), answered: row.answered }));
     const today = istDay(now);
     const { current, longest, lastActiveDay } = computeStreak(
-      rows.map((row) => row.day),
+      days.map((row) => row.day),
       today,
     );
-    const todayCount = rows.find((row) => row.day === today)?.answered ?? 0;
+    const todayCount = days.find((row) => row.day === today)?.answered ?? 0;
     return {
       currentStreak: current,
       longestStreak: longest,
@@ -104,78 +97,98 @@ export class LearningService {
   // --- Revision / reinforce -----------------------------------------------------
 
   /**
-   * Every question worth another look — attempted, bookmarked or collected —
+   * Every question worth another look (attempted, bookmarked or collected),
    * with the facts the revision screen filters and sorts by. `due` marks the
    * spaced-revision set: latest answer wrong, flagged in any session, or
    * correct but not seen for REVISION_STALE_DAYS.
    */
   async revision(userId: string, now: Date = new Date()) {
-    const [aggregates, latest, bookmarks, collected] = await Promise.all([
-      this.aggregates(userId),
-      this.bank.latestAttempts(userId),
-      this.prisma.bookmark.findMany({ where: { userId }, select: { questionId: true, createdAt: true } }),
+    const [states, bookmarks, collected] = await Promise.all([
+      this.prisma.userQuestionState.findMany({
+        where: { userId, question: VISIBLE_QUESTION },
+        select: {
+          questionId: true,
+          latestCorrect: true,
+          lastAnsweredAt: true,
+          lastCorrectAt: true,
+          lastWrongAt: true,
+          attemptCount: true,
+          incorrectCount: true,
+          flagged: true,
+          question: { select: QUESTION_SUMMARY_SELECT },
+        },
+      }),
+      this.prisma.bookmark.findMany({
+        where: { userId, question: VISIBLE_QUESTION },
+        select: { questionId: true, createdAt: true, question: { select: QUESTION_SUMMARY_SELECT } },
+      }),
       this.prisma.collectionQuestion.groupBy({
         by: ['questionId'],
-        where: { collection: { userId } },
+        where: { collection: { userId }, question: VISIBLE_QUESTION },
         _max: { addedAt: true },
       }),
     ]);
-    const byQuestion = new Map(aggregates.map((row) => [row.questionId, row]));
+
+    const summaries = new Map<string, QuestionSummaryRow>();
+    for (const row of [...states, ...bookmarks]) summaries.set(row.questionId, row.question);
+    // Only questions that are collected and nothing else still need loading.
+    const missing = collected.map((row) => row.questionId).filter((id) => !summaries.has(id));
+    if (missing.length) {
+      const rows = await this.prisma.question.findMany({
+        where: { id: { in: missing } },
+        select: QUESTION_SUMMARY_SELECT,
+      });
+      for (const row of rows) summaries.set(row.id, row);
+    }
+
+    const stateById = new Map(states.map((row) => [row.questionId, row]));
     const bookmarkedAt = new Map(bookmarks.map((row) => [row.questionId, row.createdAt]));
     const collectedAt = new Map(collected.map((row) => [row.questionId, row._max.addedAt]));
-    const ids = [...new Set([...byQuestion.keys(), ...bookmarkedAt.keys(), ...collectedAt.keys()])];
     const staleBefore = now.getTime() - REVISION_STALE_DAYS * DAY_MS;
 
-    const questions = await this.bank.viewsByIds(ids);
-    const items = questions
-      .filter((question) => question.status === 'PUBLISHED' && !question.deletedAt)
-      .map((question) => {
-        const agg = byQuestion.get(question.id);
-        const last = latest.get(question.id);
-        const latestCorrect = last ? last.isCorrect : null;
-        const lastAttemptedAt = last?.answeredAt ?? null;
-        const flagged = agg?.flagged ?? false;
-        const due =
-          latestCorrect === false ||
-          flagged ||
-          (latestCorrect === true && lastAttemptedAt !== null && lastAttemptedAt.getTime() < staleBefore);
-        return {
-          question: toQuestionView(question),
-          latestCorrect,
-          lastAttemptedAt,
-          lastCorrectAt: agg?.lastCorrectAt ?? null,
-          lastWrongAt: agg?.lastWrongAt ?? null,
-          attemptCount: agg?.attemptCount ?? 0,
-          incorrectCount: agg?.incorrectCount ?? 0,
-          neverCorrected: Boolean(agg && agg.attemptCount > 0 && !agg.everCorrect),
-          flagged,
-          bookmarkedAt: bookmarkedAt.get(question.id) ?? null,
-          collectedAt: collectedAt.get(question.id) ?? null,
-          due,
-        };
-      });
+    const items = [...summaries.entries()].map(([id, question]) => {
+      const state = stateById.get(id);
+      const latestCorrect = state?.latestCorrect ?? null;
+      const lastAttemptedAt = state?.lastAnsweredAt ?? null;
+      const flagged = state?.flagged ?? false;
+      const due =
+        latestCorrect === false ||
+        flagged ||
+        (latestCorrect === true && lastAttemptedAt !== null && lastAttemptedAt.getTime() < staleBefore);
+      return {
+        question: toQuestionSummary(question),
+        latestCorrect,
+        lastAttemptedAt,
+        lastCorrectAt: state?.lastCorrectAt ?? null,
+        lastWrongAt: state?.lastWrongAt ?? null,
+        attemptCount: state?.attemptCount ?? 0,
+        incorrectCount: state?.incorrectCount ?? 0,
+        neverCorrected: Boolean(state && state.attemptCount > 0 && state.attemptCount === state.incorrectCount),
+        flagged,
+        bookmarkedAt: bookmarkedAt.get(id) ?? null,
+        collectedAt: collectedAt.get(id) ?? null,
+        due,
+      };
+    });
     return { staleDays: REVISION_STALE_DAYS, items };
   }
 
   /**
    * Questions whose latest answer was correct, split by whether that answer
-   * was in the last `recentDays` India-time days — the mock's reinforce facets.
+   * was in the last `recentDays` India-time days.
    */
   async reinforce(userId: string, recentDays = DEFAULT_REINFORCE_RECENT_DAYS, now: Date = new Date()) {
-    const latest = await this.bank.latestAttempts(userId);
-    const correct = [...latest.values()]
-      .filter((attempt) => attempt.isCorrect)
-      .sort((a, b) => b.answeredAt.getTime() - a.answeredAt.getTime());
+    const rows = await this.prisma.userQuestionState.findMany({
+      where: { userId, latestCorrect: true, question: VISIBLE_QUESTION },
+      orderBy: { lastAnsweredAt: 'desc' },
+      select: { lastAnsweredAt: true, question: { select: QUESTION_SUMMARY_SELECT } },
+    });
     const since = addDays(istDay(now), -recentDays);
-    const questions = await this.bank.viewsByIds(correct.map((attempt) => attempt.questionId));
-    const byId = new Map(questions.map((row) => [row.id, row]));
     const recent: string[] = [];
     const notRevisited: string[] = [];
-    const all = correct.flatMap((attempt) => {
-      const question = byId.get(attempt.questionId);
-      if (!question || question.status !== 'PUBLISHED' || question.deletedAt) return [];
-      (istDay(attempt.answeredAt) >= since ? recent : notRevisited).push(question.id);
-      return [{ ...toQuestionView(question), lastCorrectAt: attempt.answeredAt }];
+    const all = rows.map((row) => {
+      (istDay(row.lastAnsweredAt!) >= since ? recent : notRevisited).push(row.question.id);
+      return { ...toQuestionSummary(row.question), lastCorrectAt: row.lastAnsweredAt };
     });
     return { recentDays, all, recentIds: recent, notRevisitedIds: notRevisited };
   }
@@ -212,21 +225,4 @@ export class LearningService {
     return this.preferences(userId);
   }
 
-  /** Per-question attempt facts. Unsubmitted TEST answers stay hidden. */
-  private aggregates(userId: string) {
-    return this.prisma.$queryRaw<AttemptAggregate[]>`
-      SELECT a.question_id AS "questionId",
-             count(a.answered_at)::int AS "attemptCount",
-             count(*) FILTER (WHERE a.answered_at IS NOT NULL AND NOT a.is_correct)::int AS "incorrectCount",
-             coalesce(bool_or(a.is_correct) FILTER (WHERE a.answered_at IS NOT NULL), false) AS "everCorrect",
-             max(a.answered_at) AS "lastAttemptedAt",
-             max(a.answered_at) FILTER (WHERE a.is_correct) AS "lastCorrectAt",
-             max(a.answered_at) FILTER (WHERE NOT a.is_correct) AS "lastWrongAt",
-             bool_or(a.flagged) AS "flagged"
-      FROM pyq.attempts a
-      JOIN pyq.practice_sessions s ON s.id = a.session_id
-      WHERE a.user_id = ${userId}::uuid
-        AND NOT (s.mode = 'TEST' AND s.status = 'IN_PROGRESS')
-      GROUP BY a.question_id`;
-  }
 }

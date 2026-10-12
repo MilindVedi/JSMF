@@ -13,18 +13,28 @@ export function DoctorProfileCard({
   title,
   badges,
   showSocial = false,
+  photoSrc,
 }: {
   initials: string;
   name: string;
   title: string;
   badges?: DoctorBadge[];
   showSocial?: boolean;
+  /** A real photograph; the initials placeholder stands in until one exists. */
+  photoSrc?: string;
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-      <DoctorPortraitPlaceholder initials={initials} />
+      {photoSrc ? (
+        <div className="aspect-[3/4] w-full overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element -- build-time constant from public/ */}
+          <img src={photoSrc} alt={name} width={800} height={1000} className="h-full w-full object-cover" />
+        </div>
+      ) : (
+        <DoctorPortraitPlaceholder initials={initials} />
+      )}
       <div className="p-5 text-center">
-        <p className="font-heading text-base font-semibold text-foreground">{name}</p>
+        <p className="font-display text-base font-semibold text-brand-deep dark:text-foreground">{name}</p>
         <p className="mt-0.5 text-sm text-muted-foreground">{title}</p>
 
         {badges && badges.length > 0 && (

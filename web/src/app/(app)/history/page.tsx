@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { History as HistoryIcon } from "lucide-react";
+import { History as HistoryIcon, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Card } from "@/components/ui/card";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SessionHistoryRow, SESSION_MODE_LABEL } from "@/components/history/session-history-row";
 import { MultiSelectPopover } from "@/components/question-bank/multi-select-popover";
@@ -15,11 +15,16 @@ import { DateRangePicker } from "@/components/common/date-range-picker";
 import { useClientSnapshot } from "@/lib/use-client-snapshot";
 import { cn } from "@/lib/utils";
 import { PageLoading, QueryError } from "@/components/pyq/query-states";
-import { pyqCapabilities, useCollections, useSessionHistory, useStats } from "@/hooks/pyq";
-import type { SessionListItem } from "@/lib/data-source";
-import type { SessionMode } from "@/types";
-
-type TestSession = SessionListItem["session"];
+import { pyqCapabilities, useCollections, useInfiniteSessionHistory, useStats } from "@/hooks/pyq";
+import {
+  SESSION_SORT_GROUPS,
+  SESSION_SORT_LABELS,
+  buildSessionSortKeys,
+  sortSessions,
+  type SessionMode,
+  type SessionSortKeys,
+  type SessionSortOption,
+} from "@jsmf/core/domain";
 
 type ModeFilter = SessionMode | "all" | "collections";
 type PeriodFilter = "all" | "7d" | "30d" | "custom";
@@ -31,131 +36,18 @@ const PERIODS: { value: PeriodFilter; label: string; days?: number }[] = [
   { value: "custom", label: "Custom range" },
 ];
 
-type SessionSortOption =
-  | "recently-attempted"
-  | "least-recently-attempted"
-  | "newest-exam-year"
-  | "oldest-exam-year"
-  | "highest-accuracy"
-  | "lowest-accuracy"
-  | "recently-wrong"
-  | "oldest-wrong"
-  | "name-az"
-  | "name-za"
-  | "unattempted";
-
-const SESSION_SORT_LABELS: Record<SessionSortOption, string> = {
-  "recently-attempted": "Recently attempted",
-  "least-recently-attempted": "Least recently attempted",
-  "newest-exam-year": "Most recent — latest exam",
-  "oldest-exam-year": "Oldest first",
-  "highest-accuracy": "Highest accuracy",
-  "lowest-accuracy": "Lowest accuracy",
-  "recently-wrong": "Recently wrong",
-  "oldest-wrong": "Oldest wrong",
-  "name-az": "Name A–Z",
-  "name-za": "Name Z–A",
-  unattempted: "Unattempted",
-};
-
-/** Opposite-direction pairs share a group id so the sort dropdown can tint
- *  each pair distinctly — see `SortDropdownOption.group`. */
-const SESSION_SORT_GROUPS: Partial<Record<SessionSortOption, string>> = {
-  "recently-attempted": "attempted",
-  "least-recently-attempted": "attempted",
-  "newest-exam-year": "exam-year",
-  "oldest-exam-year": "exam-year",
-  "highest-accuracy": "accuracy",
-  "lowest-accuracy": "accuracy",
-  "recently-wrong": "wrong",
-  "oldest-wrong": "wrong",
-  "name-az": "name",
-  "name-za": "name",
-};
-
+// Sorting finished sessions is @jsmf/core's, shared with the mobile app.
 const SESSION_SORT_DROPDOWN_OPTIONS = (Object.keys(SESSION_SORT_LABELS) as SessionSortOption[]).map((value) => ({
   value,
   label: SESSION_SORT_LABELS[value],
   group: SESSION_SORT_GROUPS[value],
 }));
 
-interface SessionSortKeys {
-  newestYear: number;
-  oldestYear: number;
-  lastWrongAt?: string;
-  accuracy: number;
-  unattemptedCount: number;
-}
-
-function buildSessionSortKeys(item: SessionListItem): SessionSortKeys {
-  return {
-    newestYear: item.newestYear ?? -Infinity,
-    oldestYear: item.oldestYear ?? Infinity,
-    lastWrongAt: item.lastWrongAt,
-    accuracy: item.accuracy,
-    unattemptedCount: item.unattempted,
-  };
-}
-
-/** Missing values (e.g. a session with no wrong attempts) always sort last,
- *  in either direction — it isn't "the oldest wrong", it just has none. */
-function compareOptionalString(a: string | undefined, b: string | undefined, direction: "asc" | "desc") {
-  if (a === undefined && b === undefined) return 0;
-  if (a === undefined) return 1;
-  if (b === undefined) return -1;
-  if (a === b) return 0;
-  const cmp = a < b ? -1 : 1;
-  return direction === "desc" ? -cmp : cmp;
-}
-
-function sortSessions(
-  sessions: TestSession[],
-  sort: SessionSortOption,
-  keysById: Map<string, SessionSortKeys>
-): TestSession[] {
-  const arr = [...sessions];
-  const keyOf = (s: TestSession) => keysById.get(s.id)!;
-  switch (sort) {
-    case "recently-attempted":
-      arr.sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
-      break;
-    case "least-recently-attempted":
-      arr.sort((a, b) => (a.completedAt ?? "").localeCompare(b.completedAt ?? ""));
-      break;
-    case "newest-exam-year":
-      arr.sort((a, b) => keyOf(b).newestYear - keyOf(a).newestYear);
-      break;
-    case "oldest-exam-year":
-      arr.sort((a, b) => keyOf(a).oldestYear - keyOf(b).oldestYear);
-      break;
-    case "highest-accuracy":
-      arr.sort((a, b) => keyOf(b).accuracy - keyOf(a).accuracy);
-      break;
-    case "lowest-accuracy":
-      arr.sort((a, b) => keyOf(a).accuracy - keyOf(b).accuracy);
-      break;
-    case "recently-wrong":
-      arr.sort((a, b) => compareOptionalString(keyOf(a).lastWrongAt, keyOf(b).lastWrongAt, "desc"));
-      break;
-    case "oldest-wrong":
-      arr.sort((a, b) => compareOptionalString(keyOf(a).lastWrongAt, keyOf(b).lastWrongAt, "asc"));
-      break;
-    case "name-az":
-      arr.sort((a, b) => a.label.localeCompare(b.label));
-      break;
-    case "name-za":
-      arr.sort((a, b) => b.label.localeCompare(a.label));
-      break;
-    case "unattempted":
-      arr.sort((a, b) => keyOf(b).unattemptedCount - keyOf(a).unattemptedCount);
-      break;
-  }
-  return arr;
-}
-
 export default function HistoryPage() {
   const stats = useStats();
-  const history = useSessionHistory(1, 100);
+  // Only finished sessions are listed here; older pages load on request.
+  const history = useInfiniteSessionHistory("submitted");
+  const loadedItems = useMemo(() => history.data?.pages.flatMap((page) => page.items) ?? [], [history.data]);
   const { data: storedCollections } = useCollections();
   const collections = pyqCapabilities.collections ? (storedCollections ?? []) : [];
 
@@ -175,17 +67,17 @@ export default function HistoryPage() {
 
   const statistics = stats.data;
   const itemsById = useMemo(
-    () => new Map((history.data?.items ?? []).map((item) => [item.session.id, item] as const)),
-    [history.data]
+    () => new Map(loadedItems.map((item) => [item.session.id, item] as const)),
+    [loadedItems]
   );
 
   const allCompletedSessions = useMemo(
     () =>
-      (history.data?.items ?? [])
+      loadedItems
         .filter((item) => item.submitted && item.session.completedAt)
         .map((item) => item.session)
         .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime()),
-    [history.data]
+    [loadedItems]
   );
 
   const modeCounts = useMemo(() => {
@@ -370,6 +262,15 @@ export default function HistoryPage() {
             })}
           </div>
         </Card>
+      )}
+
+      {history.hasNextPage && (
+        <div className="flex flex-col items-center gap-1.5">
+          <Button variant="outline" onClick={() => history.fetchNextPage()} disabled={history.isFetchingNextPage}>
+            {history.isFetchingNextPage ? <Loader2 className="size-4 animate-spin" /> : "Load older sessions"}
+          </Button>
+          <p className="text-xs text-muted-foreground">Filters and sorting apply to the sessions loaded so far.</p>
+        </div>
       )}
     </div>
   );

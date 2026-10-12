@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   Difficulty,
   PracticeMode,
+  PracticeSessionStatus,
   Prisma,
   QuestionReportReason,
   QuestionStatus,
@@ -26,7 +27,12 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { MAX_SESSION_QUESTIONS } from '../../application/practice.service';
+import {
+  MAX_SESSION_QUESTIONS,
+  SESSION_ORDERS,
+  type SessionOrder,
+} from '../../application/practice.service';
+import { QUESTION_SORTS, type QuestionSort } from '../../application/question-bank.service';
 
 const SLUG = /^[a-z0-9]+(?:-{1,2}[a-z0-9]+)*$/;
 
@@ -114,6 +120,12 @@ export class QuestionFiltersDto {
   @IsArray()
   @IsUUID('all', { each: true })
   collectionIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Case-insensitive text in the question stem' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  search?: string;
 }
 
 export class PageQueryDto {
@@ -133,6 +145,13 @@ export class PageQueryDto {
   pageSize: number = 20;
 }
 
+export class HistoryQueryDto extends PageQueryDto {
+  @ApiPropertyOptional({ enum: PracticeSessionStatus, description: 'Only open, or only finished, sessions' })
+  @IsOptional()
+  @IsEnum(PracticeSessionStatus)
+  status?: PracticeSessionStatus;
+}
+
 export class ListQuestionsQueryDto extends QuestionFiltersDto {
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
@@ -148,6 +167,11 @@ export class ListQuestionsQueryDto extends QuestionFiltersDto {
   @Min(1)
   @Max(100)
   pageSize: number = 20;
+
+  @ApiPropertyOptional({ enum: QUESTION_SORTS, default: 'newest-exam-year' })
+  @IsOptional()
+  @IsIn(QUESTION_SORTS)
+  sort?: QuestionSort;
 }
 
 export class StartSessionDto {
@@ -183,6 +207,15 @@ export class StartSessionDto {
   @Min(1)
   @Max(MAX_SESSION_QUESTIONS)
   count?: number;
+
+  @ApiPropertyOptional({
+    enum: SESSION_ORDERS,
+    default: 'random',
+    description: 'With filters: draw this group first (random within it), then fill at random',
+  })
+  @IsOptional()
+  @IsIn(SESSION_ORDERS)
+  order?: SessionOrder;
 
   @ApiPropertyOptional({ description: 'Seconds; omit for untimed' })
   @IsOptional()

@@ -2,8 +2,17 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { QuestionReportReason } from '@prisma/client';
 import { activity } from '../../../shared/logging/activity';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
-import { VISIBLE_QUESTION, toQuestionView } from '../domain/question-view';
-import { QuestionBankService } from './question-bank.service';
+import {
+  QUESTION_SUMMARY_SELECT,
+  VISIBLE_QUESTION,
+  startOfIndiaDay,
+  toQuestionSummary,
+} from '../domain/question-view';
+import { ANSWERED, QuestionBankService } from './question-bank.service';
+
+const DAY_MS = 86_400_000;
+/** How far back the accuracy chart draws. */
+export const TREND_DAYS = 90;
 
 /**
  * Everything derived from a student's history: bookmarks, the wrong-questions
@@ -19,26 +28,38 @@ export class ProgressService {
     private readonly bank: QuestionBankService,
   ) {}
 
+  /** Newest first; questions since unpublished or deleted drop out. */
   async listBookmarks(userId: string) {
     const bookmarks = await this.prisma.bookmark.findMany({
       where: { userId, question: VISIBLE_QUESTION },
       orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        questionId: true,
+        createdAt: true,
+        question: { select: QUESTION_SUMMARY_SELECT },
+      },
     });
-    const questions = await this.bank.viewsByIds(bookmarks.map((row) => row.questionId));
-    const byId = new Map(questions.map((row) => [row.id, row]));
-    return bookmarks.flatMap((bookmark) => {
-      const question = byId.get(bookmark.questionId);
-      return question
-        ? [
-            {
-              id: bookmark.id,
-              questionId: bookmark.questionId,
-              createdAt: bookmark.createdAt,
-              question: toQuestionView(question),
-            },
-          ]
-        : [];
+    const facts = await this.bank.factsFor(
+      userId,
+      bookmarks.map((row) => row.questionId),
+    );
+    return bookmarks.map((bookmark) => ({
+      id: bookmark.id,
+      questionId: bookmark.questionId,
+      createdAt: bookmark.createdAt,
+      question: toQuestionSummary(bookmark.question),
+      userStatus: facts.get(bookmark.questionId)!.userStatus,
+    }));
+  }
+
+  /** Just the ids: what every screen needs to draw a bookmark icon. */
+  async bookmarkIds(userId: string): Promise<string[]> {
+    const rows = await this.prisma.bookmark.findMany({
+      where: { userId, question: VISIBLE_QUESTION },
+      select: { questionId: true },
     });
+    return rows.map((row) => row.questionId);
   }
 
   async addBookmark(userId: string, questionId: string) {
@@ -55,27 +76,46 @@ export class ProgressService {
     await this.prisma.bookmark.deleteMany({ where: { userId, questionId } });
   }
 
-  /** Questions whose most recent answer was wrong — the revision set. */
+  /** Questions whose most recent answer was wrong, most recent first. */
   async wrongQuestions(userId: string) {
-    const latest = await this.bank.latestAttempts(userId);
-    const wrong = [...latest.values()]
-      .filter((attempt) => !attempt.isCorrect)
-      .sort((a, b) => b.answeredAt.getTime() - a.answeredAt.getTime());
-    const questions = await this.bank.viewsByIds(wrong.map((attempt) => attempt.questionId));
-    const byId = new Map(questions.map((row) => [row.id, row]));
-    return wrong.flatMap((attempt) => {
-      const question = byId.get(attempt.questionId);
-      if (!question || question.status !== 'PUBLISHED' || question.deletedAt) return [];
-      return [{ ...toQuestionView(question), lastAnsweredAt: attempt.answeredAt }];
+    const rows = await this.prisma.userQuestionState.findMany({
+      where: { userId, latestCorrect: false, question: VISIBLE_QUESTION },
+      orderBy: { lastAnsweredAt: 'desc' },
+      select: { lastAnsweredAt: true, question: { select: QUESTION_SUMMARY_SELECT } },
     });
+    return rows.map((row) => ({ ...toQuestionSummary(row.question), lastAnsweredAt: row.lastAnsweredAt }));
   }
 
-  async stats(userId: string) {
-    const [latest, totalQuestions, bookmarkCount, subjects, trendRows] = await Promise.all([
-      this.bank.latestAttempts(userId),
-      this.prisma.question.count({ where: VISIBLE_QUESTION }),
-      this.prisma.bookmark.count({ where: { userId } }),
-      this.prisma.subject.findMany({ select: { id: true, slug: true } }),
+  /**
+   * Totals from the per-question state (one row per question, so a question
+   * moves between buckets rather than being counted twice), and the accuracy
+   * trend over the last TREND_DAYS. The trend's running accuracy still covers
+   * every answer ever given: it starts from the all-time totals, less the
+   * window, so limiting the window only limits what is drawn.
+   */
+  async stats(userId: string, now: Date = new Date()) {
+    const since = new Date(startOfIndiaDay(now).getTime() - (TREND_DAYS - 1) * DAY_MS);
+    const [taxonomy, buckets, totals, bySubject, bookmarkCount, trendRows] = await Promise.all([
+      this.bank.taxonomy(),
+      this.prisma.userQuestionState.groupBy({
+        by: ['latestCorrect'],
+        where: { userId, ...ANSWERED },
+        _count: true,
+      }),
+      this.prisma.userQuestionState.aggregate({
+        where: { userId },
+        _sum: { attemptCount: true, incorrectCount: true },
+      }),
+      this.prisma.$queryRaw<{ subjectId: string; attempted: number; correct: number }[]>`
+        SELECT sub.slug AS "subjectId",
+               count(*)::int AS attempted,
+               count(*) FILTER (WHERE st.latest_correct)::int AS correct
+        FROM pyq.user_question_states st
+        JOIN pyq.questions q ON q.id = st.question_id
+        JOIN pyq.subjects sub ON sub.id = q.subject_id
+        WHERE st.user_id = ${userId}::uuid AND st.latest_correct IS NOT NULL
+        GROUP BY sub.slug`,
+      this.prisma.bookmark.count({ where: { userId, question: VISIBLE_QUESTION } }),
       // Per India-time day: that day's accuracy over answers given that day.
       this.prisma.$queryRaw<{ day: string; answered: number; correct: number }[]>`
         SELECT to_char(a.answered_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS day,
@@ -84,33 +124,21 @@ export class ProgressService {
         FROM pyq.attempts a
         JOIN pyq.practice_sessions s ON s.id = a.session_id
         WHERE a.user_id = ${userId}::uuid
-          AND a.answered_at IS NOT NULL
+          AND a.answered_at >= ${since}
           AND NOT (s.mode = 'TEST' AND s.status = 'IN_PROGRESS')
         GROUP BY 1
         ORDER BY 1`,
     ]);
 
-    const attemptedIds = [...latest.keys()];
-    const questionSubjects = await this.prisma.question.findMany({
-      where: { id: { in: attemptedIds } },
-      select: { id: true, subjectId: true },
-    });
-    const subjectSlug = new Map(subjects.map((row) => [row.id, row.slug]));
-    const perSubject = new Map<string, { attempted: number; correct: number }>();
-    for (const { id, subjectId } of questionSubjects) {
-      const slug = subjectSlug.get(subjectId)!;
-      const entry = perSubject.get(slug) ?? { attempted: 0, correct: 0 };
-      entry.attempted += 1;
-      if (latest.get(id)!.isCorrect) entry.correct += 1;
-      perSubject.set(slug, entry);
-    }
-
-    const attempted = latest.size;
-    const correct = [...latest.values()].filter((attempt) => attempt.isCorrect).length;
+    const totalQuestions = taxonomy.exams.reduce((sum, exam) => sum + exam.questionCount, 0);
+    const correct = buckets.find((row) => row.latestCorrect === true)?._count ?? 0;
+    const attempted = correct + (buckets.find((row) => row.latestCorrect === false)?._count ?? 0);
     const percent = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0);
 
-    let runningAnswered = 0;
-    let runningCorrect = 0;
+    const allAnswered = totals._sum.attemptCount ?? 0;
+    const allCorrect = allAnswered - (totals._sum.incorrectCount ?? 0);
+    let runningAnswered = allAnswered - trendRows.reduce((sum, row) => sum + row.answered, 0);
+    let runningCorrect = allCorrect - trendRows.reduce((sum, row) => sum + row.correct, 0);
     const accuracyTrend = trendRows.map((row) => {
       runningAnswered += row.answered;
       runningCorrect += row.correct;
@@ -130,8 +158,8 @@ export class ProgressService {
       unattempted: Math.max(0, totalQuestions - attempted),
       accuracy: percent(correct, attempted),
       coverage: percent(attempted, totalQuestions),
-      bySubject: [...perSubject.entries()].map(([subjectId, entry]) => ({
-        subjectId,
+      bySubject: bySubject.map((entry) => ({
+        subjectId: entry.subjectId,
         attempted: entry.attempted,
         correct: entry.correct,
         incorrect: entry.attempted - entry.correct,

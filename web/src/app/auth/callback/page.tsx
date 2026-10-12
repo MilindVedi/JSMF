@@ -7,7 +7,7 @@ import { Loader2 } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { AuthCard } from "@/components/layout/auth-card";
 import { safeNext } from "@/components/auth/google-sign-in";
-import { googleAuth } from "@/lib/api/auth";
+import { googleAuth } from "@/lib/google-auth";
 import { useAuthStore } from "@/store/auth-store";
 
 /**

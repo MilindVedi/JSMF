@@ -22,26 +22,24 @@ import { useClientSnapshot } from "@/lib/use-client-snapshot";
 import { usePreferences, useSessionHistory, useStartSession, useStats } from "@/hooks/pyq";
 import { useStreakState } from "@/lib/use-streak-state";
 import { PageLoading, QueryError } from "@/components/pyq/query-states";
-
-function greetingForHour(hour: number) {
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
+import { greetingForHour } from "@jsmf/core/domain";
 
 export default function DashboardPage() {
   const hasHydratedAuth = useAuthStore((s) => s.hasHydrated);
   const profile = useAuthStore((s) => s.profile);
   const startSession = useStartSession();
   const stats = useStats();
-  const history = useSessionHistory(1, 100);
+  // Exactly what the page shows: the session to resume and the last four
+  // finished. `total` on each also tells whether this is a brand-new account.
+  const open = useSessionHistory(1, 1, "open");
+  const finished = useSessionHistory(1, 4, "submitted");
   const { data: preferences } = usePreferences();
   const streak = useStreakState();
   const targetExamId = preferences?.targetExamId ?? profile.targetExamId;
 
   const greeting = useClientSnapshot(() => greetingForHour(new Date().getHours()), "Welcome back");
 
-  const error = stats.error ?? history.error;
+  const error = stats.error ?? open.error ?? finished.error;
   if (error) {
     return (
       <QueryError
@@ -49,23 +47,20 @@ export default function DashboardPage() {
         title="Couldn't load your dashboard"
         onRetry={() => {
           void stats.refetch();
-          void history.refetch();
+          void open.refetch();
+          void finished.refetch();
         }}
       />
     );
   }
 
   const statistics = stats.data;
-  const sessionList = history.data?.items;
-  if (!hasHydratedAuth || !statistics || !sessionList) return <PageLoading />;
+  if (!hasHydratedAuth || !statistics || !open.data || !finished.data) return <PageLoading />;
 
-  // Most recently *started* unfinished session (the list is newest first), so
+  // The most recently *started* unfinished session (newest first), so
   // "Continue where you left off" resumes the one the user was actually in.
-  const inProgress = sessionList.find((s) => !s.submitted);
-  const completedByRecency = sessionList
-    .filter((s) => s.submitted && s.session.completedAt)
-    .sort((a, b) => b.session.completedAt!.localeCompare(a.session.completedAt!));
-  const recentSessions = completedByRecency.slice(0, 4);
+  const inProgress = open.data.items[0];
+  const recentSessions = finished.data.items;
   const focusAreas = statistics.bySubject
     .filter((s) => s.attempted > 0)
     .sort((a, b) => a.accuracy - b.accuracy)
@@ -76,7 +71,7 @@ export default function DashboardPage() {
   // No session ever created — a genuinely new account, not just "nothing in
   // progress right now." The onboarding dashboard replaces the whole page
   // rather than leaving a grid of zeroed-out stat cards and empty sections.
-  if (sessionList.length === 0) {
+  if (open.data.total + finished.data.total === 0) {
     const startFirstPractice = () =>
       startSession({
         mode: "browse",
@@ -115,7 +110,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
         <div className="h-full lg:col-span-2">
-          <ContinuePracticeCard inProgress={inProgress} lastCompleted={completedByRecency[0]} />
+          <ContinuePracticeCard inProgress={inProgress} lastCompleted={recentSessions[0]} />
         </div>
         <StreakCard />
       </div>

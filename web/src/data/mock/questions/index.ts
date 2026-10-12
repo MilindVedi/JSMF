@@ -1,4 +1,4 @@
-import type { Question } from "@/types";
+import type { Question } from "@jsmf/core/domain";
 
 // Hero subjects (deeper question sets)
 import { GENERAL_MEDICINE_QUESTIONS } from "./general-medicine";

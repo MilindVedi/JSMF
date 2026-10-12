@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Collection } from "@/types";
+import type { Collection } from "@jsmf/core/domain";
 import { safeLocalStorage } from "./persist-storage";
 
 /**

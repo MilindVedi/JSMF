@@ -1,16 +1,16 @@
 # PYQ features — what exists, and where
 
-This is the inventory of the previous-year-question practice product: the student app in [`web/`](../../web), its backend module [`backend/src/modules/questions/`](../../backend/src/modules/questions) and the admin panel at [`pdf-web/src/app/(admin)/admin/pyq/`](../../pdf-web/src/app/%28admin%29/admin/pyq). [README.md](./README.md) gives the shape, the database and the API table; this file goes one level down — for every feature, what the student or admin actually sees, the exact rule behind it, the file that owns that rule, and the edge cases a new engineer would otherwise discover the hard way. One thing to hold on to while reading: the web app talks to a port, [`PyqDataSource`](../../web/src/lib/data-source/types.ts), with two adapters (`mock`, `api`) chosen at build time by `NEXT_PUBLIC_DATA_SOURCE`, so "built" is always two questions — is the screen built, and does it work against the backend.
+This is the inventory of the previous-year-question practice product: the student app in [`web/`](../../web), its backend module [`backend/src/modules/questions/`](../../backend/src/modules/questions) and the admin panel at [`pdf-web/src/app/(admin)/admin/pyq/`](../../pdf-web/src/app/%28admin%29/admin/pyq). [README.md](./README.md) gives the shape, the database and the API table; this file goes one level down — for every feature, what the student or admin actually sees, the exact rule behind it, the file that owns that rule, and the edge cases a new engineer would otherwise discover the hard way. One thing to hold on to while reading: the web app talks to a port, [`PyqDataSource`](../../packages/core/src/data-source/types.ts), with two adapters (`mock`, `api`) chosen at build time by `NEXT_PUBLIC_DATA_SOURCE`, so "built" is always two questions — is the screen built, and does it work against the backend.
 
 ## 1. Student screens
 
-Every `(app)` route is behind the app shell; `practice/*` has its own full-screen layout. "Hook" is from [`web/src/hooks/pyq/index.ts`](../../web/src/hooks/pyq/index.ts) unless stated. "api mode" means the screen is fully wired to the backend through [`api-adapter.ts`](../../web/src/lib/data-source/api-adapter.ts).
+Every `(app)` route is behind the app shell; `practice/*` has its own full-screen layout. "Hook" is from [`packages/core/src/hooks/pyq.ts`](../../packages/core/src/hooks/pyq.ts) (re-exported to screens by `web/src/hooks/pyq/index.ts`) unless stated. "api mode" means the screen is fully wired to the backend through [`api-adapter.ts`](../../packages/core/src/data-source/api-adapter.ts).
 
 | Route | What it does | Hook(s) | Backend endpoint(s) | api mode |
 |---|---|---|---|---|
-| `/dashboard` | Greeting, streak card, recent sessions, quick links into bank / custom test / revision / bookmarks | `useStats`, `useSessionHistory`, `useStreak` (via `useStreakState`), `usePreferences` | `GET pyq/stats`, `pyq/sessions`, `pyq/streak`, `pyq/preferences` | Yes |
-| `/question-bank` | Filter the bank by exam, year, subject, topic and per-user status; start a session from the result | `useQuestions`, `useStartSession` | `GET pyq/questions`, `POST pyq/sessions` | Yes (search/sort hidden) |
-| `/custom-test/new` | Build a test: filters, question count, optional timer; shows the live match count before starting | `useQuestionCount`, `useStartSession`, `useTaxonomyLookup` | `GET pyq/questions` (count only), `POST pyq/sessions` | Yes (ordering hidden) |
+| `/dashboard` | Greeting, streak card, the session to resume and the last four finished, quick links | `useStats`, `useSessionHistory` (1 open + 4 submitted), `useStreak` (via `useStreakState`), `usePreferences` | `GET pyq/stats`, `pyq/sessions?status=…`, `pyq/streak`, `pyq/preferences` | Yes |
+| `/question-bank` | Filter the bank by exam, year, subject, topic and per-user status; search stems (debounced); sort by exam year or subject name; start a session from the result | `useQuestions`, `useStartSession` | `GET pyq/questions`, `POST pyq/sessions` | Yes |
+| `/custom-test/new` | Build a test: filters, question count, ordering (random / unattempted / incorrect / bookmarked first), optional timer; shows the live match count before starting | `useQuestionCount`, `useStartSession`, `useTaxonomyLookup` | `GET pyq/questions` (count only), `POST pyq/sessions` | Yes |
 | `/practice/[sessionId]` | The runner: one question at a time, palette, flagging, bookmarking, reporting, timer | `useSessionDetail`, `useAnswer`, `useSetFlag`, `useSubmitSession`, `useBookmarkToggle` | `GET/POST pyq/sessions/:id…` | Yes |
 | `/practice/[sessionId]/results` | Score card after submit, with the breakdown by subject | `useSessionDetail`, `useTaxonomyLookup` | `GET pyq/sessions/:id` | Yes |
 | `/practice/[sessionId]/review` | Question-by-question review with correct answers and explanations | `useSessionReview` | `GET pyq/sessions/:id/review` | Yes |
@@ -18,14 +18,14 @@ Every `(app)` route is behind the app shell; `practice/*` has its own full-scree
 | `/wrong-questions` | Questions whose latest answer was wrong; practise them as a set | `useWrongQuestions`, `useStartSession` | `GET pyq/wrong-questions` | Yes |
 | `/revision` | The four-section revision hub: Needs Practice, Bookmarked, Your Collections, Reinforce — each with date-range, subject grouping, search and sort | `useRevision`, `useCollections`, `useStartSession` | `GET pyq/revision`, `GET pyq/collections` | Yes |
 | `/reinforce` | Standalone view of correctly-answered questions, split recent / not revisited | `useReinforce`, `useStartSession` | `GET pyq/reinforce` | Yes |
-| `/history` | Every past session with score, filters by type and period | `useSessionHistory`, `useStats`, `useCollections` | `GET pyq/sessions`, `pyq/stats` | Yes |
+| `/history` | Finished sessions with score, 50 at a time ("Load older sessions"); filters by type, period, collection; sorts by exam year or last wrong answer | `useInfiniteSessionHistory`, `useStats`, `useCollections` | `GET pyq/sessions?status=SUBMITTED`, `pyq/stats` | Yes |
 | `/statistics` | Overall accuracy and coverage, per-subject table, accuracy over time | `useStats`, `useTaxonomyLookup`, `useCollections` | `GET pyq/stats` | Yes |
-| `/subscription` | Plans and checkout. In api mode renders `ApiSubscription`; in mock mode a non-functional plan switcher | `usePlans`, `usePlanCheckout` ([`plans.ts`](../../web/src/hooks/pyq/plans.ts)) | `GET pyq/plans`, `POST orders`, `POST payments/verify` | Yes |
-| `/profile` | Target exam and daily goal; name, email and photo | `usePreferences`, `useUpdatePreferences` | `GET/PUT pyq/preferences` | Partly — preferences only |
+| `/subscription` | Plans and checkout. In api mode renders `ApiSubscription`; in mock mode a non-functional plan switcher | `usePlans` (core), `usePlanCheckout` ([`plans.ts`](../../web/src/hooks/pyq/plans.ts)) | `GET pyq/plans`, `POST orders`, `POST payments/verify` | Yes |
+| `/profile` | Name (saved to the account), email (read-only), real plan and member-since; target exam and daily goal | `usePreferences`, `useUpdatePreferences`, `usePlanLabel`, `useAuthStore.rename` | `GET/PUT pyq/preferences`, `PATCH auth/me/name`, `GET auth/me/profile` | Yes (photo upload hidden: no endpoint) |
 | `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/auth/callback` | The shared JSMF account, including Google sign-in | `useAuthStore` | identity module | Yes |
-| `/`, `/about`, `/contact`, `/pricing`, `/privacy`, `/terms`, `/roadmap` | Marketing and static pages | — | — | Static (`/pricing` renders mock plans) |
+| `/`, `/about`, `/contact`, `/pricing`, `/privacy`, `/terms`, `/roadmap` | Marketing and static pages | — | `GET pyq/plans`, fetched on the server ([`marketing-plans.ts`](../../web/src/lib/server/marketing-plans.ts)) | Yes — `/pricing` and the home page's plan cards show real plans, cached 5 min, with no request from the browser |
 
-Capabilities differ per adapter, declared on the data source and read by screens through `pyqCapabilities`: the mock adapter has `{search, sort, collections, sessionOrdering}` all true; the api adapter has only `collections` true. Screens hide the controls they cannot honour rather than failing silently.
+Capabilities are declared on the data source and read by screens through `pyqCapabilities`; both adapters now support all of `{search, sort, collections, sessionOrdering}`. Screens hide any control an adapter declares unsupported rather than failing silently.
 
 ## 2. Access and subscriptions
 
@@ -50,24 +50,25 @@ Capabilities differ per adapter, declared on the data source and read by screens
 
 ## 3. Question bank and filtering
 
-**What the student sees.** A filter panel (exam, year, subject, topic) plus status tabs — unattempted, correct, incorrect, bookmarked — and, in mock mode only, free-text search and sort. Each row shows the student's own status and bookmark state and never the answer.
+**What the student sees.** A filter panel (exam, year — the years that actually have published questions, from the taxonomy — subject, topic) plus status tabs — unattempted, correct, incorrect, bookmarked — free-text search over the stem and a sort (newest/oldest exam year, subject name A–Z/Z–A). Each row shows the student's own status and bookmark state and never the answer.
 
 **The rules**, in [`question-bank.service.ts`](../../backend/src/modules/questions/application/question-bank.service.ts):
 
 - Students only ever see `VISIBLE_QUESTION` — `status: PUBLISHED, deletedAt: null`. Unpublishing hides a question from new lists and sessions immediately.
 - Taxonomy filters take slugs (`neet-pg`, `anatomy`, `anatomy--upper-limb`); questions and options are UUIDs. A topic slug is conventionally `${subject}--${topic}`, so it reveals its subject.
-- `status` is derived, not stored. `latestAttempts()` is a `DISTINCT ON (question_id)` query taking each question's most recent answered attempt — and it excludes attempts in a TEST that is still `IN_PROGRESS`. That exclusion is the thing to remember: without it a student could learn their test answers by filtering the bank for "incorrect" mid-test.
+- `status` reads `user_question_states.latest_correct` — the most recent answered attempt per question — as an indexed `EXISTS` subquery, so its cost does not grow with the student's history. Attempts in a TEST that is still `IN_PROGRESS` are kept out of that table until submit. That exclusion is the thing to remember: without it a student could learn their test answers by filtering the bank for "incorrect" mid-test.
+- `search` is a case-insensitive substring match on the stem; `sort` maps to `ORDER_BY` in the service, with `externalKey` as the stable tie-break.
 - `collectionIds` filters to the user's own collections only (the join checks `collection.userId`).
-- Listing is ordered newest year first, then `externalKey`, and paginated (`pageSize` ≤ 100).
+- Listing is paginated (`pageSize` ≤ 100) and returns summaries (`toQuestionSummary`: no options); status and bookmark are looked up for the page's ids only.
 - The answer-free shape is enforced structurally: `toQuestionView` lists option fields explicitly so spreading a row can never leak `isCorrect`; only `toAnsweredQuestionView` carries `correctOptionId` and the explanation.
 
 ## 4. Practice sessions
 
 A session is a fixed, ordered set of questions chosen when it starts; [`practice.service.ts`](../../backend/src/modules/questions/application/practice.service.ts) owns the whole lifecycle.
 
-**Starting.** Either an explicit `questionIds` list (deduplicated, capped at `MAX_SESSION_QUESTIONS` = 200, filtered down to visible questions) or `filters` + `count`, in which case the matching ids are shuffled with `crypto.randomInt` and sliced. An empty selection is a `400`. The filters, plus whatever the client put in `meta`, are stored on `config` so history can describe the session — they are never used to re-derive its questions, so a session stays stable even if the bank changes.
+**Starting.** Either an explicit `questionIds` list (deduplicated, capped at `MAX_SESSION_QUESTIONS` = 200, filtered down to visible questions) or `filters` + `count`, in which case the matching ids are shuffled with `crypto.randomInt` and sliced. With `order` = `unattempted-first` / `incorrect-first` / `bookmarked-first`, that group (the bank's own status filter) is drawn first, shuffled, and the rest fills in behind it, also shuffled — so a full test comes back even when the group is small. An empty selection is a `400`. The filters, plus whatever the client put in `meta`, are stored on `config` so history can describe the session — they are never used to re-derive its questions, so a session stays stable even if the bank changes.
 
-**PRACTICE vs TEST.** The database has three modes (`PRACTICE`, `TEST`, `CUSTOM`) but the api adapter only ever sends two: a custom test with a timer becomes `TEST`, everything else `PRACTICE`, with the UI's own notion of the mode (`browse`, `bookmarks`, `custom-test`, …) kept in `config.uiMode` ([`api-adapter.ts`](../../web/src/lib/data-source/api-adapter.ts)). The split that matters is `revealsAnswers()`: feedback is immediate unless the session is a TEST that has not been submitted.
+**PRACTICE vs TEST.** The database has three modes (`PRACTICE`, `TEST`, `CUSTOM`) but the api adapter only ever sends two: a custom test with a timer becomes `TEST`, everything else `PRACTICE`, with the UI's own notion of the mode (`browse`, `bookmarks`, `custom-test`, …) kept in `config.uiMode` ([`api-adapter.ts`](../../packages/core/src/data-source/api-adapter.ts)). The split that matters is `revealsAnswers()`: feedback is immediate unless the session is a TEST that has not been submitted.
 
 | | PRACTICE | TEST (unsubmitted) |
 |---|---|---|
@@ -101,9 +102,9 @@ Edge case worth knowing: editing a question's correct answer in admin does **not
 
 ## 7. Revision, reinforce and wrong questions
 
-Three overlapping lists, all computed on read from attempts, bookmarks and collections. Nothing is stored, so nothing can drift.
+Three overlapping lists, read from `user_question_states`, bookmarks and collections. The state table is derived — every write recomputes its rows from attempts (see README §7) — so it cannot drift from the attempts it describes.
 
-**Wrong questions** (`GET pyq/wrong-questions`): questions whose *latest* answer was wrong, newest first. Answering one correctly removes it from the list. Built on the same `latestAttempts()` as the bank, so unsubmitted TEST answers do not appear.
+**Wrong questions** (`GET pyq/wrong-questions`): questions whose *latest* answer was wrong, newest first. Answering one correctly removes it from the list. Read from the same state as the bank's status filter, so unsubmitted TEST answers do not appear.
 
 **Revision** (`GET pyq/revision`, [`learning.service.ts`](../../backend/src/modules/questions/application/learning.service.ts)): every question worth another look — attempted, bookmarked *or* collected — each with the facts the screen filters and sorts by: `latestCorrect`, `lastAttemptedAt`, `lastCorrectAt`, `lastWrongAt`, `attemptCount`, `incorrectCount`, `neverCorrected` (answered at least once, never correctly), `flagged` (in any session), `bookmarkedAt`, `collectedAt` and `due`. An item is **due** when any of these holds:
 
@@ -124,17 +125,19 @@ The `/revision` screen stacks all of this into four sections — Needs Practice,
 - A **day** is an India-time calendar day (`to_char(answered_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')`), and it counts as active with **one** answered attempt — the daily goal affects `todayDone`, not the streak.
 - The **current** streak counts back from today if today is active, otherwise from yesterday. A run therefore stays "current" for the whole of the day after its last active day: you have all of today to keep yesterday's streak alive.
 - The **longest** streak is the longest run of consecutive active days ever, recomputed on every read.
-- Unlike the rest of the learning queries, the streak query does *not* exclude unsubmitted TEST attempts — answering inside a running test still keeps the day alive, which is the behaviour a student expects.
+- Days come from `user_daily_activity` (one row per active day), refreshed on each first answer, so the streak — shown in the topbar on every page — never scans attempts.
+- Unlike the rest of the learning queries, the streak does *not* exclude unsubmitted TEST attempts — answering inside a running test still keeps the day alive, which is the behaviour a student expects.
 
 Preferences (`pyq.user_preferences`, one row per user, absent means defaults) hold `targetExam` (an exam slug, validated against `exams` but deliberately not a foreign key, so retiring an exam never cascades into preferences) and `dailyTarget` (default 10, 1–500). Set from `/profile`; `todayDone` is `todayCount >= dailyTarget`. The dashboard streak card celebrates when the real count reaches the goal.
 
 ## 9. Statistics
 
-`GET pyq/stats` returns, all computed per request:
+`GET pyq/stats` returns, from the state table and one windowed query:
 
 - `totalQuestions` (published, undeleted — the denominator for coverage), `attempted`, `correct`, `incorrect`, `unattempted`, `accuracy`, `coverage`, `wrongQuestionCount`, `bookmarkCount`.
 - `bySubject`: attempted / correct / incorrect / accuracy per subject slug, counted from each question's *latest* attempt, so a question moves between buckets rather than being double counted.
-- `accuracyTrend`: one row per India-time day with that day's `answered`, that day's `accuracy`, and a running `cumulativeAccuracy`. Only days with activity appear — the chart has no zero rows to filter.
+- `accuracyTrend`: one row per India-time day over the last `TREND_DAYS` (90) with that day's `answered`, that day's `accuracy`, and a running `cumulativeAccuracy`. The running figure starts from the all-time totals less the window, so it still reflects every answer ever given. Only days with activity appear.
+- `totalQuestions` is the sum of the (cached) taxonomy's exam counts.
 
 Percentages are integers (`Math.round`), and an empty denominator yields 0 rather than `NaN`.
 
@@ -168,12 +171,10 @@ All routes are `@Roles('ADMIN')` and emit `activity` events. The panel lives und
 
 ## 12. Not built yet
 
-- **Profile identity in api mode.** Name, email and avatar on `/profile` still read and write the browser-persisted `auth-store`; the avatar is a data URL in `localStorage` capped at 2MB, as there is no upload endpoint. Only target exam and daily goal reach the backend.
-- **Search and sort in the question bank** are mock-only. The api adapter declares `search: false, sort: false`, and `QuestionQuery.search` / `.sort` are ignored; the backend has no stem search for students (only admin's `q` filter) and no sort parameter.
-- **Smart custom-test ordering** (`unattempted-first`, `incorrect-first`, `bookmarked-first`) is mock-only — `sessionOrdering: false` in api mode. The backend always shuffles when drawing from filters.
+- **Profile photo upload.** There is no upload endpoint, so in api mode the photo control is hidden and the avatar shows initials (`users` already has `avatar_storage_provider` / `avatar_object_key` for when one is built on the storage module). Mock mode keeps its data-URL demo.
+- **Changing the sign-in email.** Needs a verification flow the identity module does not have; the field is read-only in api mode.
 - **The `CUSTOM` practice mode** exists in the schema but nothing writes it; the api adapter sends only `PRACTICE` or `TEST`.
-- **Marketing `/pricing`** still renders the static mock plans from `web/src/data/mock/plans.ts`, not `GET pyq/plans`. Mock mode's `/subscription` is likewise an illustrative switcher that enforces nothing.
-- **Session-list sort keys** `newestYear`, `oldestYear` and `lastWrongAt` are optional on the port and supplied only by the mock adapter.
+- **Mock mode's `/subscription`** is an illustrative switcher that enforces nothing (api mode is real).
 - **No undelete** for questions, no bulk publish, no bulk report action, no per-user report rate limit, and no re-scoring of past attempts after a correct-answer edit.
 
 ## 13. Test coverage

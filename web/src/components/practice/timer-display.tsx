@@ -3,19 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import { Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-function formatTime(totalSec: number) {
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
+import { formatClock as formatTime } from "@jsmf/core/domain";
 
 export function TimerDisplay({
   durationSec,
   onTimeUp,
+  warnAtSec = 60,
+  withHours = false,
+  className,
 }: {
   durationSec: number;
   onTimeUp?: () => void;
+  /** Turns the error colour on at or below this many seconds. */
+  warnAtSec?: number;
+  /** `hh:mm:ss`, as an exam console shows it, instead of `m:ss`. */
+  withHours?: boolean;
+  className?: string;
 }) {
   const [remaining, setRemaining] = useState(durationSec);
   const firedRef = useRef(false);
@@ -34,18 +37,19 @@ export function TimerDisplay({
     }
   }, [remaining, onTimeUp]);
 
-  const low = remaining <= 60;
+  const low = remaining <= warnAtSec;
 
   return (
     <div
       className={cn(
         "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums",
-        low ? "bg-error text-error-foreground" : "bg-muted text-foreground"
+        low ? "bg-error text-error-foreground" : "bg-muted text-foreground",
+        className
       )}
       style={{ fontFamily: "var(--font-mono)" }}
     >
       <Timer className="size-3.5" />
-      {formatTime(remaining)}
+      {formatTime(remaining, withHours)}
     </div>
   );
 }

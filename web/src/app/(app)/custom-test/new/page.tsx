@@ -26,36 +26,22 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { pyqCapabilities, useQuestionCount, useStartSession, useTaxonomyLookup } from "@/hooks/pyq";
-import type { QuestionQuery, SessionOrder } from "@/lib/data-source";
+import type { QuestionQuery, SessionOrder } from "@jsmf/core/data-source";
+import {
+  CUSTOM_TEST_QUESTION_COUNTS as QUESTION_COUNTS,
+  MAX_MIN_PER_QUESTION,
+  MAX_SESSION_QUESTIONS,
+  MIN_MIN_PER_QUESTION,
+  PACE_PRESETS,
+  SESSION_ORDER_MODES as ORDER_MODES,
+  customTestDurations,
+  customTestFinalCount,
+  selectionSummary as summaryChip,
+} from "@jsmf/core/domain";
 
-const QUESTION_COUNTS = [10, 20, 30, 50];
-// Real exams run close to 1 minute/question (NEET-PG ~63s, FMGE ~60s,
-// INI-CET ~54s), so 1x is the realistic-pace floor. 1.5x is the ceiling for
-// relaxed practice — past that the timer stops meaningfully constraining
-// anything, so it isn't offered.
-const MIN_MIN_PER_QUESTION = 1;
-const MAX_MIN_PER_QUESTION = 1.5;
-const PACE_PRESETS = [
-  { value: 1, label: "Realistic" },
-  { value: 1.25, label: "Balanced" },
-  { value: 1.5, label: "Relaxed" },
-];
-
+// Counts, paces and orderings are @jsmf/core's, shared with the mobile app.
 type OrderMode = SessionOrder;
 type PoolMode = "all" | "unattempted";
-
-const ORDER_MODES: { value: OrderMode; label: string; hint: string }[] = [
-  { value: "random", label: "Random", hint: "A random mix from the pool." },
-  { value: "unattempted-first", label: "Unattempted first", hint: "Fresh questions first, fills in with the rest." },
-  { value: "incorrect-first", label: "Incorrect first", hint: "Questions you got wrong before, first." },
-  { value: "bookmarked-first", label: "Bookmarked first", hint: "Your bookmarked questions first, fills in with the rest." },
-];
-
-function summaryChip(ids: string[], allLabel: string, names: (id: string) => string) {
-  if (ids.length === 0) return allLabel;
-  if (ids.length <= 2) return ids.map(names).join(" + ");
-  return `${ids.length} selected`;
-}
 
 export default function CustomTestBuilderPage() {
   const [filters, setFilters] = useState<QuestionFiltersState>(EMPTY_QUESTION_FILTERS);
@@ -89,17 +75,15 @@ export default function CustomTestBuilderPage() {
   const { count: poolCount, isPending: countPending, error: countError } = useQuestionCount(query);
 
   // Sessions hold at most 200 questions (backend MAX_SESSION_QUESTIONS).
-  const availableCount = Math.min(poolCount, 200);
+  const availableCount = Math.min(poolCount, MAX_SESSION_QUESTIONS);
   // If a filter/mode change shrinks the pool below the selected count, this
   // derives the largest option that still fits — never lets the user hit
   // Start expecting more questions than actually exist, and never needs an
   // effect to keep `count` itself in sync. "All" tracks the live available
   // count rather than freezing it at whatever it was when selected.
-  const finalCount = availableCount === 0 ? 0 : useAll ? availableCount : Math.min(Math.max(count, 1), availableCount);
+  const finalCount = customTestFinalCount(availableCount, count, useAll);
 
-  const minDurationMin = Math.round(finalCount * MIN_MIN_PER_QUESTION);
-  const maxDurationMin = Math.round(finalCount * MAX_MIN_PER_QUESTION);
-  const durationMin = Math.max(1, Math.round(finalCount * minPerQuestion));
+  const { minDurationMin, maxDurationMin, durationMin } = customTestDurations(finalCount, minPerQuestion);
 
   function handleConfirmStart() {
     setConfirmOpen(false);

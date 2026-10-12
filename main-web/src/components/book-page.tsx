@@ -9,6 +9,7 @@ import { RegisterDialog } from "@/components/register-dialog";
 import { DoctorPortrait, SessionCard } from "@/components/landing";
 import { TestimonialsSection } from "@/components/testimonials-section";
 import { buttonVariants } from "@/components/ui/button";
+import { track } from "@/lib/analytics";
 import { sessionsApi } from "@/lib/api/sessions";
 import type { LiveSession } from "@/lib/api/types";
 import { links } from "@/lib/site-content";
@@ -52,6 +53,11 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
     if (checkoutUrl) window.location.assign(checkoutUrl);
     else setOpen(true);
   };
+  /** The same action, recorded first with which button it came from. */
+  const bookFrom = (location: string) => () => {
+    track("book_click", checkoutUrl ? { location, external: true } : { location });
+    book();
+  };
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -69,7 +75,7 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
               {session && (
                 <button
                   type="button"
-                  onClick={book}
+                  onClick={bookFrom("prep_kit_hero")}
                   className="cta-spot inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm text-white"
                 >
                   <span className="cta-shine" aria-hidden />
@@ -148,7 +154,7 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
 
           {session && (
             <div className="lg:col-span-5">
-              <SessionCard session={session} onRegister={book} external={Boolean(checkoutUrl)} />
+              <SessionCard session={session} onRegister={bookFrom("session_card")} external={Boolean(checkoutUrl)} />
             </div>
           )}
         </div>

@@ -1,5 +1,5 @@
 import { Activity, Bone, Camera, Microscope, Scan, ScanLine, Workflow, type LucideIcon } from "lucide-react";
-import type { FigureKind, QuestionFigure } from "@/types";
+import type { FigureKind, QuestionFigure } from "@jsmf/core/domain";
 import { cn } from "@/lib/utils";
 
 const FIGURE_META: Record<FigureKind, { label: string; icon: LucideIcon }> = {

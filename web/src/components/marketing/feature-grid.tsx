@@ -38,7 +38,8 @@ export function FeatureGrid() {
     <section id="features" className="py-20 sm:py-28">
       <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="font-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+          <span className="eyebrow mx-auto">Features</span>
+          <h2 className="mt-5 font-display text-3xl font-semibold leading-tight text-brand-deep dark:text-foreground sm:text-4xl">
             Everything you need to practice, nothing you don&apos;t
           </h2>
         </div>

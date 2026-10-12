@@ -95,7 +95,7 @@ export function ChangePasswordCard() {
         <CardTitle>Change password</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={submit} className="max-w-sm space-y-4" noValidate>
+        <form method="post" onSubmit={submit} className="max-w-sm space-y-4" noValidate>
           <PasswordField
             id="currentPassword"
             label="Current password"

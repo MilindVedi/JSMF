@@ -2,8 +2,8 @@
 
 import { Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { OPTION_LETTERS as LETTERS } from "@jsmf/core/domain";
 
-const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
 export function OptionButton({
   index,

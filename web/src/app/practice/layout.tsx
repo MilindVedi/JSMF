@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import { StreakGoalCelebrator } from "@/components/layout/streak-goal-celebrator";
 import { useRequireAuth } from "@/lib/use-require-auth";
 
 /**
@@ -20,5 +21,11 @@ export default function PracticeLayout({ children }: { children: React.ReactNode
     );
   }
 
-  return <div className="min-h-dvh bg-background">{children}</div>;
+  return (
+    <div className="min-h-dvh bg-background">
+      {/* The daily-goal moment usually happens here, on the answer that reaches it. */}
+      <StreakGoalCelebrator inPlace />
+      {children}
+    </div>
+  );
 }

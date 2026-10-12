@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Flame, StickyNote } from "lucide-react";
+import { StreakFlame } from "@/components/streak/streak-flame";
 import { useStreakAnimationStore } from "@/store/streak-animation-store";
-import { STREAK_LEVELS, getStreakLevel } from "@/lib/streak-config";
+import { getStreakLevel } from "@jsmf/core/domain";
 import { cn } from "@/lib/utils";
-import { AngadNote } from "@/components/dev/angad-note";
 
 /**
  * The global streak indicator. Registers itself as the landing target for
@@ -84,51 +83,14 @@ export function TopbarStreakChip({ streakDays }: { streakDays: number }) {
           ["--streak-ring-color" as string]: ringHue ?? undefined,
         }}
       >
-        <Flame
-          className={cn("size-3.5", level.glowIntensity > 0 && "animate-streak-fire")}
-          strokeWidth={2}
-          fill="currentColor"
-          fillOpacity={0.35}
-          style={{ ["--streak-flame-color" as string]: level.accent }}
-        />
-        {shown}
-        <span className="hidden sm:inline">-day streak</span>
+        <StreakFlame className="size-4" glow={level.glowIntensity} />
+        {/* One text node with its suffix, so the chip's gap never splits "1" from "-day". */}
+        <span>
+          {shown}
+          <span className="hidden sm:inline">-day streak</span>
+        </span>
       </div>
 
-      <AngadNote compact>
-        <div className="mb-2 border-b border-border pb-2">
-          <p className="flex items-center gap-1.5 font-semibold text-foreground">
-            <StickyNote className="size-3.5" /> Note for Angad
-          </p>
-        </div>
-        <p className="text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
-          Streak stages (mock preview)
-        </p>
-        <div className="flex flex-col gap-1">
-          {STREAK_LEVELS.map((stage, i) => {
-            const next = STREAK_LEVELS[i + 1];
-            const range = next ? `${stage.minDays}–${next.minDays - 1} days` : `${stage.minDays}+ days`;
-            const isCurrent = stage.id === level.id;
-            return (
-              <div
-                key={stage.id}
-                className={cn("flex items-center gap-2 rounded px-1.5 py-1", isCurrent && "bg-muted")}
-              >
-                <span
-                  className="size-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: stage.accent }}
-                />
-                <span className="flex-1 truncate text-foreground">{stage.label}</span>
-                <span className="shrink-0 text-muted-foreground">{range}</span>
-              </div>
-            );
-          })}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          This is only here to show you the color coding used for different streak stages and the logic
-          behind them — not something to review or decide on.
-        </p>
-      </AngadNote>
     </div>
   );
 }

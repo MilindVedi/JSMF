@@ -6,7 +6,8 @@ export function TeamSection() {
     <section className="border-t border-border py-20 sm:py-28">
       <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="font-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+          <span className="eyebrow mx-auto">Our team</span>
+          <h2 className="mt-5 font-display text-3xl font-semibold leading-tight text-brand-deep dark:text-foreground sm:text-4xl">
             The people behind JSMF
           </h2>
           <p className="mt-3 text-muted-foreground">
@@ -19,7 +20,9 @@ export function TeamSection() {
             initials="AR"
             name="Dr. Angad Rai"
             title="Founder & Medical Lead"
+            photoSrc="/dr-angad-rai.jpg"
             badges={[
+              { icon: Trophy, label: "AIR 925 · NEET-PG 2026" },
               { icon: Trophy, label: "AIR 9 · FMGE 2023" },
               { icon: Medal, label: "MBBS Bronze Medalist" },
             ]}

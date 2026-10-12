@@ -21,6 +21,7 @@ import {
   methodsApi,
   type UndeliverableCode,
 } from "@/lib/api/auth";
+import { track } from "@/lib/analytics";
 import { ApiError } from "@/lib/api/client";
 import { useSessionStore } from "@/store/session-store";
 
@@ -219,6 +220,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
   }
 
   async function onSubmit(values: SignupValues | LoginValues) {
+    track("signin_start", { method: "email", mode });
     if (signup) {
       await requestCode(values as SignupValues);
       return;
@@ -313,7 +315,10 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
               )}
               <GoogleButton
                 label={signup ? "Sign up with Google" : "Continue with Google"}
-                onClick={() => googleAuth.start({ next: requestedNext ?? undefined })}
+                onClick={() => {
+                  track("signin_start", { method: "google", mode });
+                  googleAuth.start({ next: requestedNext ?? undefined });
+                }}
                 className="h-12 w-full text-[15px] shadow-sm"
               />
               <p className="mt-3 text-center text-xs text-muted-foreground">
@@ -364,7 +369,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
             </button>
           </>
         ) : (
-        <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-4" noValidate>
+        <form method="post" onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-4" noValidate>
           <label className="field-label" htmlFor="email">
             Email
             <input
@@ -472,6 +477,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
         {phoneEnabled && !completingProfile && (
           <Link
             href={`/account/mobile?next=${encodeURIComponent(requestedNext ?? "/")}`}
+            onClick={() => track("signin_start", { method: "phone", mode })}
             className={storeButton({ variant: "secondary", className: "mt-3 w-full" })}
           >
             <Smartphone className="size-4" />

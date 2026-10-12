@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  BarChart3,
   BookOpenCheck,
   CalendarDays,
   FileText,
@@ -11,6 +12,7 @@ import {
   Loader2,
   LogOut,
   ReceiptText,
+  Scale,
   Settings,
   Sparkles,
   Users,
@@ -26,7 +28,9 @@ const NAV = [
   { href: "/admin/taxonomy", label: "Categories", icon: FolderTree },
   { href: "/admin/pyq", label: "Question bank", icon: BookOpenCheck },
   { href: "/admin/orders", label: "Orders", icon: ReceiptText },
+  { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/admin/team", label: "Team", icon: Users },
+  { href: "/admin/legal", label: "Legal", icon: Scale },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import type { SubscriptionPlan } from "@/types";
+import type { SubscriptionPlan } from "@jsmf/core/domain";
 
 interface PricingCardProps {
   plan: SubscriptionPlan;

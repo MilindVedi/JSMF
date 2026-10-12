@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, X } from "lucide-react";
-import type { Attempt } from "@/types";
+import type { Attempt } from "@jsmf/core/domain";
 import { cn } from "@/lib/utils";
 
 export function ReviewNavStrip({

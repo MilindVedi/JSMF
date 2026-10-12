@@ -1,5 +1,5 @@
 import { CheckCircle2, XCircle } from "lucide-react";
-import type { SessionQuestion } from "@/types";
+import type { SessionQuestion } from "@jsmf/core/domain";
 import { FigurePlaceholder } from "@/components/common/figure-placeholder";
 import { cn } from "@/lib/utils";
 

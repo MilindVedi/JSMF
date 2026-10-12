@@ -2,7 +2,8 @@ export default function AboutPage() {
   return (
     <div className="mx-auto w-full max-w-[1280px] px-4 py-20 sm:px-6 sm:py-28">
       <div className="mx-auto max-w-2xl text-center">
-        <h1 className="font-heading text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+        <span className="eyebrow">About us</span>
+        <h1 className="mt-5 font-display text-4xl font-semibold leading-tight text-brand-deep dark:text-foreground sm:text-5xl">
           About JSMF
         </h1>
         <p className="mt-4 text-muted-foreground">

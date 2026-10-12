@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
@@ -21,17 +21,16 @@ import { Card } from "@/components/ui/card";
 import { SortDropdown } from "@/components/common/sort-dropdown";
 import { ListSkeleton, QueryError } from "@/components/pyq/query-states";
 import { pyqCapabilities, useQuestions, useStartSession } from "@/hooks/pyq";
-import type { QuestionListItem, QuestionQuery } from "@/lib/data-source";
+import type { QuestionListItem, QuestionQuery } from "@jsmf/core/data-source";
 import {
   QUESTION_BANK_SORT_OPTIONS,
   QUESTION_SORT_LABELS,
   QUESTION_SORT_GROUPS,
+  MAX_SESSION_QUESTIONS,
   type QuestionSortOption,
-} from "@/lib/question-sort";
+} from "@jsmf/core/domain";
 
 const PAGE_SIZE = 50;
-/** The most a single session can hold (backend MAX_SESSION_QUESTIONS). */
-const MAX_SESSION_QUESTIONS = 200;
 
 const QUESTION_BANK_SORT_DROPDOWN_OPTIONS = QUESTION_BANK_SORT_OPTIONS.map((value) => ({
   value,
@@ -80,7 +79,17 @@ export default function QuestionBankPage() {
     setPage(1);
   };
 
-  const query = useMemo(() => toQuery(filters, status, search, sort), [filters, status, search, sort]);
+  // Typing settles before it becomes a request — each keystroke is otherwise a server query.
+  const [settledSearch, setSettledSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const query = useMemo(
+    () => toQuery(filters, status, settledSearch, sort),
+    [filters, status, settledSearch, sort]
+  );
   const { data, error, isPending, isFetching, refetch } = useQuestions(query, page, PAGE_SIZE);
   const total = data?.total ?? 0;
   const items = data?.items ?? [];

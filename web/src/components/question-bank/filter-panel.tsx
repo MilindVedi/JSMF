@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { MultiSelectPopover } from "./multi-select-popover";
 import { pyqCapabilities, useCollections, useTaxonomyLookup } from "@/hooks/pyq";
-import type { Exam, ExamId, SubjectGroup } from "@/types";
+import type { Exam, ExamId, SubjectGroup } from "@jsmf/core/domain";
 
 const SUBJECT_GROUP_LABEL: Record<SubjectGroup, string> = {
   "pre-clinical": "Pre-Clinical",
@@ -22,8 +22,6 @@ export interface QuestionFiltersState {
    *  in lib/selectors, which every consumer of this filter uses to apply it. */
   collectionIds: string[];
 }
-
-export const RECENT_YEARS = [2025, 2024, 2023, 2022, 2021];
 
 export const EMPTY_QUESTION_FILTERS: QuestionFiltersState = {
   examIds: [],
@@ -76,7 +74,7 @@ export function FilterPanel({
 
       <MultiSelectPopover
         label="Year"
-        options={RECENT_YEARS.map((y) => ({ id: String(y), label: String(y) }))}
+        options={taxonomy.years.map((y) => ({ id: String(y), label: String(y) }))}
         selected={value.years.map(String)}
         onChange={(ids) => onChange({ ...value, years: ids.map(Number) })}
       />

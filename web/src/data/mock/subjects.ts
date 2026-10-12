@@ -1,4 +1,4 @@
-import type { Subject } from "@/types";
+import type { Subject } from "@jsmf/core/domain";
 
 /**
  * The 19 conventional MBBS subjects. "Hero" subjects (general-medicine,

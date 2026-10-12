@@ -20,7 +20,7 @@ const LOGO_URL =
 
 const SOCIALS = [
   {
-    href: 'https://www.instagram.com/angadrai009/',
+    href: 'https://www.instagram.com/drangadrai09/',
     icon: 'https://cdn-icons-png.flaticon.com/32/174/174855.png',
     alt: 'Instagram',
   },

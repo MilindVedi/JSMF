@@ -359,7 +359,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
             </button>
           </>
         ) : (
-        <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-4" noValidate>
+        <form method="post" onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-4" noValidate>
           <label className="field-label" htmlFor="email">
             Email
             <input

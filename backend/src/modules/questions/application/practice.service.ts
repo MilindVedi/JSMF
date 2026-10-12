@@ -21,12 +21,28 @@ import {
   toAnsweredQuestionView,
   toQuestionView,
 } from '../domain/question-view';
+import { QuestionStateService } from './question-state.service';
 import { QuestionBankService, type QuestionFilters } from './question-bank.service';
 import { PyqAccessService } from './pyq-access.service';
 
 export const MAX_SESSION_QUESTIONS = 200;
 /** Network and clock slack after a timed test's deadline before answers are refused. */
 const DEADLINE_GRACE_MS = 30_000;
+
+export const SESSION_ORDERS = [
+  'random',
+  'unattempted-first',
+  'incorrect-first',
+  'bookmarked-first',
+] as const;
+export type SessionOrder = (typeof SESSION_ORDERS)[number];
+
+/** Each ordering is the bank's own status filter, so "incorrect" means the latest answer. */
+const PRIORITY_STATUS = {
+  'unattempted-first': 'unattempted',
+  'incorrect-first': 'incorrect',
+  'bookmarked-first': 'bookmarked',
+} as const;
 
 export interface StartSessionInput {
   mode: PracticeMode;
@@ -35,6 +51,8 @@ export interface StartSessionInput {
   questionIds?: string[];
   filters?: QuestionFilters;
   count?: number;
+  /** Only with filters. */
+  order?: SessionOrder;
   timeLimitSec?: number | null;
   /** Free-form context the web app wants back (e.g. its own mode, sourceHref). */
   meta?: Record<string, unknown>;
@@ -72,15 +90,23 @@ function attemptView(attempt: Attempt, reveal: boolean) {
 
 function scoreOf(total: number, attempts: Attempt[]) {
   const answered = attempts.filter((attempt) => attempt.answeredAt);
-  const correct = answered.filter((attempt) => attempt.isCorrect).length;
+  return scoreFromCounts(
+    total,
+    answered.length,
+    answered.filter((attempt) => attempt.isCorrect).length,
+    attempts.reduce((sum, a) => sum + a.timeSpentMs, 0),
+  );
+}
+
+function scoreFromCounts(total: number, attempted: number, correct: number, timeSpentMs: number) {
   return {
     totalQuestions: total,
-    attempted: answered.length,
+    attempted,
     correct,
-    incorrect: answered.length - correct,
-    unattempted: total - answered.length,
-    accuracy: answered.length ? Math.round((correct / answered.length) * 100) : 0,
-    totalTimeSec: Math.round(attempts.reduce((sum, a) => sum + a.timeSpentMs, 0) / 1000),
+    incorrect: attempted - correct,
+    unattempted: total - attempted,
+    accuracy: attempted ? Math.round((correct / attempted) * 100) : 0,
+    totalTimeSec: Math.round(timeSpentMs / 1000),
   };
 }
 
@@ -97,6 +123,7 @@ export class PracticeService {
     private readonly prisma: PrismaService,
     private readonly bank: QuestionBankService,
     private readonly access: PyqAccessService,
+    private readonly states: QuestionStateService,
   ) {}
 
   async start(userId: string, input: StartSessionInput) {
@@ -112,7 +139,18 @@ export class PracticeService {
       questionIds = requested.filter((id) => ok.has(id));
     } else {
       const count = Math.min(input.count ?? 20, MAX_SESSION_QUESTIONS);
-      questionIds = shuffle(await this.bank.matchingIds(userId, input.filters ?? {})).slice(
+      const order = input.order ?? 'random';
+      const [pool, group] = await Promise.all([
+        this.bank.matchingIds(userId, input.filters ?? {}),
+        order === 'random'
+          ? Promise.resolve<string[]>([])
+          : this.bank.matchingIds(userId, { ...input.filters, status: PRIORITY_STATUS[order] }),
+      ]);
+      // The priority group goes first and the rest fills in behind it, each
+      // shuffled, so "incorrect first" with few wrong answers still gives a
+      // full test, and neither part comes out in a predictable order.
+      const first = new Set(group);
+      questionIds = [...shuffle(group), ...shuffle(pool.filter((id) => !first.has(id)))].slice(
         0,
         count,
       );
@@ -127,6 +165,7 @@ export class PracticeService {
 
     const config = {
       filters: input.questionIds?.length ? undefined : (input.filters ?? {}),
+      order: input.questionIds?.length ? undefined : (input.order ?? 'random'),
       ...(input.meta ?? {}),
     } as Prisma.InputJsonObject;
 
@@ -214,12 +253,22 @@ export class PracticeService {
         timeSpentMs: (existing?.timeSpentMs ?? 0) + Math.max(0, input.timeSpentMs ?? 0),
         answeredAt: existing?.answeredAt ?? new Date(),
       };
-      attempt = await this.prisma.attempt.upsert({
-        where: {
-          sessionId_questionId: { sessionId, questionId: input.questionId },
-        },
-        create: { sessionId, questionId: input.questionId, userId, ...data },
-        update: data,
+      const firstAnswer = !existing?.answeredAt;
+      attempt = await this.prisma.$transaction(async (tx) => {
+        const saved = await tx.attempt.upsert({
+          where: {
+            sessionId_questionId: { sessionId, questionId: input.questionId },
+          },
+          create: { sessionId, questionId: input.questionId, userId, ...data },
+          update: data,
+        });
+        // A running test's answers stay out of the per-question state until
+        // submit; they still count towards the day (and the streak).
+        if (session.mode !== PracticeMode.TEST) {
+          await this.states.refresh(userId, [input.questionId], tx);
+        }
+        if (firstAnswer) await this.states.refreshDay(userId, data.answeredAt, tx);
+        return saved;
       });
     }
 
@@ -252,10 +301,14 @@ export class PracticeService {
     const session = await this.owned(userId, sessionId);
     this.assertOpen(session);
     await this.assertInSession(sessionId, questionId);
-    const attempt = await this.prisma.attempt.upsert({
-      where: { sessionId_questionId: { sessionId, questionId } },
-      create: { sessionId, questionId, userId, flagged },
-      update: { flagged },
+    const attempt = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.attempt.upsert({
+        where: { sessionId_questionId: { sessionId, questionId } },
+        create: { sessionId, questionId, userId, flagged },
+        update: { flagged },
+      });
+      if (revealsAnswers(session)) await this.states.refresh(userId, [questionId], tx);
+      return saved;
     });
     return { questionId, flagged: attempt.flagged };
   }
@@ -268,16 +321,27 @@ export class PracticeService {
         where: { sessionId },
       });
       const score = scoreOf(session.totalQuestions, attempts);
-      const updated = await this.prisma.practiceSession.updateMany({
-        where: { id: sessionId, status: PracticeSessionStatus.IN_PROGRESS },
-        data: {
-          status: PracticeSessionStatus.SUBMITTED,
-          submittedAt: new Date(),
-          correctCount: score.correct,
-          incorrectCount: score.incorrect,
-          unattemptedCount: score.unattempted,
-          accuracy: score.accuracy,
-        },
+      const updated = await this.prisma.$transaction(async (tx) => {
+        const result = await tx.practiceSession.updateMany({
+          where: { id: sessionId, status: PracticeSessionStatus.IN_PROGRESS },
+          data: {
+            status: PracticeSessionStatus.SUBMITTED,
+            submittedAt: new Date(),
+            correctCount: score.correct,
+            incorrectCount: score.incorrect,
+            unattemptedCount: score.unattempted,
+            accuracy: score.accuracy,
+          },
+        });
+        // A submitted test's answers now count: fold them into the state.
+        if (result.count === 1 && session.mode === PracticeMode.TEST) {
+          await this.states.refresh(
+            userId,
+            attempts.map((attempt) => attempt.questionId),
+            tx,
+          );
+        }
+        return result;
       });
       if (updated.count === 1) {
         activity(this.logger, 'practice.session_submitted', {
@@ -300,8 +364,14 @@ export class PracticeService {
     return this.get(userId, sessionId);
   }
 
-  async history(userId: string, page: number, pageSize: number) {
-    const where = { userId };
+  /**
+   * Newest first, optionally only open or only finished sessions. Everything
+   * per session is aggregated in the database, so a page of 100 sessions is
+   * three queries returning 100 rows each, not every question and attempt
+   * behind them.
+   */
+  async history(userId: string, page: number, pageSize: number, status?: PracticeSessionStatus) {
+    const where = { userId, ...(status ? { status } : {}) };
     const [total, sessions] = await Promise.all([
       this.prisma.practiceSession.count({ where }),
       this.prisma.practiceSession.findMany({
@@ -311,24 +381,87 @@ export class PracticeService {
         take: pageSize,
       }),
     ]);
-    const attempts = await this.prisma.attempt.findMany({
-      where: { sessionId: { in: sessions.map((session) => session.id) } },
-    });
+    if (sessions.length === 0) return { total, page, pageSize, items: [] };
+
+    const ids = sessions.map((session) => session.id);
+    const [scores, coverage] = await Promise.all([
+      this.prisma.$queryRaw<
+        { sessionId: string; attempted: number; correct: number; timeMs: number; lastWrongAt: Date | null }[]
+      >`
+        SELECT session_id AS "sessionId",
+               count(answered_at)::int AS attempted,
+               count(*) FILTER (WHERE answered_at IS NOT NULL AND is_correct)::int AS correct,
+               coalesce(sum(time_spent_ms), 0)::int AS "timeMs",
+               max(answered_at) FILTER (WHERE answered_at IS NOT NULL AND NOT is_correct) AS "lastWrongAt"
+        FROM pyq.attempts
+        WHERE session_id = ANY(${ids}::uuid[])
+        GROUP BY session_id`,
+      this.prisma.$queryRaw<
+        {
+          sessionId: string;
+          examIds: string[];
+          subjectIds: string[];
+          newestYear: number;
+          oldestYear: number;
+          firstOpen: number | null;
+          questions: number;
+        }[]
+      >`
+        SELECT sq.session_id AS "sessionId",
+               array_agg(DISTINCT e.slug) AS "examIds",
+               array_agg(DISTINCT sub.slug) AS "subjectIds",
+               max(q.year)::int AS "newestYear",
+               min(q.year)::int AS "oldestYear",
+               min(sq.position) FILTER (WHERE a.answered_at IS NULL) AS "firstOpen",
+               count(*)::int AS questions
+        FROM pyq.session_questions sq
+        JOIN pyq.questions q ON q.id = sq.question_id
+        JOIN pyq.exams e ON e.id = q.exam_id
+        JOIN pyq.subjects sub ON sub.id = q.subject_id
+        LEFT JOIN pyq.attempts a ON a.session_id = sq.session_id AND a.question_id = sq.question_id
+        WHERE sq.session_id = ANY(${ids}::uuid[])
+        GROUP BY sq.session_id`,
+    ]);
+    const scoreById = new Map(scores.map((row) => [row.sessionId, row]));
+    const coverageById = new Map(coverage.map((row) => [row.sessionId, row]));
+
     return {
       total,
       page,
       pageSize,
-      items: sessions.map((session) =>
-        this.summary(
-          session,
-          attempts.filter((attempt) => attempt.sessionId === session.id),
-        ),
-      ),
+      items: sessions.map((session) => {
+        const counts = scoreById.get(session.id);
+        const covers = coverageById.get(session.id);
+        const reveal = revealsAnswers(session);
+        return {
+          ...this.summaryOf(
+            session,
+            scoreFromCounts(
+              session.totalQuestions,
+              counts?.attempted ?? 0,
+              counts?.correct ?? 0,
+              counts?.timeMs ?? 0,
+            ),
+          ),
+          // From the questions themselves, so a session started from an
+          // explicit list (bookmarks, revision) still says what it covers.
+          examIds: covers?.examIds ?? [],
+          subjectIds: covers?.subjectIds ?? [],
+          newestYear: covers?.newestYear ?? null,
+          oldestYear: covers?.oldestYear ?? null,
+          // Correctness of an unsubmitted test stays hidden, here as everywhere.
+          lastWrongAt: reveal ? (counts?.lastWrongAt ?? null) : null,
+          resumeIndex: covers?.firstOpen ?? Math.max((covers?.questions ?? 1) - 1, 0),
+        };
+      }),
     };
   }
 
   private summary(session: PracticeSession, attempts: Attempt[]) {
-    const score = scoreOf(session.totalQuestions, attempts);
+    return this.summaryOf(session, scoreOf(session.totalQuestions, attempts));
+  }
+
+  private summaryOf(session: PracticeSession, score: ReturnType<typeof scoreFromCounts>) {
     const reveal = revealsAnswers(session);
     return {
       id: session.id,

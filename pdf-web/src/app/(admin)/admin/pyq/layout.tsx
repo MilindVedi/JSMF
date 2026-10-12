@@ -9,6 +9,7 @@ const TABS = [
   { href: "/admin/pyq/reports", label: "Reports" },
   { href: "/admin/pyq/taxonomy", label: "Exams & subjects" },
   { href: "/admin/pyq/import", label: "Import" },
+  { href: "/admin/pyq/streaks", label: "Streak stages" },
 ];
 
 /** Sub-navigation for the PYQ question bank section. */

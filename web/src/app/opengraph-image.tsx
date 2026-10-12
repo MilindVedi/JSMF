@@ -48,7 +48,7 @@ export default function OpengraphImage() {
           </div>
         </div>
         <div style={{ marginTop: 28, fontSize: 32, color: "#5E5670", textAlign: "center" }}>
-          Memory-based PYQ preparation
+          Practice PYQs. Master concepts. Prepare smarter.
         </div>
         <div style={{ marginTop: 8, fontSize: 32, color: "#5E5670", textAlign: "center" }}>
           NEET-PG · FMGE · INI-CET

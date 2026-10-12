@@ -46,7 +46,7 @@ export const isSessionUpcoming = (event: SessionEvent) =>
 export const links = {
   telegram: "https://t.me/jsmfresources",
   youtube: "https://www.youtube.com/@jsmf",
-  instagram: "https://www.instagram.com/jsmf",
+  instagram: "https://www.instagram.com/drangadrai09/",
   interviewWatch: "https://www.youtube.com/live/MMLKjFlV1tA",
   interviewEmbed: "https://www.youtube.com/embed/MMLKjFlV1tA",
 };

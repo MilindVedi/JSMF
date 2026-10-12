@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Manrope, Sora } from "next/font/google";
 import { Toaster } from "sonner";
+import { AnalyticsTracker } from "@/components/analytics-tracker";
+import { LegalGate } from "@/components/legal/legal-gate";
 import "./globals.css";
 
 const sora = Sora({ variable: "--font-sora", subsets: ["latin"], weight: ["500", "600", "700"] });
@@ -30,6 +32,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${sora.variable} ${manrope.variable}`} suppressHydrationWarning>
       <body className="antialiased" suppressHydrationWarning>
         {children}
+        <LegalGate />
+        <AnalyticsTracker />
         <Toaster position="top-center" richColors />
       </body>
     </html>

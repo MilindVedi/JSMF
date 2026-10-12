@@ -5,7 +5,7 @@ import { AlertTriangle, Loader2, Lock } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DailyLimitError } from "@/lib/data-source";
+import { DailyLimitError } from "@jsmf/core/data-source";
 
 /** Full-area spinner, matching the app's existing loading treatment. */
 export function PageLoading({ className = "min-h-[60dvh]" }: { className?: string }) {

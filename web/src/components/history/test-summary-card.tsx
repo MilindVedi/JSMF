@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { format } from "date-fns";
-import type { TestSession } from "@/types";
+import type { TestSession } from "@jsmf/core/domain";
 import { cn } from "@/lib/utils";
 
 export function TestSummaryCard({

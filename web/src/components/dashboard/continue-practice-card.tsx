@@ -5,44 +5,19 @@ import { ChevronRight } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { buttonVariants } from "@/components/ui/button";
 import { useTaxonomyLookup } from "@/hooks/pyq";
-import type { SessionListItem } from "@/lib/data-source";
+import type { SessionListItem } from "@jsmf/core/data-source";
+import { sessionScopeLabel } from "@jsmf/core/domain";
 
 type Lookup = ReturnType<typeof useTaxonomyLookup>;
 
-function scopeDescription(item: SessionListItem, lookup: Lookup) {
-  const { examIds, subjectIds, totalQuestions: questionCount } = item;
-  const { exams, subjects } = lookup.taxonomy;
-
-  const examNames = examIds.map((id) => lookup.exam(id)?.shortName ?? id);
-  const subjectNames = subjectIds.map((id) => lookup.subject(id)?.name ?? id);
-
-  // Name what's actually covered when it's a short list; fall back to a count
-  // only when spelling it out would be noise. Empty means "not narrowed".
-  const exam =
-    examIds.length === 0 || examIds.length >= exams.length
-      ? "All exams"
-      : examNames.length <= 2
-        ? examNames.join(" & ")
-        : `${examIds.length} exams`;
-  const subject =
-    subjectIds.length === 0 || subjectIds.length >= subjects.length
-      ? "All subjects"
-      : subjectNames.length === 1
-        ? subjectNames[0]
-        : subjectNames.length === 2
-          ? subjectNames.join(" & ")
-          : "Mixed subjects";
-
-  return `${exam} · ${subject} · ${questionCount} question${questionCount === 1 ? "" : "s"}`;
-}
-
-/**
- * The label shown on the "Continue where you left off" / "Last session"
- * line: the session's own type (`session.label`, set once at creation by
- * whichever screen started it) followed by what it actually covers.
- */
+/** The session's own type and what it covers — @jsmf/core's wording, shared with mobile. */
 function scopeLabel(item: SessionListItem, lookup: Lookup) {
-  return `${item.session.label} · ${scopeDescription(item, lookup)}`;
+  return sessionScopeLabel(item, {
+    examCount: lookup.taxonomy.exams.length,
+    subjectCount: lookup.taxonomy.subjects.length,
+    examName: (id) => lookup.exam(id)?.shortName ?? id,
+    subjectName: (id) => lookup.subject(id)?.name ?? id,
+  });
 }
 
 export function ContinuePracticeCard({

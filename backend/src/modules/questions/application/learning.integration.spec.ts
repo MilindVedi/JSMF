@@ -9,6 +9,8 @@ import { LearningService, computeStreak, istDay } from './learning.service';
 import { PracticeService } from './practice.service';
 import { ProgressService } from './progress.service';
 import { PyqAccessService } from './pyq-access.service';
+import { CacheService } from '../../../shared/cache/cache.service';
+import { QuestionStateService } from './question-state.service';
 import { QuestionBankService } from './question-bank.service';
 import { QuestionImportService } from './question-import.service';
 
@@ -28,12 +30,14 @@ const config = {
 const prisma = new PrismaService();
 const entitlements = new EntitlementService(prisma);
 const access = new PyqAccessService(prisma, entitlements, config);
-const bank = new QuestionBankService(prisma);
+const cache = new CacheService({ get: () => false } as never);
+const bank = new QuestionBankService(prisma, cache);
+const states = new QuestionStateService(prisma);
 const importer = new QuestionImportService(prisma);
-const practice = new PracticeService(prisma, bank, access);
+const practice = new PracticeService(prisma, bank, access, states);
 const progress = new ProgressService(prisma, bank);
 const collections = new CollectionsService(prisma);
-const learning = new LearningService(prisma, bank);
+const learning = new LearningService(prisma);
 
 const run = randomUUID().slice(0, 8);
 const EXAM = `spec-lexam-${run}`;
@@ -57,7 +61,10 @@ async function questions() {
   });
 }
 
-/** Writes an answered attempt at an exact instant, bypassing the clock. */
+/**
+ * Writes an answered attempt at an exact instant, bypassing the clock, then
+ * refreshes the read models exactly as PracticeService.answer does.
+ */
 async function answerAt(userId: string, sessionId: string, questionIndex: number, correct: boolean, at: Date) {
   const q = (await questions())[questionIndex];
   const option = q.options.find((o) => o.isCorrect === correct)!;
@@ -66,6 +73,8 @@ async function answerAt(userId: string, sessionId: string, questionIndex: number
     create: { sessionId, questionId: q.id, userId, selectedOptionId: option.id, isCorrect: correct, answeredAt: at },
     update: { selectedOptionId: option.id, isCorrect: correct, answeredAt: at },
   });
+  await states.refresh(userId, [q.id]);
+  await states.refreshDay(userId, at);
   return q.id;
 }
 

@@ -1,4 +1,4 @@
-import type { ExamId, Question, SessionFilters } from "@/types";
+import type { ExamId, Question, SessionFilters } from "@jsmf/core/domain";
 import { QUESTIONS, getQuestionById as _getQuestionById } from "@/data/mock/questions";
 import { EXAMS } from "@/data/mock/exams";
 import { SUBJECTS } from "@/data/mock/subjects";

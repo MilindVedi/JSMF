@@ -3,10 +3,10 @@ import { PLANS } from "@/data/mock/plans";
 import { QUESTIONS } from "@/data/mock/questions";
 import { SUBJECTS } from "@/data/mock/subjects";
 import { TOPICS } from "@/data/mock/topics";
-import { buildQuestionSortContext, sortQuestions, type QuestionSortOption } from "@/lib/question-sort";
-import { DAILY_QUESTION_TARGET } from "@/lib/streak-config";
 import {
+  buildQuestionSortContext,
   countAttemptsOnDay,
+  DAILY_QUESTION_TARGET,
   getCorrectQuestionFacets,
   getNextUnansweredIndex,
   getQuestionStatusMap,
@@ -15,13 +15,17 @@ import {
   getSessionSummary,
   getStatistics,
   getWrongQuestions,
-} from "@/lib/selectors";
+  sortQuestions,
+  type Question,
+  type QuestionSortOption,
+  type SessionFilters,
+  type TestSession,
+} from "@jsmf/core/domain";
 import { useAuthStore } from "@/store/auth-store";
 import { useBookmarksStore } from "@/store/bookmarks-store";
 import { useCollectionsStore } from "@/store/collections-store";
 import { usePracticeStore } from "@/store/practice-store";
 import { useStreakStore } from "@/store/streak-store";
-import type { Question, SessionFilters, TestSession } from "@/types";
 import {
   NotFoundError,
   type CreateSessionInput,
@@ -32,7 +36,7 @@ import {
   type SessionDetail,
   type SessionListItem,
   type SessionOrder,
-} from "./types";
+} from "@jsmf/core/data-source";
 
 /**
  * The prototype's data: static mock content plus progress persisted in the
@@ -123,9 +127,12 @@ function filterQuestions(query: QuestionQuery): Question[] {
   return results;
 }
 
+/** As the API decides it: a timed custom test is a real test, answers hidden until submit. */
+const isTest = (session: TestSession) => session.mode === "custom-test" && session.config.timed;
+
 function toDetail(session: TestSession): SessionDetail {
   return {
-    session,
+    session: isTest(session) ? { ...session, config: { ...session.config, testMode: true } } : session,
     questions: session.questionIds
       .map((id) => QUESTION_BY_ID.get(id))
       .filter((q): q is Question => Boolean(q)),
@@ -234,6 +241,7 @@ export const mockDataSource: PyqDataSource = {
       exams: EXAMS,
       subjects: SUBJECTS.map((s) => ({ ...s, questionCount: counts.get(s.id) ?? 0 })),
       topics: TOPICS,
+      years: [...new Set(QUESTIONS.map((q) => q.year))].sort((a, b) => b - a),
     };
   },
 
@@ -312,9 +320,11 @@ export const mockDataSource: PyqDataSource = {
     });
   },
 
-  async listSessions(page, pageSize) {
+  async listSessions(page, pageSize, status) {
     await ready();
-    const sorted = sessions().sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    const sorted = sessions()
+      .filter((s) => !status || (status === "submitted") === Boolean(s.completedAt))
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     const items: SessionListItem[] = sorted.slice((page - 1) * pageSize, page * pageSize).map((session) => {
       const summary = getSessionSummary(session, QUESTIONS);
       const years = session.questionIds
@@ -357,9 +367,11 @@ export const mockDataSource: PyqDataSource = {
     const question = QUESTION_BY_ID.get(questionId);
     if (!question) throw new NotFoundError("Question not found");
     const existing = session.attempts[questionId];
-    const selected = existing?.selectedOptionId ?? optionId;
+    // Practice answers are final once revealed; a running test's can change.
+    const changeable = isTest(session) && !session.completedAt;
+    const selected = existing && !changeable ? existing.selectedOptionId : optionId;
     const isCorrect = selected === question.correctOptionId;
-    if (!existing) {
+    if (!existing || (changeable && existing.selectedOptionId !== selected)) {
       usePracticeStore
         .getState()
         .submitAnswer(sessionId, questionId, selected, isCorrect, Math.max(1, Math.round(timeSpentMs / 1000)));
@@ -402,6 +414,14 @@ export const mockDataSource: PyqDataSource = {
         ? [{ questionId: b.questionId, createdAt: b.createdAt, question, userStatus: statusMap.get(question.id) ?? "unattempted" }]
         : [];
     });
+  },
+
+  async listBookmarkIds() {
+    await ready();
+    return useBookmarksStore
+      .getState()
+      .bookmarks.filter((b) => QUESTION_BY_ID.has(b.questionId))
+      .map((b) => b.questionId);
   },
 
   async setBookmark(questionId, bookmarked) {

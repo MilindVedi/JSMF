@@ -1,4 +1,4 @@
-import type { Topic } from "@/types";
+import type { Topic } from "@jsmf/core/domain";
 
 /**
  * Topic ids follow the convention `${subjectId}--${topic-slug}` so a topic

@@ -4,31 +4,20 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { z } from "zod";
+import type { z } from "zod";
 import { toast } from "sonner";
-import { AuthCard } from "@/components/layout/auth-card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { authApi } from "@/lib/api/auth";
+import { AUTH_ASIDES, AuthCard, FieldError } from "@/components/layout/auth-card";
+import { PasswordInput } from "@/components/auth/password-input";
+import { storeButton } from "@/components/ui/store-button";
+import { authApi } from "@jsmf/core/api";
 import { DATA_SOURCE_KIND } from "@/lib/data-source";
+import { minPasswordLength, resetPasswordSchema } from "@jsmf/core/schemas";
 import { useAuthStore } from "@/store/auth-store";
 
 const IS_API = DATA_SOURCE_KIND === "api";
-const MIN_PASSWORD = IS_API ? 8 : 6;
+const MIN_PASSWORD = minPasswordLength({ api: IS_API });
 
-const schema = z
-  .object({
-    // Only the real API needs to know whose password, and the emailed code.
-    email: IS_API ? z.string().email("Enter a valid email address") : z.string().optional(),
-    code: IS_API ? z.string().trim().min(4, "Enter the code from your email") : z.string().optional(),
-    password: z.string().min(MIN_PASSWORD, `Password must be at least ${MIN_PASSWORD} characters`),
-    confirmPassword: z.string(),
-  })
-  .refine((v) => v.password === v.confirmPassword, {
-    message: "Passwords don't match",
-    path: ["confirmPassword"],
-  });
+const schema = resetPasswordSchema({ api: IS_API });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -71,43 +60,61 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <AuthCard title="Set a new password" description="Choose a new password for your JSMF account.">
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <AuthCard
+      title="Set a new password"
+      description="Choose a new password for your JSMF account."
+      aside={AUTH_ASIDES.recover}
+    >
+      <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         {IS_API && (
           <>
-            <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="you@example.com" {...register("email")} />
-              {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="code">Reset code</Label>
-              <Input id="code" inputMode="numeric" autoComplete="one-time-code" {...register("code")} />
-              {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
-            </div>
+            <label className="field-label" htmlFor="email">
+              Email
+              <input
+                id="email"
+                type="email"
+                autoComplete="username"
+                className="field"
+                placeholder="you@example.com"
+                {...register("email")}
+              />
+              <FieldError message={errors.email?.message} />
+            </label>
+            <label className="field-label" htmlFor="code">
+              Reset code
+              <input id="code" inputMode="numeric" autoComplete="one-time-code" className="field" {...register("code")} />
+              <FieldError message={errors.code?.message} />
+            </label>
           </>
         )}
-        <div className="space-y-1.5">
-          <Label htmlFor="password">New password</Label>
-          <Input
+        <label className="field-label" htmlFor="password">
+          New password
+          <PasswordInput
             id="password"
-            type="password"
+            autoComplete="new-password"
             placeholder={`At least ${MIN_PASSWORD} characters`}
             {...register("password")}
           />
-          {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="confirmPassword">Confirm new password</Label>
-          <Input id="confirmPassword" type="password" {...register("confirmPassword")} />
-          {errors.confirmPassword && (
-            <p className="text-xs text-destructive">{errors.confirmPassword.message}</p>
-          )}
-        </div>
-        {errors.root && <p className="text-sm text-destructive">{errors.root.message}</p>}
-        <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
+          <FieldError message={errors.password?.message} />
+        </label>
+        <label className="field-label" htmlFor="confirmPassword">
+          Confirm new password
+          <PasswordInput
+            id="confirmPassword"
+            autoComplete="new-password"
+            placeholder="Type it again"
+            {...register("confirmPassword")}
+          />
+          <FieldError message={errors.confirmPassword?.message} />
+        </label>
+        {errors.root && (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+            {errors.root.message}
+          </p>
+        )}
+        <button type="submit" className={storeButton({ className: "w-full" })} disabled={isSubmitting}>
           Update password
-        </Button>
+        </button>
       </form>
     </AuthCard>
   );

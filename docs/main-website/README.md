@@ -605,7 +605,11 @@ with a Cloud Logging `severity`, so everything below is a filter in
 Every request: `jsonPayload.activity="http.request"` with `method`, `path`
 (query string deliberately dropped — it carries OAuth codes and tokens),
 `status`, `durationMs`, `userId` when signed in, `ip`, `userAgent`. 5xx is
-`ERROR`, 4xx `WARNING`, the rest `INFO`. Health probes are skipped.
+`ERROR`, 4xx `WARNING`, the rest `INFO`. Health probes are skipped, and so are
+*successful* website-analytics batches (`POST /api/analytics/events`) — they
+arrive every few seconds per open tab; failures are still logged. Browser-side
+analytics (page views, the booking funnel) are a separate system with their
+own admin page: see [Analytics](../analytics/README.md).
 
 Business events, each with the ids needed to follow one buyer or one order:
 

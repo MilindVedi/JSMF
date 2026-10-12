@@ -58,3 +58,13 @@ export function formatMoney(minor: string | null, currency = "INR"): string {
   const whole = major.toLocaleString("en-IN");
   return paise === 0n ? `${symbol}${whole}` : `${symbol}${whole}.${paise.toString().padStart(2, "0")}`;
 }
+
+/** "12 October 2026" — for dates with no weekday, such as a policy's effective date. */
+export function plainDateLabel(iso: string): string {
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: IST,
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(iso));
+}

@@ -1,12 +1,11 @@
 "use client";
 
 import { Check, ChevronRight, Circle, X } from "lucide-react";
-import type { PublicQuestion } from "@/types";
+import type { PublicQuestion, QuestionStatus } from "@jsmf/core/domain";
 import { SubjectBadge } from "@/components/common/subject-badge";
 import { ExamBadge } from "@/components/common/exam-badge";
 import { BookmarkButton } from "@/components/practice/bookmark-button";
 import { AddToCollectionButton } from "./add-to-collection-button";
-import type { QuestionStatus } from "@/lib/selectors";
 import { pyqCapabilities, useBookmarkToggle } from "@/hooks/pyq";
 
 function StatusDot({ status }: { status: QuestionStatus }) {

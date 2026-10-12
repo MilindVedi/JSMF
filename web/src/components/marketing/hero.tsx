@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { ArrowRight, Medal, Stethoscope, Trophy } from "lucide-react";
-import { DoctorPortraitPlaceholder } from "./doctor-portrait-placeholder";
-import { DoctorSocialLinks } from "./doctor-social-links";
-import { MiniQuestionMock } from "./product-mockups";
+import { ArrowRight, Stethoscope } from "lucide-react";
+import { storeButton } from "@/components/ui/store-button";
+import { DoctorPortrait } from "./doctor-portrait";
 
 export function Hero() {
   return (
@@ -12,14 +11,17 @@ export function Hero() {
       <div className="relative mx-auto w-full max-w-[1280px] px-4 pt-10 pb-20 sm:px-6 sm:pt-14 sm:pb-28">
         <div className="grid gap-14 lg:grid-cols-2 lg:items-center lg:gap-10">
           <div className="flex flex-col items-start gap-8">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
-              <Stethoscope className="size-3.5 text-primary" />
-              Built for NEET-PG, FMGE & INI-CET
-            </div>
+            <span className="eyebrow">
+              <Stethoscope size={13} /> Built for NEET-PG, FMGE & INI-CET
+            </span>
 
-            <h1 className="max-w-xl font-heading text-4xl font-bold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-[3.25rem]">
+            <h1 className="max-w-xl font-display text-4xl font-semibold leading-[1.08] text-brand-deep dark:text-foreground sm:text-5xl lg:text-[3.25rem]">
               Practice the questions that actually show up in your exam.
             </h1>
+
+            <p className="-mt-3 font-display text-lg font-semibold text-primary sm:text-xl">
+              Practice PYQs. Master concepts. Prepare smarter.
+            </p>
 
             <p className="max-w-lg text-lg text-muted-foreground sm:text-xl">
               Doctor-authored questions built from independently identified recall patterns across
@@ -29,44 +31,24 @@ export function Hero() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <Link
                 href="/signup"
-                className="inline-flex h-11 items-center justify-center gap-1.5 rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/80"
+                className="cta-spot flex items-center justify-center gap-2.5 rounded-full px-8 py-4 font-display text-lg font-semibold text-white"
               >
+                <span className="cta-shine" aria-hidden />
                 Start practicing free
-                <ArrowRight className="size-4" />
+                <ArrowRight size={20} strokeWidth={2.4} className="cta-arrow transition-transform duration-300" />
               </Link>
               <Link
                 href="#how-it-works"
-                className="inline-flex h-11 items-center justify-center rounded-lg border border-border bg-background px-6 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+                className={storeButton({ variant: "secondary", size: "lg" })}
               >
                 See how it works
               </Link>
             </div>
           </div>
 
-          {/* Right column: a glimpse of the product, anchored by the person behind it. */}
-          <div className="relative mx-auto w-full max-w-sm lg:mx-0 lg:ml-auto">
-            <MiniQuestionMock className="absolute -left-4 top-6 hidden w-56 -rotate-6 opacity-90 sm:block lg:-left-10" />
-
-            <div className="relative mx-auto lg:ml-auto lg:mr-0 w-64 overflow-hidden rounded-2xl border border-border bg-card shadow-md sm:w-72">
-              <DoctorPortraitPlaceholder />
-              <div className="p-5 text-center">
-                <p className="font-heading text-base font-semibold text-foreground">
-                  Built by Dr. Angad Rai
-                </p>
-                <p className="mt-0.5 text-sm text-muted-foreground">MBBS, MD — Medical Lead, JSMF</p>
-                <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[0.65rem] font-medium text-accent-foreground">
-                    <Trophy className="size-3" />
-                    AIR 9 · FMGE 2023
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[0.65rem] font-medium text-accent-foreground">
-                    <Medal className="size-3" />
-                    MBBS Bronze Medalist
-                  </span>
-                </div>
-                <DoctorSocialLinks variant="emphasized" className="mt-4 justify-center" />
-              </div>
-            </div>
+          {/* Right column: the person behind it, the same portrait as on jsmf.me. */}
+          <div className="w-full pb-8 sm:pr-6 lg:ml-auto lg:max-w-sm">
+            <DoctorPortrait />
           </div>
         </div>
 

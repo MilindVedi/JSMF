@@ -24,6 +24,7 @@ import { SiteLayout } from "@/components/site";
 import { TestimonialsSection } from "@/components/testimonials-section";
 import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/social-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { track } from "@/lib/analytics";
 import { sessionsApi } from "@/lib/api/sessions";
 import type { LiveSession, SessionLanding } from "@/lib/api/types";
 import {
@@ -60,6 +61,11 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
   const reserve = checkoutUrl
     ? () => window.location.assign(checkoutUrl)
     : () => setOpen(true);
+  /** The same action, recorded first with which button it came from. */
+  const reserveFrom = (location: string) => () => {
+    track("book_click", checkoutUrl ? { location, external: true } : { location });
+    reserve();
+  };
 
   // Back from Google sign-in mid-registration (`?register=1`): reopen the
   // dialog once the session has loaded, and drop the flag from the URL so a
@@ -110,7 +116,7 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
               ) : live ? (
                 <button
                   type="button"
-                  onClick={reserve}
+                  onClick={reserveFrom("hero")}
                   className="cta-spot flex w-full max-w-md items-center justify-center gap-2.5 rounded-full py-4 px-8 font-display text-lg font-semibold text-white active:translate-y-0"
                 >
                   <span className="cta-shine" aria-hidden />
@@ -170,7 +176,7 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
               </div>
 
               <div className="lg:col-span-5">
-                <SessionCard session={session} onRegister={reserve} external={Boolean(checkoutUrl)} />
+                <SessionCard session={session} onRegister={reserveFrom("session_card")} external={Boolean(checkoutUrl)} />
               </div>
             </div>
           ) : (
@@ -335,7 +341,7 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
           </p>
           <div className="mt-9 flex justify-center">
             {live ? (
-              <Button size="lg" onClick={reserve}>Book Your Spot Now <ArrowRight size={17} /></Button>
+              <Button size="lg" onClick={reserveFrom("cta")}>Book Your Spot Now <ArrowRight size={17} /></Button>
             ) : (
               <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ size: "lg" })}><Send size={16} /> Join Telegram</a>
             )}

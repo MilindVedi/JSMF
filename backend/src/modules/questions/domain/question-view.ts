@@ -97,3 +97,50 @@ export function startOfIndiaDay(now: Date = new Date()): Date {
   shifted.setUTCHours(0, 0, 0, 0);
   return new Date(shifted.getTime() - IST_OFFSET_MS);
 }
+
+/**
+ * What a *list* of questions needs: enough to name, filter and group a row.
+ * No options, no figures — those are only ever shown inside a session, which
+ * loads the full view. Selecting just these columns keeps list responses a
+ * fraction of the size, which matters most on the longest lists (revision,
+ * reinforce) of the most active students.
+ */
+export const QUESTION_SUMMARY_SELECT = {
+  id: true,
+  externalKey: true,
+  year: true,
+  stem: true,
+  stemImageUrl: true,
+  difficulty: true,
+  exam: { select: { slug: true } },
+  subject: { select: { slug: true } },
+  topic: { select: { slug: true } },
+} satisfies Prisma.QuestionSelect;
+
+export type QuestionSummaryRow = Prisma.QuestionGetPayload<{ select: typeof QUESTION_SUMMARY_SELECT }>;
+
+export interface QuestionSummary {
+  id: string;
+  externalKey: string;
+  examId: string;
+  year: number;
+  subjectId: string;
+  topicId: string | null;
+  stem: string;
+  stemImageUrl: string | null;
+  difficulty: Lowercase<Difficulty>;
+}
+
+export function toQuestionSummary(question: QuestionSummaryRow): QuestionSummary {
+  return {
+    id: question.id,
+    externalKey: question.externalKey,
+    examId: question.exam.slug,
+    year: question.year,
+    subjectId: question.subject.slug,
+    topicId: question.topic?.slug ?? null,
+    stem: question.stem,
+    stemImageUrl: question.stemImageUrl,
+    difficulty: toDifficulty(question.difficulty),
+  };
+}

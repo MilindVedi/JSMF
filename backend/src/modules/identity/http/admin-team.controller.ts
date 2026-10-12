@@ -1,3 +1,4 @@
+import { SkipLegalCheck } from '../../../common/decorators/skip-legal-check.decorator';
 import {
   Body,
   Controller,
@@ -78,6 +79,7 @@ export class AdminTeamController {
  * has no account yet. The emailed token is the credential.
  */
 @ApiTags('auth: admin invitation')
+@SkipLegalCheck()
 @Controller('auth/invitation')
 export class AdminInvitationController {
   constructor(private readonly invitations: AdminInvitationService) {}

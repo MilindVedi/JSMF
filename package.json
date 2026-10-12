@@ -1,6 +1,12 @@
 {
   "name": "jsmf-root",
   "private": true,
+  "//": "npm workspaces for the PYQ product only: packages/core (shared), web/ (Next.js) and mobile/ (Expo). backend/, main-web/ and pdf-web/ stay outside the workspaces with their own lockfiles.",
+  "workspaces": [
+    "packages/*",
+    "web",
+    "mobile"
+  ],
   "scripts": {
     "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --renew-anon-volumes",
     "docker:prod": "docker compose up -d --build"

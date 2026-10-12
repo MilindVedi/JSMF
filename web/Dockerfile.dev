@@ -1,11 +1,20 @@
-# Dev-mode image: installs dependencies, then hands off to `next dev`. Source
-# is bind-mounted at runtime (see ../docker-compose.dev.yml), so edits on the
-# host are picked up by Next's own file watcher with no rebuild.
+# Dev-mode image: installs dependencies, then hands off to `next dev`. Build
+# context is the REPO ROOT (web is an npm workspace next to packages/core; see
+# ../docker-compose.dev.yml). Source — web/src and packages/core/src — is
+# bind-mounted at runtime, so edits on the host are picked up by Next's own
+# file watcher with no rebuild.
 FROM node:20-alpine
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+COPY packages/core/package.json packages/core/
+COPY web/package.json web/
+RUN npm ci --workspace web --include-workspace-root
 
+# The rest of the shared package (its src/ is then overlaid by the bind
+# mount), so the node_modules/@jsmf/core link resolves even without it.
+COPY packages/core packages/core
+
+WORKDIR /app/web
 EXPOSE 3003
 CMD ["npm", "run", "dev"]

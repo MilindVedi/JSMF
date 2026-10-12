@@ -14,23 +14,25 @@ package "web/ (Next.js)" {
     component "/subscription" as Sub
   }
 
-  package "Hooks — web/src/hooks/pyq" {
-    component "index.ts\nuseTaxonomy, useAccess, useQuestions,\nuseStartSession, useAnswer, useSubmitSession,\nuseRevision, useStreak, useCollections …" as Hooks
-    component "plans.ts\nusePlans, usePlanCheckout" as PlansHook
+  package "Hooks — web/src/hooks/pyq (re-exports @jsmf/core/hooks)" {
+    component "index.ts\nuseTaxonomy, useAccess, useQuestions,\nuseStartSession, useAnswer, useSubmitSession,\nuseRevision, useStreak, useCollections, usePlans …" as Hooks
+    component "plans.ts\nusePlanCheckout (Razorpay web)" as PlansHook
   }
 
-  interface "PyqDataSource\nlib/data-source/types.ts" as Port
-
   package "lib/data-source" {
-    component "index.ts\n(the switch)" as Switch
+    component "index.ts\n(the switch, handed to configureCore)" as Switch
     component "mock-adapter.ts" as Mock
-    component "api-adapter.ts" as Api
     component "kind.ts\nDATA_SOURCE_KIND" as Kind
   }
 
   component "data/mock + zustand stores" as MockData
-  component "lib/api/client" as Client
   component "middleware.ts\n/api/* proxy" as Middleware
+}
+
+package "packages/core (@jsmf/core, shared with mobile/)" {
+  interface "PyqDataSource\ndata-source/types.ts" as Port
+  component "data-source/api-adapter.ts" as Api
+  component "api/client.ts\n(baseUrl + token storage injected)" as Client
 }
 
 node "backend (NestJS)" {

@@ -166,10 +166,27 @@ async function send<T>(path: string, options: RequestOptions, isRetry = false): 
   const parsed: unknown = text ? safeJson(text) : null;
 
   if (!response.ok) {
+    // The server is enforcing acceptance of a new Terms/Privacy version and
+    // this user has not accepted it yet. The legal gate listens for this and
+    // asks; the request itself still fails, as it should.
+    if (response.status === 403 && isLegalAcceptanceRequired(parsed) && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(LEGAL_REQUIRED_EVENT));
+    }
     throw new ApiError(response.status, extractMessage(parsed, response.status), parsed);
   }
 
   return parsed as T;
+}
+
+/** Dispatched on `window` when an API call is refused pending legal acceptance. */
+export const LEGAL_REQUIRED_EVENT = "jsmf:legal-required";
+
+function isLegalAcceptanceRequired(body: unknown): boolean {
+  return Boolean(
+    body &&
+      typeof body === "object" &&
+      (body as { code?: unknown }).code === "LEGAL_ACCEPTANCE_REQUIRED",
+  );
 }
 
 function safeJson(text: string): unknown {

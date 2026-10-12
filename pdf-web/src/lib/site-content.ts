@@ -96,7 +96,7 @@ export const author = {
 
 export const socials = {
   youtube: "https://www.youtube.com/@Jabstudiesmetfun",
-  instagram: "https://www.instagram.com/angadrai009/",
+  instagram: "https://www.instagram.com/drangadrai09/",
   telegram: "https://t.me/JABSTUDIESMETFUN",
 } as const;
 
@@ -109,7 +109,7 @@ export const socials = {
 export const links = {
   telegram: "https://t.me/JABSTUDIESMETFUN",
   youtube: "https://www.youtube.com/@jsmf",
-  instagram: "https://www.instagram.com/jsmf",
+  instagram: "https://www.instagram.com/drangadrai09/",
 } as const;
 
 /**

@@ -1,11 +1,5 @@
-import type { ExamId } from "@/types";
+import { EXAM_LABEL, type ExamId } from "@jsmf/core/domain";
 import { cn } from "@/lib/utils";
-
-const EXAM_LABEL: Record<ExamId, string> = {
-  "neet-pg": "NEET-PG",
-  fmge: "FMGE",
-  inicet: "INI-CET",
-};
 
 export function ExamBadge({ examId, className }: { examId: ExamId; className?: string }) {
   return (

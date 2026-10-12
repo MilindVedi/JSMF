@@ -1,0 +1,20 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { JsmfApp } from '@prisma/client';
+import { IsEnum, IsOptional, Matches } from 'class-validator';
+
+export class AnalyticsSummaryQueryDto {
+  @ApiPropertyOptional({ example: '2026-10-01', description: 'First India-time day, inclusive. Default: 13 days before `to`.' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'from must be YYYY-MM-DD' })
+  from?: string;
+
+  @ApiPropertyOptional({ example: '2026-10-14', description: 'Last India-time day, inclusive. Default: today.' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'to must be YYYY-MM-DD' })
+  to?: string;
+
+  @ApiPropertyOptional({ enum: JsmfApp, default: JsmfApp.MAIN })
+  @IsOptional()
+  @IsEnum(JsmfApp)
+  app?: JsmfApp;
+}

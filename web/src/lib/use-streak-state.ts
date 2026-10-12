@@ -1,8 +1,7 @@
 import { useStreak } from "@/hooks/pyq";
 import { useStreakAnimationStore } from "@/store/streak-animation-store";
-import { DEMO_ALWAYS_CELEBRATE_ON_VISIT, isMilestoneDay, nextMilestone } from "@/lib/streak-config";
+import { DEMO_ALWAYS_CELEBRATE_ON_VISIT, isMilestoneDay, nextMilestone, type StreakState } from "@jsmf/core/domain";
 import { DATA_SOURCE_KIND } from "@/lib/data-source";
-import type { StreakState } from "@/types";
 
 export interface LiveStreakState extends StreakState {
   /** False until the streak has loaded from the data source. */

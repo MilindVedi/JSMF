@@ -1,3 +1,5 @@
+import { UseInterceptors } from "@nestjs/common";
+import { InvalidateTaxonomyInterceptor } from "./invalidate-taxonomy.interceptor";
 import {
   Body,
   Controller,
@@ -37,6 +39,7 @@ import { SetQuestionStatusDto } from "./dto/questions.dto";
 @ApiTags("admin: pyq")
 @ApiBearerAuth()
 @Roles("ADMIN")
+@UseInterceptors(InvalidateTaxonomyInterceptor)
 @Controller("admin/pyq")
 export class AdminQuestionContentController {
   constructor(
