@@ -423,6 +423,9 @@
   font-size: 0.875rem;
   font-weight: 600;
   transition: 160ms ease;
+  /* A nav item that wraps mid-label ("How it / works") reads as a layout
+     fault; the labels are short and the row is sized for one line each. */
+  white-space: nowrap;
   &:hover { background: var(--accent); color: var(--foreground); }
 }
 

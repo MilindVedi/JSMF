@@ -19,6 +19,7 @@ import {
   Stethoscope,
 } from "lucide-react";
 import { FloatingVideo } from "@/components/floating-video";
+import { TelegramFloat } from "@/components/telegram-float";
 import { RegisterDialog } from "@/components/register-dialog";
 import { SiteLayout } from "@/components/site";
 import { TestimonialsSection } from "@/components/testimonials-section";
@@ -349,6 +350,7 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
         </div>
       </section>
       <FloatingVideo />
+      <TelegramFloat />
     </SiteLayout>
   );
 }

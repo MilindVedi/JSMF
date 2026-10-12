@@ -301,12 +301,25 @@ follow.
 
 ### Bringing Payment Page buyers into the platform
 
-Everyone who bought through the Payment Page is invisible to the platform —
-no account, no order, no entitlement — so the seat count, the day reminder, the
-"Notify attendees" send and the bundled PDF all pass them by. `npm run
-db:backfill:session-buyers` (`backend/prisma/backfill-session-buyers.ts`) writes
-them in as ordinary buyers: user, PAID order and item, CAPTURED payment, ACTIVE
-`PURCHASE` entitlement, and a session registration.
+Everyone who bought through the Payment Page, or paid the UPI id directly, is
+invisible to the platform — no account, no order, no entitlement — so the seat
+count, the day reminder, the "Notify attendees" send and the bundled PDF all
+pass them by. `npm run db:backfill:session-buyers`
+(`backend/prisma/backfill-session-buyers.ts`) writes them in as ordinary buyers:
+user, PAID order and item, CAPTURED payment, ACTIVE `PURCHASE` entitlement, the
+session's included items when it grants them at payment (`IMMEDIATE` mode,
+exactly as checkout does — the deferred modes release them later to every seat
+holder, backfilled ones included), and a session registration. A registration
+left unfinished on the website by the same person is updated, not duplicated.
+
+Each buyer has `paidVia`: `razorpay-payment-page` (the default — give the
+`pay_…` id so a refund in Razorpay revokes the seat, as for any purchase) or
+`upi-direct` (no Razorpay id; `payments.method` is `upi`). The admin refund
+button refuses a `upi-direct` order — there is nothing on Razorpay to refund.
+
+The dry run prints a warning when a regular sweep would email them within ~5
+minutes of the run anyway: a session day starting inside the reminder window,
+or an ended `AUTO_AFTER_SESSION` session whose PDF releases automatically.
 
 ```
 npm run db:backfill:session-buyers -- --session <product-slug> --file buyers.json
@@ -333,6 +346,12 @@ Three details that decide whether it works:
   a buyer who signs in with a different address gets a second, empty account and
   no seat. Confirm the addresses with each buyer rather than assuming the one
   they typed on the Razorpay page.
+  A buyer whose address is not a Google account can instead use **Create
+  account** with that same email: signup sends the usual code, and once it is
+  entered the password is set on the backfilled account (seat included) rather
+  than refused as a duplicate. This only applies to an account nobody has ever
+  signed in to — no password, no Google login, no mobile sign-in, no login on
+  record (`AccountRecoveryService.isUnclaimed`).
 - **`users.phone` is deliberately left unset.** It is `UNIQUE`, and every path
   that writes it verifies it first; an unverified number there would block the
   real owner from claiming it later. The number goes on the registration's

@@ -739,6 +739,52 @@ describe('go-live hardening', () => {
     expect(await entitlements.findActive(userId, productId)).toBeNull();
   });
 
+  it('refuses to refund a seat paid outside Razorpay (direct UPI, backfilled) and leaves access alone', async () => {
+    await clearEntitlement();
+    // The shape backfill-session-buyers writes for a direct UPI payment: PAID,
+    // CAPTURED, but no Razorpay order or payment id behind it.
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `SPEC-UPI-${randomUUID().slice(0, 8)}`,
+        userId,
+        status: OrderStatus.PAID,
+        subtotalAmountMinor: PRICE,
+        discountAmountMinor: 0n,
+        taxAmountMinor: 0n,
+        totalAmountMinor: PRICE,
+        currency: 'INR',
+        customerEmail: 'payment-spec@jsmf.test',
+        paidAt: new Date(),
+        items: {
+          create: {
+            productId,
+            productTitleSnapshot: 'Payment Spec Product',
+            productTypeSnapshot: ProductType.PDF,
+            unitPriceAmountMinor: PRICE,
+            quantity: 1,
+            totalAmountMinor: PRICE,
+          },
+        },
+        payments: {
+          create: {
+            provider: 'RAZORPAY',
+            status: PaymentStatus.CAPTURED,
+            method: 'upi',
+            amountMinor: PRICE,
+            currency: 'INR',
+            capturedAt: new Date(),
+          },
+        },
+      },
+    });
+    await entitlements.grant({ userId, productId, source: 'PURCHASE', sourceOrderId: order.id });
+
+    await expect(payments.refund(order.id, userId, 'spec refund')).rejects.toThrow(/not taken through Razorpay/);
+
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe(OrderStatus.PAID);
+    expect(await entitlements.findActive(userId, productId)).not.toBeNull();
+  });
+
   it('settles a retry that succeeded after a failed first attempt on the same order', async () => {
     await clearEntitlement();
     const checkout = await startCheckout();

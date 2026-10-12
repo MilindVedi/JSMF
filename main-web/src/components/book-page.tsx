@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, CheckCircle2, Loader2, Send } from "lucide-react";
 import { SiteLayout } from "@/components/site";
 import { FloatingVideo } from "@/components/floating-video";
+import { TelegramFloat } from "@/components/telegram-float";
 import { RegisterDialog } from "@/components/register-dialog";
 import { DoctorPortrait, SessionCard } from "@/components/landing";
 import { TestimonialsSection } from "@/components/testimonials-section";
@@ -179,6 +180,7 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
       {session && <TestimonialsSection session={session} />}
 
       <FloatingVideo />
+      <TelegramFloat />
     </SiteLayout>
   );
 }

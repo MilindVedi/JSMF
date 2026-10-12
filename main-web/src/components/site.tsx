@@ -2,28 +2,53 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { LogIn, LogOut, Mail, Menu, X } from "lucide-react";
+import { BookOpen, Home, LogIn, LogOut, Mail, Menu, Users, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { buttonVariants } from "@/components/ui/button";
 import { ContactDialog } from "@/components/contact-dialog";
 import { useSessionStore } from "@/store/session-store";
 
+/**
+ * The mark, the initials, and what they stand for, on one line: "JSMF" carries
+ * the weight and "Jab Studies Met Fun" follows at the same size in muted type,
+ * so the full form reads as the name rather than as a caption. Dropped below
+ * `sm`, where the initials alone carry it and the row is tight.
+ *
+ * The same lockup is in web/src/components/common/logo.tsx and pdf-web's
+ * store layout; those add the product name ("Med Prep", "Resources").
+ */
 function Brand() {
   return (
-    <Link href="/" className="flex items-center gap-2.5 font-display text-base font-semibold text-brand-deep" aria-label="JSMF home">
+    <Link
+      href="/"
+      className="flex shrink-0 items-center gap-2.5 font-display text-base text-brand-deep"
+      aria-label="JSMF — Jab Studies Met Fun, home"
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/favicon.png" alt="" width={40} height={40} className="size-10 shrink-0 object-contain" />
-      <span>JSMF</span>
+      <img src="/favicon.png" alt="" width={44} height={44} className="size-11 shrink-0 object-contain" />
+      <span className="font-semibold">JSMF</span>
+      {/* A drawn rule rather than a typed "|": it keeps the border colour and
+          sits at text height whatever the font does. */}
+      <span aria-hidden="true" className="hidden h-4 w-px shrink-0 bg-border sm:block" />
+      <span className="hidden font-normal text-muted-foreground sm:inline">Jab Studies Met Fun</span>
     </Link>
   );
 }
 
 /**
- * Only Home exists on the main website for now; study resources live on the
- * store, and are reached from the "What's coming" section rather than a nav
- * item pointing off-site.
+ * The sections a visitor actually wants: the live session, who is teaching, and
+ * the study resources (which live on the store, so that one leaves the site and
+ * says so). Anchors rather than routes — the home page is the whole site.
  */
+const NAV_LINKS = [
+  { href: "/#session", label: "Live Session", icon: Users },
+  { href: "/#about", label: "About", icon: BookOpen },
+];
+
 function SiteHeader() {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const atHome = pathname === "/";
   const { user, ready, restore, logout } = useSessionStore();
 
   useEffect(() => {
@@ -50,11 +75,33 @@ function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 lg:px-8">
-        <Brand />
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-5 lg:px-8">
+        <div className="flex items-center gap-8">
+          <Brand />
+          <nav className="hidden items-center gap-1 lg:flex" aria-label="Main navigation">
+            {/* Only away from home: on the home page the anchors below already
+                scroll within it, so a link to where you are would be noise. */}
+            {!atHome && (
+              <Link href="/" className="nav-link">
+                <Home size={16} /> Home
+              </Link>
+            )}
+            {NAV_LINKS.map((link) => (
+              <Link key={link.href} href={link.href} className="nav-link">
+                <link.icon size={16} /> {link.label}
+              </Link>
+            ))}
+            <Link
+              href="/prep-kit"
+              className={pathname === "/prep-kit" ? "nav-link nav-link-active" : "nav-link"}
+            >
+              <BookOpen size={16} /> Reserve a Seat
+            </Link>
+          </nav>
+        </div>
         <div className="hidden items-center gap-2 md:flex">{account}</div>
         <button
-          className="grid size-10 place-items-center rounded-full text-foreground md:hidden"
+          className="grid size-10 place-items-center rounded-full text-foreground lg:hidden"
           onClick={() => setOpen(!open)}
           aria-label="Toggle navigation"
           aria-expanded={open}
@@ -62,22 +109,42 @@ function SiteHeader() {
           {open ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
+      {/* Tapping anything closes the sheet: left open it covers the section
+          just navigated to, which reads as a failed tap. */}
       {open && (
-        <nav className="flex flex-col gap-2 border-t border-border bg-background p-4 md:hidden">
-          {ready && user ? (
-            <button onClick={() => void logout()} className="nav-link">
-              <LogOut size={16} /> Sign out ({user.name})
-            </button>
-          ) : (
-            <>
-              <Link href="/account/login" className="nav-link">
-                <LogIn size={16} /> Sign in
-              </Link>
-              <Link href="/account/signup" className={buttonVariants({ size: "sm" })}>
-                Create account
-              </Link>
-            </>
+        <nav
+          className="flex flex-col gap-2 border-t border-border bg-background p-4 lg:hidden"
+          onClick={() => setOpen(false)}
+        >
+          {!atHome && (
+            <Link href="/" className="nav-link">
+              <Home size={16} /> Home
+            </Link>
           )}
+          {NAV_LINKS.map((link) => (
+            <Link key={link.href} href={link.href} className="nav-link">
+              <link.icon size={16} /> {link.label}
+            </Link>
+          ))}
+          <Link href="/prep-kit" className="nav-link">
+            <BookOpen size={16} /> Reserve a Seat
+          </Link>
+          <div className="mt-1 flex flex-col gap-2 border-t border-border pt-3 md:hidden">
+            {ready && user ? (
+              <button onClick={() => void logout()} className="nav-link">
+                <LogOut size={16} /> Sign out ({user.name})
+              </button>
+            ) : (
+              <>
+                <Link href="/account/login" className="nav-link">
+                  <LogIn size={16} /> Sign in
+                </Link>
+                <Link href="/account/signup" className={buttonVariants({ size: "sm" })}>
+                  Create account
+                </Link>
+              </>
+            )}
+          </div>
         </nav>
       )}
     </header>

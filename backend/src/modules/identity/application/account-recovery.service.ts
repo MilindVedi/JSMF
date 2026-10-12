@@ -83,12 +83,14 @@ export class AccountRecoveryService {
     const name = (input.name?.trim() || email.split('@')[0]).slice(0, 120);
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) {
+    if (existing && !(await this.isUnclaimed(existing.id))) {
       // Explicit, consistent with `AuthService.register`: any signup form that
       // refuses duplicates already reveals this, and pretending otherwise only
       // makes a legitimate "you already have an account" impossible to explain.
       throw new ConflictException('An account with this email already exists');
     }
+    // An unclaimed account (see `isUnclaimed`) goes through the ordinary code
+    // step: the code reaching this inbox is the proof, exactly as for a new one.
 
     const code = await this.codes.issue({
       purpose: VerificationPurpose.EMAIL_VERIFICATION,
@@ -147,7 +149,27 @@ export class AccountRecoveryService {
     }
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) throw new ConflictException('An account with this email already exists');
+    if (existing) {
+      if (!(await this.isUnclaimed(existing.id))) {
+        throw new ConflictException('An account with this email already exists');
+      }
+
+      // Claiming: the account was made for this address before its owner ever
+      // signed in (a seat bought outside checkout, brought in by
+      // backfill-session-buyers). The code proved the inbox is theirs, so the
+      // password is set on that account — seat, orders and all — rather than
+      // refused. The name already on it is kept; it was entered on purpose.
+      const claimed = await this.prisma.user.update({
+        where: { id: existing.id },
+        data: { passwordHash, emailVerifiedAt: new Date() },
+        include: { roles: { include: { role: true } } },
+      });
+      const authenticated = toAuthenticatedUser(claimed);
+
+      activity(this.logger, 'auth.account_claimed', { method: 'email', userId: claimed.id, email, ip: context.ip });
+
+      return { user: authenticated, tokens: await this.auth.startSessionFor(authenticated, context) };
+    }
 
     const user = await this.prisma.user.create({
       data: {
@@ -168,6 +190,35 @@ export class AccountRecoveryService {
     activity(this.logger, 'auth.signup', { method: 'email', userId: user.id, email, ip: context.ip });
 
     return { user: authenticated, tokens: await this.auth.startSessionFor(authenticated, context) };
+  }
+
+  /**
+   * An account nobody has ever signed in to: created for this address by an
+   * admin process (backfill-session-buyers), with no password, no Google login,
+   * no mobile sign-in, and no session ever started. Email signup may claim it.
+   * Anything that has been used — or has any way in already — is not, so this
+   * never lets a signup take over an account someone is actually using.
+   */
+  private async isUnclaimed(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        status: true,
+        passwordHash: true,
+        phone: true,
+        lastLoginAt: true,
+        _count: { select: { oauthAccounts: true } },
+      },
+    });
+
+    return (
+      user !== null &&
+      user.status === UserStatus.ACTIVE &&
+      user.passwordHash === null &&
+      user.phone === null &&
+      user.lastLoginAt === null &&
+      user._count.oauthAccounts === 0
+    );
   }
 
   // --- password reset ------------------------------------------------------

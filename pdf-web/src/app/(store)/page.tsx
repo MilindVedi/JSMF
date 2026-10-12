@@ -7,6 +7,7 @@ import { DoctorPortraitCard } from "@/components/store/doctor-portrait";
 import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/store/social-icons";
 import { ResourceCard } from "@/components/store/resource-card";
 import { storeButton } from "@/components/store/store-button";
+import { TelegramFloat } from "@/components/store/telegram-float";
 import { storeApi, type StorefrontProduct } from "@/lib/api/store";
 import { author, brand, socials } from "@/lib/site-content";
 
@@ -157,6 +158,8 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      <TelegramFloat />
     </>
   );
 }

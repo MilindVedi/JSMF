@@ -149,6 +149,67 @@
 @utility filter-chip { display: inline-flex; align-items: center; gap: 0.45rem; border: 1px solid var(--border); border-radius: 999px; background: var(--background); padding: 0.5rem 0.75rem; color: var(--muted-foreground); font-size: 0.75rem; font-weight: 700; transition: 160ms ease; &:hover { border-color: color-mix(in oklab, var(--primary) 35%, var(--border)); color: var(--primary); } & span { opacity: .55; } }
 @utility filter-chip-active { border-color: var(--primary); background: var(--primary); color: var(--primary-foreground); &:hover { color: var(--primary-foreground); } }
 
+/* The centre-right "Join us on Telegram" float (components/telegram-float.tsx). */
+/* pill leans out from the screen edge, springs back, settles */
+@keyframes tg-peek {
+  0%, 56% { transform: translateX(0); }
+  64% { transform: translateX(-13px); }
+  71% { transform: translateX(5px); }
+  78% { transform: translateX(-3px); }
+  85%, 100% { transform: translateX(0); }
+}
+
+/* light sheen sweeps across the pill */
+@keyframes tg-shine {
+  0%, 50% { transform: translateX(-170%) skewX(-18deg); opacity: 0; }
+  56% { opacity: 0.95; }
+  72%, 100% { transform: translateX(270%) skewX(-18deg); opacity: 0; }
+}
+
+/* paper plane darts forward and snaps back */
+@keyframes tg-plane {
+  0%, 54% { transform: translate(0, 0) rotate(0deg); }
+  63% { transform: translate(8px, -8px) rotate(-12deg); }
+  70% { transform: translate(-4px, 4px) rotate(6deg); }
+  79%, 100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+/* small dot pulses */
+@keyframes tg-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.45; }
+}
+
+@utility telegram-float {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: var(--shadow-editorial);
+  animation: tg-peek 3.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -40% -6%;
+    background: linear-gradient(100deg, transparent 40%, color-mix(in oklab, white 85%, transparent) 50%, transparent 60%);
+    transform: translateX(-170%) skewX(-18deg);
+    pointer-events: none;
+    animation: tg-shine 3.8s ease-in-out infinite;
+  }
+}
+
+.tg-plane { animation: tg-plane 3.8s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+.tg-dot { animation: tg-dot 1.8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .telegram-float, .telegram-float::before, .tg-plane, .tg-dot { animation: none; }
+}
+
 @keyframes cta-flow { to { background-position: -250% 0; } }
 @keyframes cta-sweep { 0%, 55% { transform: translateX(-120%) skewX(-20deg); } 85%, 100% { transform: translateX(320%) skewX(-20deg); } }
 @keyframes cta-ripple { 0% { opacity: 0.55; transform: scale(1); } 100% { opacity: 0; transform: scale(1.08, 1.35); } }

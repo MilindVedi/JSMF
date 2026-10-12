@@ -78,19 +78,26 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
           <div className="flex items-center gap-8">
             <Link
               href="/"
-              className="flex shrink-0 items-center gap-2 font-display text-base font-semibold text-brand-ink"
-              aria-label={`${brand.productName} home`}
+              className="flex shrink-0 items-center gap-2.5 font-display text-base text-brand-ink"
+              aria-label={`${brand.productName} — Jab Studies Met Fun, home`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- build-time constant from public/ */}
               <img
                 src="/jab-studies-circle-only.png"
                 alt="JSMF logo"
-                width={32}
-                height={32}
-                className="size-8 rounded-full object-cover"
+                width={36}
+                height={36}
+                className="size-9 shrink-0 rounded-full object-cover"
               />
-              JSMF
-              <span className="hidden font-normal text-muted-foreground sm:inline">Resources</span>
+              {/* Name first, then what the initials stand for, divided by a
+                  drawn rule rather than a typed "|" so it keeps the border
+                  colour and sits at text height. */}
+              <span>
+                <span className="font-semibold">JSMF</span>
+                <span className="hidden font-normal text-muted-foreground sm:inline"> · Resources</span>
+              </span>
+              <span aria-hidden="true" className="hidden h-4 w-px shrink-0 bg-border sm:block" />
+              <span className="hidden font-normal text-muted-foreground sm:inline">Jab Studies Met Fun</span>
             </Link>
 
             <nav className="hidden items-center gap-2 md:flex" aria-label="Main navigation">

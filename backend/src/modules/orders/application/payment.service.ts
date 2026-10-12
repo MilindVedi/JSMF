@@ -1105,6 +1105,15 @@ export class PaymentService {
       throw new BadRequestException('This order has already been refunded.');
     }
 
+    // A paid order with no Razorpay payment behind it — a seat bought by direct
+    // UPI transfer and brought in by backfill-session-buyers — has nothing on
+    // Razorpay to refund. Asking would send an empty id to the provider.
+    if (payment.amountMinor > 0n && !payment.providerPaymentId && !payment.providerOrderId) {
+      throw new BadRequestException(
+        'This payment was not taken through Razorpay (for example a direct UPI transfer), so it cannot be refunded from here.',
+      );
+    }
+
     // Free orders (amount 0) settle without ever contacting the provider —
     // there is nothing to refund there, only the entitlement to revoke.
     const providerRefund =
