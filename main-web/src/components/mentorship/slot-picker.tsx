@@ -47,7 +47,7 @@ export function SlotPicker({
 
   return (
     <div className="space-y-5">
-      <div className="-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-2" role="listbox" aria-label="Choose a date">
+      <div className="no-scrollbar -mx-1 flex snap-x gap-2.5 overflow-x-auto px-1 pb-2" role="listbox" aria-label="Choose a date">
         {days.map((day) => {
           const active = day.key === selectedDate;
           return (
@@ -57,7 +57,7 @@ export function SlotPicker({
               role="option"
               aria-selected={active}
               onClick={() => onSelectDate(day.key)}
-              className={`flex w-[3.75rem] shrink-0 flex-col items-center rounded-2xl border px-2 py-3 transition-colors ${
+              className={`flex w-[3.75rem] shrink-0 snap-start flex-col items-center rounded-2xl border px-2 py-3 transition-colors ${
                 active
                   ? "border-primary bg-primary text-primary-foreground shadow-editorial"
                   : "border-border bg-card text-foreground hover:border-primary/40"
@@ -71,7 +71,7 @@ export function SlotPicker({
         })}
       </div>
 
-      <div className="rounded-3xl border border-border bg-card p-5">
+      <div className="rounded-3xl border border-border bg-card p-4 sm:p-5">
         {!activeDay ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Choose a date above to see open times.</p>
         ) : (

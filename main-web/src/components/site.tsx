@@ -30,8 +30,8 @@ function Brand() {
       <span className="font-semibold">JSMF</span>
       {/* A drawn rule rather than a typed "|": it keeps the border colour and
           sits at text height whatever the font does. */}
-      <span aria-hidden="true" className="hidden h-4 w-px shrink-0 bg-border sm:block" />
-      <span className="hidden font-normal text-muted-foreground sm:inline">Jab Studies Met Fun</span>
+      <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
+      <span className="truncate font-normal text-muted-foreground">Jab Studies Met Fun</span>
     </Link>
   );
 }

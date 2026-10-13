@@ -44,8 +44,8 @@ export function MyBookingsPage() {
 
   return (
     <SiteLayout>
-      <div className="mx-auto max-w-3xl px-5 py-14">
-        <h1 className="font-display text-3xl font-semibold text-brand-deep">My one-to-one calls</h1>
+      <div className="mx-auto max-w-3xl px-5 py-10 sm:py-14">
+        <h1 className="font-display text-2xl font-semibold text-brand-deep sm:text-3xl">My one-to-one calls</h1>
 
         {!ready || (user && bookings === null) ? (
           <div className="grid min-h-48 place-items-center">
@@ -124,7 +124,7 @@ function BookingCard({ booking, onChanged }: { booking: MyBooking; onChanged: (b
   }
 
   return (
-    <article className="rounded-3xl border border-border bg-card p-6 shadow-editorial">
+    <article className="min-w-0 rounded-3xl border border-border bg-card p-5 shadow-editorial sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-display text-lg font-semibold text-brand-deep">{booking.offering.title}</p>

@@ -194,16 +194,16 @@ export function MentorshipPage() {
     <SiteLayout>
       {/* Hero */}
       <section className="border-b border-border bg-card">
-        <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 py-14 lg:grid-cols-12 lg:px-8 lg:py-20">
-          <div className="lg:col-span-7">
+        <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-8 px-5 py-10 sm:gap-12 sm:py-14 lg:grid-cols-12 lg:px-8 lg:py-20">
+          <div className="min-w-0 lg:col-span-7">
             <span className="eyebrow">
               <Sparkles size={13} /> One-to-one mentorship
             </span>
-            <h1 className="mt-6 font-display text-4xl font-semibold leading-[1.08] text-brand-deep md:text-5xl">
+            <h1 className="mt-5 font-display text-3xl font-semibold leading-[1.1] text-brand-deep sm:mt-6 sm:text-4xl md:text-5xl">
               {offering.title}
             </h1>
             {offering.subtitle && (
-              <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">{offering.subtitle}</p>
+              <p className="mt-4 max-w-xl text-base leading-relaxed sm:mt-5 sm:text-lg text-muted-foreground">{offering.subtitle}</p>
             )}
             <div className="mt-6 flex flex-wrap gap-2">
               {credentials.map((item) => (
@@ -213,7 +213,7 @@ export function MentorshipPage() {
               ))}
             </div>
             {offering.highlights.length > 0 && (
-              <ul className="mt-8 grid gap-x-8 gap-y-4 sm:grid-cols-2">
+              <ul className="mt-6 grid gap-x-8 gap-y-3 sm:mt-8 sm:grid-cols-2 sm:gap-y-4">
                 {offering.highlights.map((item) => (
                   <li key={item} className="flex gap-3 text-[15px] leading-snug text-foreground">
                     <CheckCircle2 size={19} className="mt-0.5 shrink-0 text-primary" />
@@ -224,7 +224,7 @@ export function MentorshipPage() {
             )}
           </div>
 
-          <div className="lg:col-span-5">
+          <div className="min-w-0 lg:col-span-5">
             <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-editorial">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -234,7 +234,7 @@ export function MentorshipPage() {
                 height={1000}
                 className="aspect-[4/3] w-full object-cover object-top"
               />
-              <div className="flex items-end justify-between gap-4 p-6">
+              <div className="flex items-end justify-between gap-4 p-5 sm:p-6">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Per session</p>
                   <p className="mt-1 flex items-baseline gap-2">
@@ -263,7 +263,7 @@ export function MentorshipPage() {
       </section>
 
       {/* Booking */}
-      <section id="book" className="bg-background py-16">
+      <section id="book" className="scroll-mt-20 bg-background py-10 sm:py-16">
         {stage.kind !== "form" ? (
           <div className="mx-auto max-w-xl px-5 text-center">
             <div className="mx-auto grid size-14 place-items-center rounded-full bg-accent text-success">
@@ -284,12 +284,15 @@ export function MentorshipPage() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto grid max-w-7xl gap-10 px-5 lg:grid-cols-12 lg:px-8">
-            <div className="lg:col-span-7">
-              <h2 className="flex items-center gap-3 font-display text-2xl font-semibold text-brand-deep">
+          // min-w-0 on both columns: a grid item otherwise grows to fit its
+          // content, and the sideways-scrolling date strip would stretch the
+          // whole page far past a phone's width.
+          <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-5 sm:gap-10 lg:grid-cols-12 lg:px-8">
+            <div className="min-w-0 lg:col-span-7">
+              <h2 className="flex items-center gap-3 font-display text-xl font-semibold text-brand-deep sm:text-2xl">
                 <StepNumber n={1} /> Pick a date &amp; time
               </h2>
-              <div className="mt-6">
+              <div className="mt-5 sm:mt-6">
                 <SlotPicker
                   slots={slots}
                   timeZone={offering.timezone}
@@ -308,9 +311,9 @@ export function MentorshipPage() {
               </div>
             </div>
 
-            <div className="lg:col-span-5">
-              <div className="rounded-3xl border border-border bg-card p-6 shadow-editorial sm:p-7">
-                <h2 className="flex items-center gap-3 font-display text-2xl font-semibold text-brand-deep">
+            <div className="min-w-0 lg:col-span-5">
+              <div className="rounded-3xl border border-border bg-card p-5 shadow-editorial sm:p-7">
+                <h2 className="flex items-center gap-3 font-display text-xl font-semibold text-brand-deep sm:text-2xl">
                   <StepNumber n={2} /> Your details
                 </h2>
 
@@ -353,7 +356,7 @@ export function MentorshipPage() {
                 ) : (
                   <form onSubmit={submit} className="mt-6 grid gap-4" noValidate>
                     <p className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-background px-4 py-3 text-xs text-muted-foreground">
-                      <span>
+                      <span className="min-w-0 break-all">
                         Signed in as <span className="font-semibold text-foreground">{user.email}</span>
                       </span>
                       <Link href="/mentorship/bookings" className="font-semibold text-primary hover:underline">
@@ -450,8 +453,8 @@ export function MentorshipPage() {
                         "Continue to payment"
                       )}
                     </Button>
-                    <p className="flex items-center justify-center gap-1.5 text-center text-[11px] text-muted-foreground">
-                      <ShieldCheck size={13} /> Secure payment by Razorpay · Free reschedule up to {cutoffHours}h before
+                    <p className="flex flex-wrap items-center justify-center gap-1.5 text-center text-[11px] text-muted-foreground">
+                      <ShieldCheck size={13} className="shrink-0" /> Secure payment by Razorpay · Free reschedule up to {cutoffHours}h before
                     </p>
                     <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
                       By proceeding with payment, you agree to the JSMF{" "}
