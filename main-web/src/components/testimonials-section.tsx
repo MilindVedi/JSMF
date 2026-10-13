@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Eye, Quote, X } from "lucide-react";
 import type { LiveSession } from "@/lib/api/types";
 
@@ -24,6 +24,33 @@ export function TestimonialsSection({ session }: { session: LiveSession }) {
   // card can open at that card rather than always restarting at zero — the
   // common case is "I want to read *this* one bigger," not "show me #1."
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
+  // The scrolling row, with arrow buttons in place of a scrollbar. We track
+  // how far it can still scroll either way so an arrow hides when its end is
+  // reached — a button that does nothing is worse than no button.
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [canScroll, setCanScroll] = useState({ left: false, right: false });
+
+  const measure = useCallback(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const max = row.scrollWidth - row.clientWidth;
+    setCanScroll({ left: row.scrollLeft > 4, right: row.scrollLeft < max - 4 });
+  }, []);
+
+  useEffect(() => {
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+    // urls.length so adding/removing cards re-checks whether arrows are needed.
+  }, [measure, urls.length]);
+
+  const scrollByCards = (direction: 1 | -1) => {
+    const row = rowRef.current;
+    if (!row) return;
+    // Roughly one card-and-gap, so a tap advances by about one card.
+    row.scrollBy({ left: direction * 300, behavior: "smooth" });
+  };
 
   const close = useCallback(() => setActiveIndex(null), []);
   // Wrap around so the loop never dead-ends on an arrow press. urls.length
@@ -79,7 +106,14 @@ export function TestimonialsSection({ session }: { session: LiveSession }) {
           )}
         </div>
 
-        <div className="mt-10 -mx-5 flex snap-x snap-mandatory gap-5 overflow-x-auto px-5 pb-2 lg:-mx-8 lg:px-8">
+        {/* The row bleeds to the screen edge on small screens (-mx-5/-mx-8);
+            the arrow buttons sit just inside that bleed, vertically centred. */}
+        <div className="relative mt-10">
+          <div
+            ref={rowRef}
+            onScroll={measure}
+            className="no-scrollbar -mx-5 flex snap-x snap-mandatory gap-5 overflow-x-auto px-5 pb-2 lg:-mx-8 lg:px-8"
+          >
           {urls.map((url, index) => (
             <button
               type="button"
@@ -117,6 +151,31 @@ export function TestimonialsSection({ session }: { session: LiveSession }) {
             >
               View all
               <span className="text-xs font-normal text-muted-foreground">{urls.length} testimonials</span>
+            </button>
+          )}
+          </div>
+
+          {/* Arrow buttons stand in for the scrollbar. Shown from `sm` up,
+              where a pointer is likely; on a phone the row is swiped. Each
+              hides when there is nothing more to scroll that way. */}
+          {canScroll.left && (
+            <button
+              type="button"
+              onClick={() => scrollByCards(-1)}
+              aria-label="Show previous testimonials"
+              className="absolute left-1 top-1/2 hidden size-11 -translate-y-1/2 place-items-center rounded-full border border-border bg-background/60 text-brand-deep shadow-editorial backdrop-blur transition-colors hover:bg-background/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:grid"
+            >
+              <ChevronLeft size={22} />
+            </button>
+          )}
+          {canScroll.right && (
+            <button
+              type="button"
+              onClick={() => scrollByCards(1)}
+              aria-label="Show more testimonials"
+              className="absolute right-1 top-1/2 hidden size-11 -translate-y-1/2 place-items-center rounded-full border border-border bg-background/60 text-brand-deep shadow-editorial backdrop-blur transition-colors hover:bg-background/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:grid"
+            >
+              <ChevronRight size={22} />
             </button>
           )}
         </div>

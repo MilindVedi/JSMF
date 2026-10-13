@@ -6,6 +6,7 @@ import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis'
 import { AppConfig, AppConfigModule } from './config/config.module';
 import { PrismaModule } from './shared/prisma/prisma.module';
 import { CacheModule } from './shared/cache/cache.module';
+import { SchedulingModule } from './shared/scheduling/sweep-registry';
 import { HealthModule } from './modules/health/health.module';
 import { AuditModule } from './shared/audit/audit.service';
 import { MailModule } from './shared/mail/mail.module';
@@ -14,6 +15,7 @@ import { WhatsAppModule } from './shared/whatsapp/whatsapp.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { EntitlementsModule } from './modules/entitlements/entitlements.module';
 import { EventsModule } from './modules/events/events.module';
+import { MentorshipModule } from './modules/mentorship/mentorship.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -75,6 +77,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
       }),
     }),
     CacheModule,
+    SchedulingModule,
     AuditModule,
     MailModule,
     SmsModule,
@@ -84,6 +87,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     PaymentsModule,
     CatalogModule,
     EventsModule,
+    MentorshipModule,
     EntitlementsModule,
     OrdersModule,
     HealthModule,

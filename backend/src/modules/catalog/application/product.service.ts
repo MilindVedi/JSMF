@@ -247,11 +247,11 @@ export class ProductService {
   async publish(id: string, actor: Actor): Promise<Product> {
     const before = await this.getOrThrow(id);
 
-    // A live session is sold, not downloaded: there is no file to require.
-    // Its own details (date, platform) are written in the same transaction as
-    // the product, so a session product cannot exist without them.
+    // A live session or a one-to-one call is sold, not downloaded: there is no
+    // file to require. Their own details are written in the same transaction
+    // as the product, so neither can exist without them.
     const primaryFile =
-      before.type === ProductType.LIVE_SESSION
+      before.type === ProductType.LIVE_SESSION || before.type === ProductType.MENTORSHIP
         ? true
         : await this.prisma.productAsset.findFirst({
             where: { productId: id, kind: AssetKind.PRIMARY_FILE, isCurrent: true },

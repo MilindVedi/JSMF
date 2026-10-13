@@ -101,6 +101,7 @@ model User {
   legalVersionsCreated   LegalDocumentVersion[]    @relation("LegalVersionCreatedBy")
   legalVersionsPublished LegalDocumentVersion[]    @relation("LegalVersionPublishedBy")
   analyticsEvents        AnalyticsEvent[]
+  mentorshipBookings     MentorshipBooking[]
 
   @@map("users")
   @@schema("public")
@@ -359,6 +360,11 @@ enum ProductType {
   /// need no second implementation; everything only a session has lives in
   /// `live_sessions`. Never listed in the PDF storefront.
   LIVE_SESSION
+  /// A one-to-one mentorship call booked for a time slot on the main website.
+  /// Bought repeatedly (one order per call), so it never grants a library
+  /// entitlement; the booking row in `mentorship_bookings` is what the buyer
+  /// holds. Never listed in the PDF storefront.
+  MENTORSHIP
 
   @@schema("public")
 }
@@ -433,16 +439,17 @@ model Product {
   createdBy User? @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy User? @relation("ProductUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  assets        ProductAsset[]
-  links         ProductLink[]
-  taxonomyTerms ProductTaxonomyTerm[]
-  orderItems    OrderItem[]
-  entitlements  Entitlement[]         @relation("EntitlementProduct")
-  grantedVia    Entitlement[]         @relation("EntitlementSourceProduct")
-  accessEvents  ContentAccessEvent[]
-  bundleItems   ProductBundleItem[]   @relation("BundleParent")
-  inBundles     ProductBundleItem[]   @relation("BundleChild")
-  liveSession   LiveSession?
+  assets             ProductAsset[]
+  links              ProductLink[]
+  taxonomyTerms      ProductTaxonomyTerm[]
+  orderItems         OrderItem[]
+  entitlements       Entitlement[]         @relation("EntitlementProduct")
+  grantedVia         Entitlement[]         @relation("EntitlementSourceProduct")
+  accessEvents       ContentAccessEvent[]
+  bundleItems        ProductBundleItem[]   @relation("BundleParent")
+  inBundles          ProductBundleItem[]   @relation("BundleChild")
+  liveSession        LiveSession?
+  mentorshipOffering MentorshipOffering?
 
   @@index([status, publishedAt(sort: Desc)])
   @@index([type])
@@ -707,6 +714,7 @@ model Order {
   entitlements         Entitlement[]
   redemption           CouponRedemption?
   sessionRegistrations SessionRegistration[]
+  mentorshipBooking    MentorshipBooking?
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
@@ -1975,5 +1983,160 @@ model AnalyticsEvent {
   @@index([app, name, occurredAt])
   @@index([visitorId])
   @@map("analytics_events")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// One-to-one mentorship
+// ---------------------------------------------------------------------------
+
+/// Where a booking is in its life. Only PENDING_PAYMENT and CONFIRMED occupy
+/// time: the exclusion constraint in the migration covers exactly those two.
+enum MentorshipBookingStatus {
+  /// The slot is held while the buyer pays, until `hold_expires_at`.
+  PENDING_PAYMENT
+  CONFIRMED
+  /// Paid, but the payment arrived after the hold lapsed and someone else had
+  /// taken the time. Holds no slot; an admin reschedules it or refunds it.
+  PAID_UNSCHEDULED
+  /// The hold lapsed without a payment.
+  EXPIRED
+  /// Refunded, or cancelled by an admin.
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+
+  @@schema("public")
+}
+
+enum MentorshipExceptionKind {
+  /// No calls on this date: the whole day, or just the given window.
+  BLOCK
+  /// An extra window on this date, on top of the weekly hours.
+  EXTRA
+
+  @@schema("public")
+}
+
+/// A one-to-one call as a product: price, title and status live on the
+/// product (one id, like live sessions); everything only a bookable call has
+/// lives here. All times in the rules are local to `timezone`.
+model MentorshipOffering {
+  productId               String   @id @map("product_id") @db.Uuid
+  durationMinutes         Int      @default(45) @map("duration_minutes")
+  /// Kept free after each call. Slots start every duration + buffer minutes.
+  bufferMinutes           Int      @default(15) @map("buffer_minutes")
+  /// IANA name. The weekly hours and dated exceptions are read in this zone.
+  timezone                String   @default("Asia/Kolkata") @db.VarChar(64)
+  /// The earliest bookable slot is at least this far away.
+  minNoticeMinutes        Int      @default(720) @map("min_notice_minutes")
+  /// How many days ahead slots are offered.
+  bookingWindowDays       Int      @default(21) @map("booking_window_days")
+  /// The buyer may move their own booking until this long before it starts.
+  rescheduleCutoffMinutes Int      @default(1440) @map("reschedule_cutoff_minutes")
+  /// Self-service moves allowed per booking. An admin can always move it.
+  maxReschedules          Int      @default(2) @map("max_reschedules")
+  /// "Google Meet". Display text, not a URL.
+  platformLabel           String   @default("Google Meet") @map("platform_label") @db.VarChar(160)
+  /// "What you get" bullets, in display order.
+  highlights              String[] @default([])
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  /// Restrict: a product that has been sold keeps its offering forever.
+  product    Product                           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  rules      MentorshipAvailabilityRule[]
+  exceptions MentorshipAvailabilityException[]
+  bookings   MentorshipBooking[]
+
+  @@map("mentorship_offerings")
+  @@schema("public")
+}
+
+/// Recurring weekly hours: on `weekday` (1 = Monday ... 7 = Sunday), calls may
+/// be held between `start_minute` and `end_minute` after local midnight.
+model MentorshipAvailabilityRule {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  offeringId  String   @map("offering_id") @db.Uuid
+  weekday     Int
+  startMinute Int      @map("start_minute")
+  endMinute   Int      @map("end_minute")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  /// Cascade: rules are configuration of the offering, not a record of anything.
+  offering MentorshipOffering @relation(fields: [offeringId], references: [productId], onDelete: Cascade)
+
+  @@index([offeringId, weekday])
+  @@map("mentorship_availability_rules")
+  @@schema("public")
+}
+
+/// A change to the weekly hours on one local date: a block (the whole day
+/// when the minutes are null) or an extra window.
+model MentorshipAvailabilityException {
+  id          String                  @id @default(uuid(7)) @db.Uuid
+  offeringId  String                  @map("offering_id") @db.Uuid
+  date        DateTime                @db.Date
+  kind        MentorshipExceptionKind
+  startMinute Int?                    @map("start_minute")
+  endMinute   Int?                    @map("end_minute")
+  note        String?                 @db.VarChar(160)
+  createdAt   DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  offering MentorshipOffering @relation(fields: [offeringId], references: [productId], onDelete: Cascade)
+
+  @@index([offeringId, date])
+  @@map("mentorship_availability_exceptions")
+  @@schema("public")
+}
+
+/// One booked call. Two active bookings of an offering can never overlap: the
+/// migration adds an exclusion constraint over [starts_at, blocked_until) for
+/// PENDING_PAYMENT and CONFIRMED rows, so the database itself refuses a
+/// double booking however two requests race.
+model MentorshipBooking {
+  id                 String                  @id @default(uuid(7)) @db.Uuid
+  offeringId         String                  @map("offering_id") @db.Uuid
+  userId             String                  @map("user_id") @db.Uuid
+  /// The order paying for this call. Set in the request that holds the slot.
+  orderId            String?                 @unique @map("order_id") @db.Uuid
+  status             MentorshipBookingStatus @default(PENDING_PAYMENT)
+  startsAt           DateTime                @map("starts_at") @db.Timestamptz(6)
+  endsAt             DateTime                @map("ends_at") @db.Timestamptz(6)
+  /// endsAt + the offering's buffer at booking time: the range actually kept
+  /// free, and what the exclusion constraint compares.
+  blockedUntil       DateTime                @map("blocked_until") @db.Timestamptz(6)
+  holdExpiresAt      DateTime?               @map("hold_expires_at") @db.Timestamptz(6)
+  /// As the attendee typed it: the account name is not always the attendee.
+  attendeeName       String                  @map("attendee_name") @db.VarChar(120)
+  /// E.164 digits without the +. A contact number on file, not verified.
+  whatsappNumber     String?                 @map("whatsapp_number") @db.VarChar(20)
+  exam               String                  @db.VarChar(40)
+  /// "What would you like to discuss?", optional.
+  notes              String?                 @db.VarChar(1000)
+  /// Private: in the attendee's own responses and emails, never a public one.
+  meetUrl            String?                 @map("meet_url")
+  rescheduleCount    Int                     @default(0) @map("reschedule_count")
+  confirmedAt        DateTime?               @map("confirmed_at") @db.Timestamptz(6)
+  /// When the email naming this booking's current time last went out.
+  confirmationSentAt DateTime?               @map("confirmation_sent_at") @db.Timestamptz(6)
+  /// When the attendee was last emailed the joining link.
+  meetLinkSentAt     DateTime?               @map("meet_link_sent_at") @db.Timestamptz(6)
+  /// Set when the pre-call reminder is claimed; cleared by a reschedule.
+  reminderSentAt     DateTime?               @map("reminder_sent_at") @db.Timestamptz(6)
+  cancelledAt        DateTime?               @map("cancelled_at") @db.Timestamptz(6)
+  cancelReason       String?                 @map("cancel_reason") @db.VarChar(300)
+  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  offering MentorshipOffering @relation(fields: [offeringId], references: [productId], onDelete: Restrict)
+  /// Restrict, like orders: a booking is part of the business record.
+  user     User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order    Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([offeringId, startsAt])
+  @@index([userId, startsAt(sort: Desc)])
+  @@index([status, startsAt])
+  @@map("mentorship_bookings")
   @@schema("public")
 }

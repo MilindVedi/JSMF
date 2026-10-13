@@ -21,6 +21,7 @@ import {
 import { FloatingVideo } from "@/components/floating-video";
 import { TelegramFloat } from "@/components/telegram-float";
 import { RegisterDialog } from "@/components/register-dialog";
+import { MentorshipBanner } from "@/components/mentorship/mentorship-banner";
 import { SiteLayout } from "@/components/site";
 import { TestimonialsSection } from "@/components/testimonials-section";
 import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/social-icons";
@@ -329,6 +330,9 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
           </div>
         </div>
       </section>
+
+      {/* One-to-one calls: renders nothing until an offering is published. */}
+      <MentorshipBanner />
 
       {/* Final CTA */}
       <section className="bg-brand-deep py-20 text-brand-on-deep">

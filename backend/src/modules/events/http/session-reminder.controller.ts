@@ -3,6 +3,7 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../../../common/decorators/public.decorator';
 import { InternalOnlyGuard } from '../../../common/guards/internal-only.guard';
+import { SweepRegistry } from '../../../shared/scheduling/sweep-registry';
 import { LiveSessionNotifications } from '../application/live-session-notifications.service';
 
 /**
@@ -21,7 +22,10 @@ import { LiveSessionNotifications } from '../application/live-session-notificati
 // /api/* for the public. See InternalOnlyGuard.
 @UseGuards(InternalOnlyGuard)
 export class SessionReminderController {
-  constructor(private readonly notifications: LiveSessionNotifications) {}
+  constructor(
+    private readonly notifications: LiveSessionNotifications,
+    private readonly sweeps: SweepRegistry,
+  ) {}
 
   @Post('session-reminders')
   @Public()
@@ -32,7 +36,10 @@ export class SessionReminderController {
     // moment is worth more than two of them contending for the same rows.
     const reminders = await this.notifications.sendDueReminders();
     const bundles = await this.notifications.sweepAutoBundleReleases();
+    // Other modules' periodic work on the same tick (SweepRegistry), e.g.
+    // one-to-one call reminders and lapsed slot holds.
+    const others = await this.sweeps.runAll();
 
-    return { reminders, bundles };
+    return { reminders, bundles, ...others };
   }
 }

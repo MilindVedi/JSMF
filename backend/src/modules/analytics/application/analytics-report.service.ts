@@ -133,19 +133,21 @@ export class AnalyticsReportService {
 
   /**
    * Accounts and orders from their own tables. An order counts as "for" an app
-   * by what it contains: live sessions are what the main website sells; every
-   * other product type belongs to the store (PYQ plans included, for now).
+   * by what it contains: live sessions and one-to-one calls are what the main
+   * website sells; every other product type belongs to the store (PYQ plans
+   * included, for now).
    */
   private async serverTruth(
     app: JsmfApp,
     start: Prisma.Sql,
     end: Prisma.Sql,
   ): Promise<AnalyticsSummary['server']> {
-    const liveSession = Prisma.sql`${ProductType.LIVE_SESSION}::"ProductType"`;
+    // What the main website sells: live sessions and one-to-one calls.
+    const mainSite = Prisma.sql`(${ProductType.LIVE_SESSION}::"ProductType", ${ProductType.MENTORSHIP}::"ProductType")`;
     const ofApp =
       app === JsmfApp.MAIN
-        ? Prisma.sql`i.product_type_snapshot = ${liveSession}`
-        : Prisma.sql`i.product_type_snapshot <> ${liveSession}`;
+        ? Prisma.sql`i.product_type_snapshot IN ${mainSite}`
+        : Prisma.sql`i.product_type_snapshot NOT IN ${mainSite}`;
 
     const [row] = await this.prisma.$queryRaw<
       Array<{ usersCreated: number; ordersCreated: number; ordersPaid: number; paidAmountMinor: bigint | null }>

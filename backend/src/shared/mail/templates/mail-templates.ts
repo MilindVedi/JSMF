@@ -37,7 +37,7 @@ export function notSpamNoticeHtml(): string {
 }
 
 /** Wraps body HTML in the minimal shell that mail clients render consistently. */
-function layout(heading: string, bodyHtml: string): string {
+export function layout(heading: string, bodyHtml: string): string {
   return `<!doctype html>
 <html>
   <body style="margin:0;padding:24px;background:#f6f6f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#18181b;">
@@ -389,7 +389,7 @@ export function passwordResetCode(input: {
   return { subject: `JSMF - ${code} is your password reset code`, text, html };
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -403,17 +403,17 @@ function escapeHtml(value: string): string {
  * textarea — HTML collapses `\n` to whitespace otherwise, and the message a
  * person entered as two paragraphs would arrive as one run-on sentence.
  */
-function escapeHtmlMultiline(value: string): string {
+export function escapeHtmlMultiline(value: string): string {
   return escapeHtml(value).replace(/\r?\n/g, '<br>');
 }
 
-function button(href: string, label: string): string {
+export function button(href: string, label: string): string {
   return `<p style="margin:0 0 24px;text-align:center;">
       <a href="${escapeHtml(href)}" style="display:inline-block;padding:12px 24px;background:#18181b;color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:500;">${escapeHtml(label)}</a>
     </p>`;
 }
 
-function detailTable(rows: Array<[string, string]>): string {
+export function detailTable(rows: Array<[string, string]>): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
       ${rows
         .map(

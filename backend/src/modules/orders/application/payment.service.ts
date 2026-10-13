@@ -10,6 +10,7 @@ import {
   OrderStatus,
   PaymentStatus,
   Prisma,
+  ProductType,
   RefundStatus,
   WebhookEventStatus,
 } from '@prisma/client';
@@ -498,6 +499,13 @@ export class PaymentService {
       }
 
       for (const item of payment.order.items) {
+        // A one-to-one call is bought again for every call, so it is not
+        // something the buyer "owns": no library entitlement, which would also
+        // make checkout refuse the next booking as "already owned". The booking
+        // row is what they hold, confirmed by the mentorship module through
+        // OrderEvents below.
+        if (item.productTypeSnapshot === ProductType.MENTORSHIP) continue;
+
         const granted = await this.entitlements.grant(
           {
             userId: payment.order.userId,
@@ -1017,6 +1025,7 @@ export class PaymentService {
     this.logger.log(`Applied provider-initiated refund ${event.providerRefundId}`);
 
     if (refundedInFull !== null) {
+      await this.events.refunded({ orderId: payment.orderId, reason: 'Refunded in the Razorpay dashboard' });
       await this.sendRefundNotice(
         payment.orderId,
         refundedInFull,
@@ -1160,6 +1169,8 @@ export class PaymentService {
     });
 
     this.logger.log(`Refunded order ${order.orderNumber} (${providerRefund.providerRefundId})`);
+
+    await this.events.refunded({ orderId: order.id, reason: reason ?? 'Order refunded' });
 
     // What the provider did, not what was asked of it. When it does not say,
     // the email describes the slow rail: a refund that arrives sooner than

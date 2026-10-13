@@ -16,6 +16,7 @@ import {
   Settings,
   Sparkles,
   Users,
+  Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ const NAV = [
   { href: "/admin/products", label: "Products", icon: FileText },
   { href: "/admin/featured", label: "Featured", icon: Sparkles },
   { href: "/admin/sessions", label: "Sessions", icon: CalendarDays },
+  { href: "/admin/mentorship", label: "1:1 calls", icon: Video },
   { href: "/admin/taxonomy", label: "Categories", icon: FolderTree },
   { href: "/admin/pyq", label: "Question bank", icon: BookOpenCheck },
   { href: "/admin/orders", label: "Orders", icon: ReceiptText },

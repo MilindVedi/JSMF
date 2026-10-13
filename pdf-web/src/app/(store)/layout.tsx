@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BookOpen,
   ExternalLink,
+  Home,
   Library,
   LogIn,
   LogOut,
@@ -41,6 +42,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
   const isAccountPage = pathname.startsWith("/account");
 
   const navLinks = [
+    { href: "/", label: "Home", icon: Home, show: true },
     { href: "/browse", label: "Browse", icon: BookOpen, show: true },
     // Only for signed-in buyers. A library is necessarily empty for anyone
     // without an account, so offering it signed-out sends a first-time visitor

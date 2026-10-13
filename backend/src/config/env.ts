@@ -236,6 +236,28 @@ const schema = z
     /// real send time is up to five minutes after this point.
     SESSION_REMINDER_LEAD_MINUTES: z.coerce.number().int().min(5).max(24 * 60).default(60),
 
+    /// Base URL of the main website (jsmf.me), for links in one-to-one booking
+    /// emails ("see or move your booking"). Defaults to production on purpose:
+    /// a forgotten variable then still sends people somewhere real, where a
+    /// localhost default would put a dead link in a paid customer's inbox.
+    MAIN_WEBSITE_URL: z.string().url().default('https://jsmf.me'),
+
+    /// How long a one-to-one slot stays held while its buyer pays. Long enough
+    /// for a UPI approval on a second phone; a payment that lands later still
+    /// confirms if the slot is free, and is flagged for an admin if not.
+    MENTORSHIP_HOLD_MINUTES: z.coerce.number().int().min(5).max(60).default(20),
+
+    /// How long before a one-to-one call its reminder (with the Meet link) goes
+    /// out, on the same 5-minute sweep as session reminders.
+    MENTORSHIP_REMINDER_LEAD_MINUTES: z.coerce.number().int().min(5).max(24 * 60).default(60),
+
+    /// Who is emailed when a one-to-one call is booked, rescheduled or needs
+    /// attention. Unset = nobody; the booking works the same either way.
+    MENTORSHIP_ADMIN_NOTIFY_EMAIL: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.string().email().optional(),
+    ),
+
     /// The rate limit a single caller gets per minute — counted against their
     /// account when signed in, and only against their IP address when not.
     ///

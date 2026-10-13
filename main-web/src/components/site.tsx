@@ -2,10 +2,11 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { BookOpen, Home, LogIn, LogOut, Mail, Menu, Users, X } from "lucide-react";
+import { BookOpen, Home, LogIn, LogOut, Mail, Menu, Users, Video, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { buttonVariants } from "@/components/ui/button";
 import { ContactDialog } from "@/components/contact-dialog";
+import { currentOffering } from "@/lib/api/mentorship";
 import { useSessionStore } from "@/store/session-store";
 
 /**
@@ -41,19 +42,64 @@ function Brand() {
  * says so). Anchors rather than routes — the home page is the whole site.
  */
 const NAV_LINKS = [
-  { href: "/#session", label: "Live Session", icon: Users },
-  { href: "/#about", label: "About", icon: BookOpen },
+  { href: "/#session", label: "Live Session", icon: Users, section: "session" },
+  { href: "/#about", label: "About", icon: BookOpen, section: "about" },
 ];
+
+/**
+ * Which home-page section the visitor is looking at, so its header link stays
+ * highlighted: "session" or "about" while that section crosses the middle of
+ * the screen, otherwise "home". Null away from the home page.
+ */
+function useActiveSection(enabled: boolean) {
+  const [active, setActive] = useState("home");
+
+  useEffect(() => {
+    if (!enabled) return;
+    const inView = new Set<string>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) inView.add(entry.target.id);
+          else inView.delete(entry.target.id);
+        }
+        // The later section wins when two touch the band at once.
+        const current = [...NAV_LINKS].reverse().find((link) => inView.has(link.section));
+        setActive(current?.section ?? "home");
+      },
+      { rootMargin: "-45% 0px -45% 0px" },
+    );
+    for (const link of NAV_LINKS) {
+      const el = document.getElementById(link.section);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [enabled]);
+
+  return enabled ? active : null;
+}
 
 function SiteHeader() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const atHome = pathname === "/";
   const { user, ready, restore, logout } = useSessionStore();
+  // "Book 1:1" appears only once a one-to-one offering is published, so the
+  // header is unchanged until an admin switches the feature on.
+  const [mentorship, setMentorship] = useState(false);
+  const onMentorship = pathname.startsWith("/mentorship");
+  // The link for where the visitor is stays highlighted: the page, or on the
+  // home page the section in view.
+  const section = useActiveSection(atHome);
+  const navClass = (active: boolean) => (active ? "nav-link nav-link-active" : "nav-link");
 
   useEffect(() => {
     void restore();
   }, [restore]);
+
+  useEffect(() => {
+    void currentOffering().then((offering) => setMentorship(Boolean(offering)));
+  }, []);
 
   const account = !ready ? null : user ? (
     <>
@@ -79,24 +125,22 @@ function SiteHeader() {
         <div className="flex items-center gap-8">
           <Brand />
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Main navigation">
-            {/* Only away from home: on the home page the anchors below already
-                scroll within it, so a link to where you are would be noise. */}
-            {!atHome && (
-              <Link href="/" className="nav-link">
-                <Home size={16} /> Home
-              </Link>
-            )}
+            <Link href="/" className={navClass(section === "home")}>
+              <Home size={16} /> Home
+            </Link>
             {NAV_LINKS.map((link) => (
-              <Link key={link.href} href={link.href} className="nav-link">
+              <Link key={link.href} href={link.href} className={navClass(section === link.section)}>
                 <link.icon size={16} /> {link.label}
               </Link>
             ))}
-            <Link
-              href="/prep-kit"
-              className={pathname === "/prep-kit" ? "nav-link nav-link-active" : "nav-link"}
-            >
+            <Link href="/prep-kit" className={navClass(pathname === "/prep-kit")}>
               <BookOpen size={16} /> Reserve a Seat
             </Link>
+            {mentorship && (
+              <Link href="/mentorship" className={navClass(onMentorship)}>
+                <Video size={16} /> Book 1:1
+              </Link>
+            )}
           </nav>
         </div>
         <div className="hidden items-center gap-2 md:flex">{account}</div>
@@ -116,19 +160,22 @@ function SiteHeader() {
           className="flex flex-col gap-2 border-t border-border bg-background p-4 lg:hidden"
           onClick={() => setOpen(false)}
         >
-          {!atHome && (
-            <Link href="/" className="nav-link">
-              <Home size={16} /> Home
-            </Link>
-          )}
+          <Link href="/" className={navClass(section === "home")}>
+            <Home size={16} /> Home
+          </Link>
           {NAV_LINKS.map((link) => (
-            <Link key={link.href} href={link.href} className="nav-link">
+            <Link key={link.href} href={link.href} className={navClass(section === link.section)}>
               <link.icon size={16} /> {link.label}
             </Link>
           ))}
-          <Link href="/prep-kit" className="nav-link">
+          <Link href="/prep-kit" className={navClass(pathname === "/prep-kit")}>
             <BookOpen size={16} /> Reserve a Seat
           </Link>
+          {mentorship && (
+            <Link href="/mentorship" className={navClass(onMentorship)}>
+              <Video size={16} /> Book 1:1
+            </Link>
+          )}
           <div className="mt-1 flex flex-col gap-2 border-t border-border pt-3 md:hidden">
             {ready && user ? (
               <button onClick={() => void logout()} className="nav-link">

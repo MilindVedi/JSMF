@@ -113,6 +113,13 @@
 
 @utility nav-link-active { background: var(--accent); color: var(--primary); }
 
+/* A row that scrolls horizontally without the browser's scrollbar — the
+   on-screen arrow buttons do the scrolling instead. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
 @utility eyebrow {
   display: inline-flex;
   align-items: center;

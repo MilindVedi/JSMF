@@ -21,8 +21,11 @@ export function PhoneField({
   onChange,
   error,
   hint,
+  label = "Mobile number",
 }: {
   id: string;
+  /** "WhatsApp number" where the number is used for that. */
+  label?: string;
   value: PhoneValue;
   onChange: (value: PhoneValue) => void;
   error?: string;
@@ -33,9 +36,7 @@ export function PhoneField({
 
   return (
     <div className="field-label">
-      <label htmlFor={id}>
-        Mobile number
-      </label>
+      <label htmlFor={id}>{label}</label>
       <div className="flex gap-2">
         <div className="group relative shrink-0">
           <span

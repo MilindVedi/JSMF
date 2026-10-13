@@ -79,3 +79,11 @@ Status as of 11 October 2026. Nothing below is committed yet.
 - **Two decisions pending:**
   - whether a streak day should require the daily goal (today, one answer counts);
   - whether to remove or move the second "Note for Angad" on the custom-test page.
+- **One-to-one mentorship calls** (built, not deployed). Details in [docs/mentorship/README.md](docs/mentorship/README.md).
+  - Review migration `20261013120000_mentorship` before committing. It is additive and uses the bundled `btree_gist` extension.
+  - Set these on the backend Cloud Run service:
+    - `MENTORSHIP_ADMIN_NOTIFY_EMAIL=milindvedi80@gmail.com`
+    - optionally `MAIN_WEBSITE_URL`, `MENTORSHIP_HOLD_MINUTES`, `MENTORSHIP_REMINDER_LEAD_MINUTES`.
+  - Deploy the backend before main-web and pdf-web.
+  - In Admin → 1:1 calls: create the offering, set the weekly hours, then publish. Until it is published, nothing changes on jsmf.me.
+  - Add a 1:1 line to the Refund Policy through Admin → Legal (reschedule up to 24h before; cancellations through support).
