@@ -18,6 +18,7 @@ import { activity } from '../../../shared/logging/activity';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import { PaymentProvider } from '../../payments/domain/payment-provider.port';
+import { nextOrderNumber } from '../domain/order-number';
 
 export interface CheckoutRequest {
   userId: string;
@@ -114,7 +115,7 @@ export class OrderService {
     product: { id: string; title: string; type: never | string; currency: string },
   ): Promise<CheckoutResult> {
     const result = await this.prisma.$transaction(async (tx) => {
-      const orderNumber = await this.nextOrderNumber(tx);
+      const orderNumber = await nextOrderNumber(tx);
 
       const order = await tx.order.create({
         data: {
@@ -181,7 +182,7 @@ export class OrderService {
     // The order row is created before the provider is contacted, so that a
     // provider order can never exist without a local record of what it was for.
     const order = await this.prisma.$transaction(async (tx) => {
-      const orderNumber = await this.nextOrderNumber(tx);
+      const orderNumber = await nextOrderNumber(tx);
 
       return tx.order.create({
         data: {
@@ -357,24 +358,5 @@ export class OrderService {
 
     if (!order) throw new NotFoundException('Order not found');
     return order;
-  }
-
-  /**
-   * `JSMF-2026-000412`, from a Postgres sequence.
-   *
-   * Not `max(order_number) + 1`: two checkouts in the same instant would read
-   * the same maximum and one would then collide on the UNIQUE constraint. A
-   * sequence is contention-free and needs no retry loop. Gaps from rolled-back
-   * transactions are fine — this is an identifier to read aloud in support, not
-   * a count of orders.
-   */
-  private async nextOrderNumber(tx: {
-    $queryRaw: PrismaService['$queryRaw'];
-  }): Promise<string> {
-    const [row] = await tx.$queryRaw<{ nextval: bigint }[]>`
-      SELECT nextval('order_number_seq') AS nextval
-    `;
-
-    return `JSMF-${new Date().getFullYear()}-${String(row.nextval).padStart(6, '0')}`;
   }
 }

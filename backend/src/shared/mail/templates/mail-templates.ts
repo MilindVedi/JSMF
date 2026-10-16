@@ -413,6 +413,16 @@ export function button(href: string, label: string): string {
     </p>`;
 }
 
+/**
+ * The same link as the button above it, in plain text. Some mail clients strip
+ * or fail to open a styled anchor, and a link that can be copied is the only
+ * way back in for someone the button fails — so every call to action carries
+ * one. Centred, to sit under the button it belongs to.
+ */
+export function fallbackLink(url: string): string {
+  return `<p style="margin:0 0 20px;font-size:13px;line-height:1.55;color:#71717a;text-align:center;">Alternatively, you can join using the link below:<br><span style="word-break:break-all;color:#3f3f46;">${escapeHtml(url)}</span></p>`;
+}
+
 export function detailTable(rows: Array<[string, string]>): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
       ${rows
@@ -443,6 +453,8 @@ export function liveSessionConfirmation(input: {
   whenLines: string[];
   platformLabel: string;
   joinUrl: string | null;
+  /** The session's Telegram group for registered candidates, when it has one. */
+  telegramUrl?: string | null;
   totalFormatted: string;
   orderNumber: string;
   paymentId: string;
@@ -469,6 +481,7 @@ export function liveSessionConfirmation(input: {
     whenLines,
     platformLabel,
     joinUrl,
+    telegramUrl,
     totalFormatted,
     orderNumber,
     paymentId,
@@ -499,6 +512,7 @@ export function liveSessionConfirmation(input: {
     `  ${platformLabel}`,
     ``,
     linkLine,
+    ...(telegramUrl ? [``, TELEGRAM_GROUP_LINE, telegramUrl] : []),
     ...included,
     ``,
     `Amount paid: ${totalFormatted}`,
@@ -522,9 +536,11 @@ export function liveSessionConfirmation(input: {
     </div>
     ${
       joinUrl
-        ? button(joinUrl, 'Join the session')
+        ? `${button(joinUrl, 'Join the session')}
+    ${fallbackLink(joinUrl)}`
         : `<p style="margin:0 0 20px;font-size:15px;line-height:1.55;">${escapeHtmlMultiline(pendingLine)}</p>`
     }
+    ${telegramUrl ? telegramBlockHtml(telegramUrl) : ''}
     ${
       includedTitles.length
         ? `<p style="margin:0 0 8px;font-size:15px;line-height:1.55;">Included with your seat, and already in your JSMF library:</p>
@@ -649,7 +665,7 @@ export function liveSessionReminder(input: {
       ])}
     </div>
     ${button(joinUrl, 'Join the session')}
-    <p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">If the button does not work, paste this into your browser:<br><span style="word-break:break-all;color:#3f3f46;">${escapeHtml(joinUrl)}</span></p>
+    ${fallbackLink(joinUrl)}
     ${showNotSpamNotice ? notSpamNoticeHtml() : ''}
     `,
   );
@@ -657,46 +673,95 @@ export function liveSessionReminder(input: {
   return { subject: `JSMF - Starting soon: ${heading}`, text, html };
 }
 
+/** The line next to a session's Telegram group, in every email that carries it. */
+export const TELEGRAM_GROUP_LINE =
+  'A separate Telegram group just for registered candidates of this session — join here.';
+
 /**
- * Sent when an admin announces dates for a session that was sold as "date to
- * be announced". Deliberately phrased as a confirmation of dates, not as a
- * correction of something missing — the buyer simply learns the schedule now.
+ * The session details email an admin sends: only what this attendee still
+ * needs — the dates, the joining link, the Telegram group — each new or
+ * changed. The session and its time are always shown for context, so a "new
+ * link" email still says when the session is; only the details being sent are
+ * presented as the news.
+ *
+ * The subject names the one thing being sent when there is only one, so a
+ * changed link is never mistaken for a repeat of the first email.
  */
-export function liveSessionDatesAnnounced(input: {
+export function liveSessionDetails(input: {
   attendeeName: string;
   sessionTitle: string;
-  /** One line per day, in order (from sessionWhenLines). */
+  /** One line per day (from sessionWhenLines). */
   whenLines: string[];
   platformLabel: string;
-  joinUrl: string | null;
+  dates?: { changed: boolean };
+  joinLink?: { url: string; changed: boolean };
+  telegram?: { url: string; changed: boolean };
+  /** The session has no joining link at all: when the dates go out, say it will follow. */
+  joinLinkMissing?: boolean;
+  /** Null keeps "We will email you the joining link before the session starts." */
+  joinLinkPendingText?: string | null;
   showNotSpamNotice?: boolean;
 }): RenderedMail {
-  const { attendeeName, sessionTitle, whenLines, platformLabel, joinUrl, showNotSpamNotice } = input;
+  const { attendeeName, sessionTitle, whenLines, platformLabel, dates, joinLink, telegram, showNotSpamNotice } = input;
+  const count = [dates, joinLink, telegram].filter(Boolean).length;
+  const plural = whenLines.length > 1;
 
-  const linkLine = joinUrl
-    ? `Join here: ${joinUrl}`
-    : `We will email you the joining link before the session starts.`;
+  const pendingLine = input.joinLinkPendingText?.trim()
+    ? input.joinLinkPendingText.trim()
+    : 'We will email you the joining link before the session starts.';
+  const showPending = Boolean(dates) && !joinLink && Boolean(input.joinLinkMissing);
+
+  let intro: string;
+  let heading: string;
+  let subject: string;
+  if (count > 1) {
+    const changed = Boolean(dates?.changed || joinLink?.changed || telegram?.changed);
+    intro = `Here are the details for ${sessionTitle}${changed ? ' — some have changed since we last wrote' : ''}.`;
+    heading = 'Your session details';
+    subject = `JSMF - Your session details: ${sessionTitle}`;
+  } else if (joinLink) {
+    intro = joinLink.changed
+      ? 'The joining link has changed — please use this one. It replaces the link we sent before.'
+      : `Here is your joining link for ${sessionTitle}.`;
+    heading = joinLink.changed ? 'Updated joining link' : 'Your joining link';
+    subject = joinLink.changed ? `JSMF - Updated joining link: ${sessionTitle}` : `JSMF - Your joining link: ${sessionTitle}`;
+  } else if (telegram) {
+    intro = telegram.changed
+      ? 'The Telegram group link has changed — please use this one. It replaces the link we sent before.'
+      : `There is a Telegram group for ${sessionTitle}.`;
+    heading = telegram.changed ? 'Updated Telegram group link' : 'Join the Telegram group';
+    subject = telegram.changed
+      ? `JSMF - Updated Telegram group link: ${sessionTitle}`
+      : `JSMF - Join the Telegram group: ${sessionTitle}`;
+  } else {
+    intro = dates?.changed
+      ? `The schedule for ${sessionTitle} has changed. Here ${plural ? 'are the updated times' : 'is the updated time'}.`
+      : `The date${plural ? 's' : ''} for ${sessionTitle} ${plural ? 'are' : 'is'} confirmed.`;
+    heading = dates?.changed ? 'Updated schedule' : 'Dates confirmed';
+    subject = dates?.changed ? `JSMF - Updated schedule: ${sessionTitle}` : `JSMF - Dates confirmed: ${sessionTitle}`;
+  }
 
   const text = [
     `Hi ${attendeeName},`,
     ``,
-    `The date${whenLines.length > 1 ? 's' : ''} for ${sessionTitle} ${whenLines.length > 1 ? 'are' : 'is'} confirmed.`,
+    intro,
     ``,
     `  ${sessionTitle}`,
     ...whenLines.map((line) => `  ${line}`),
     `  ${platformLabel}`,
     ``,
-    linkLine,
-    ``,
+    ...(joinLink ? [`${joinLink.changed ? 'New joining link' : 'Join here'}: ${joinLink.url}`, ``] : []),
+    ...(showPending ? [pendingLine, ``] : []),
+    ...(telegram ? [TELEGRAM_GROUP_LINE, telegram.url, ``] : []),
     ...(showNotSpamNotice ? [NOT_SPAM_NOTICE_TEXT, ``] : []),
     emailSignatureText(),
   ].join('\n');
 
   const html = layout(
-    'Dates confirmed',
+    heading,
     `
     <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Hi ${escapeHtml(attendeeName)},</p>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">The date${whenLines.length > 1 ? 's' : ''} for your session ${whenLines.length > 1 ? 'are' : 'is'} confirmed:</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">${escapeHtml(intro)}</p>
     <div style="margin:0 0 20px;padding:16px;background:#fafafa;border-radius:8px;">
       <p style="margin:0 0 10px;font-size:15px;line-height:1.45;font-weight:600;">${escapeHtml(sessionTitle)}</p>
       ${detailTable([
@@ -705,13 +770,27 @@ export function liveSessionDatesAnnounced(input: {
       ])}
     </div>
     ${
-      joinUrl
-        ? button(joinUrl, 'Join the session')
-        : `<p style="margin:0 0 20px;font-size:15px;line-height:1.55;">We will email you the joining link before the session starts.</p>`
+      joinLink
+        ? `${button(joinLink.url, joinLink.changed ? 'Join with the new link' : 'Join the session')}
+    ${fallbackLink(joinLink.url)}`
+        : ''
     }
+    ${showPending ? `<p style="margin:0 0 20px;font-size:15px;line-height:1.55;">${escapeHtmlMultiline(pendingLine)}</p>` : ''}
+    ${telegram ? telegramBlockHtml(telegram.url) : ''}
     ${showNotSpamNotice ? notSpamNoticeHtml() : ''}
     `,
   );
 
-  return { subject: `JSMF - Dates confirmed: ${sessionTitle}`, text, html };
+  return { subject, text, html };
+}
+
+/** The Telegram group, as the confirmation and the details email both show it. */
+function telegramBlockHtml(url: string): string {
+  // Centred, and the same button shape as `button()`, so the two calls to
+  // action in one email line up instead of one sitting against the margin.
+  return `<div style="margin:0 0 20px;padding:16px;border:1px solid #e4e4e7;border-radius:8px;text-align:center;">
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.55;">${escapeHtml(TELEGRAM_GROUP_LINE)}</p>
+      <a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 24px;background:#229ED9;color:#ffffff;border-radius:8px;font-size:15px;font-weight:500;text-decoration:none;">Join the Telegram group</a>
+      <p style="margin:12px 0 0;font-size:13px;line-height:1.55;color:#71717a;">Alternatively, you can join using the link below:<br><span style="word-break:break-all;color:#3f3f46;">${escapeHtml(url)}</span></p>
+    </div>`;
 }

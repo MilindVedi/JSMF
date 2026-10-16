@@ -38,6 +38,7 @@ export interface LiveSessionInput {
   priceAmountMinor?: string;
   compareAtAmountMinor?: string | null;
   joinUrl?: string | null;
+  telegramUrl?: string | null;
   recordingUrl?: string | null;
   highlights?: string[];
   perkText?: string | null;
@@ -408,6 +409,7 @@ export class LiveSessionService {
             displaySeats: input.displaySeats ?? null,
             bundleDeliveryMode: input.bundleDeliveryMode ?? BundleDeliveryMode.IMMEDIATE,
             joinUrl: blankToNull(input.joinUrl) ?? null,
+            telegramUrl: blankToNull(input.telegramUrl) ?? null,
             recordingUrl: blankToNull(input.recordingUrl) ?? null,
             highlights: input.highlights ?? [],
             perkText: blankToNull(input.perkText) ?? null,
@@ -487,6 +489,7 @@ export class LiveSessionService {
             displaySeats: input.displaySeats,
             bundleDeliveryMode: input.bundleDeliveryMode,
             joinUrl: blankToNull(input.joinUrl),
+            telegramUrl: blankToNull(input.telegramUrl),
             recordingUrl: blankToNull(input.recordingUrl),
             highlights: input.highlights,
             perkText: blankToNull(input.perkText),
@@ -838,6 +841,7 @@ export class LiveSessionService {
       bundleDeliveryMode: session.bundleDeliveryMode,
       seatsTaken: taken,
       joinUrl: session.joinUrl,
+      telegramUrl: session.telegramUrl,
       recordingUrl: session.recordingUrl,
       highlights: session.highlights,
       perkText: session.perkText,

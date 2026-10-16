@@ -13,12 +13,16 @@ import { AuditService } from '../../../shared/audit/audit.service';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { ProductService } from '../../catalog/application/product.service';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
+import { OfflineSaleHandlers } from '../../orders/application/offline-sale-handlers';
+import { OfflineSaleService } from '../../orders/application/offline-sale.service';
 import { OrderEvents } from '../../orders/application/order-events';
 import { OrderService } from '../../orders/application/order.service';
 import { PaymentService } from '../../orders/application/payment.service';
 import { StubPaymentAdapter } from '../../payments/infrastructure/stub-payment.adapter';
 import { LiveSessionNotifications } from './live-session-notifications.service';
 import { LiveSessionService } from './live-session.service';
+import { SessionDetailsService } from './session-details.service';
+import { SessionOfflineSaleHandler } from './session-offline-sale.handler';
 
 /**
  * Live sessions against a real Postgres, wired by hand for the same reason as
@@ -63,8 +67,12 @@ const storage = {
   getSignedDownloadUrl: () => Promise.resolve('https://example.test/testimonial.png'),
 } as never;
 const sessions = new LiveSessionService(prisma, products, orders, entitlements, audit, storage, config);
-const notifications = new LiveSessionNotifications(prisma, mail, config, events, entitlements);
+const details = new SessionDetailsService(prisma, mail);
+const notifications = new LiveSessionNotifications(prisma, mail, config, events, entitlements, details);
 notifications.onModuleInit();
+const offlineHandlers = new OfflineSaleHandlers();
+new SessionOfflineSaleHandler(prisma, offlineHandlers, config).onModuleInit();
+const offline = new OfflineSaleService(prisma, entitlements, offlineHandlers, audit);
 
 const created = { userIds: [] as string[], productIds: [] as string[] };
 const PRICE = 9900n;
@@ -153,6 +161,9 @@ afterAll(async () => {
   await prisma.sessionDayReminder.deleteMany({ where: { day: { liveSessionId: { in: productIds } } } });
   await prisma.sessionBundleDelivery.deleteMany({ where: { liveSessionId: { in: productIds } } });
   await prisma.sessionDateAnnouncement.deleteMany({ where: { liveSessionId: { in: productIds } } });
+  await prisma.sessionDetailReceipt.deleteMany({ where: { liveSessionId: { in: productIds } } });
+  await prisma.sessionDetailEmail.deleteMany({ where: { liveSessionId: { in: productIds } } });
+  await prisma.offlineSale.deleteMany({ where: { productId: { in: productIds } } });
   await prisma.sessionRegistration.deleteMany({ where: { liveSessionId: { in: productIds } } });
   await prisma.liveSessionDay.deleteMany({ where: { liveSessionId: { in: productIds } } });
   await prisma.productBundleItem.deleteMany({ where: { bundleProductId: { in: productIds } } });
@@ -482,59 +493,36 @@ describe('live sessions', () => {
     expect(sentMail.filter((m) => m.tag === 'session-bundle-ready')).toHaveLength(0);
   });
 
-  it('announces dates to buyers once, and again only when the dates move', async () => {
-    // Sold while undated: the buyer is told "to be announced" and nothing more.
-    const session = await createSession({ days: [] });
-    const buyer = await createUser();
+  // The reminder sweep covers every session in the database, so the specs that
+  // need it live here, in the one file that runs it.
+  it('reminds a buyer added by hand like any other, and the reminder counts as their joining link', async () => {
+    const session = await createSession({ days: [{ startsAt: inHours(0.5), durationMinutes: 60 }] });
+    await sessions.update(session.id, { joinUrl: 'https://zoom.us/j/offline-reminded' }, { id: adminId });
+    const email = `session-spec-offline-${randomUUID()}@jsmf.test`;
+    const row = {
+      name: 'Offline Reminded',
+      email,
+      amountPaidMinor: '9900',
+      method: 'UPI_DIRECT',
+      paidAt: new Date(Date.now() - HOUR).toISOString(),
+    };
+
+    const preview = await offline.preview(session.id, [row]);
+    expect(preview.warnings.join(' ')).toMatch(/reminder/);
+    await offline.record(session.id, [row], { userId: adminId, entry: 'FORM' });
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    created.userIds.push(user.id);
+
+    const before = (await details.overview(session.id)).rows.find((r) => r.userId === user.id)!;
+    expect(before.statuses.join_link).toBe('NOT_SENT');
+
     sentMail.length = 0;
-    await registerAndPay(buyer.id, session.id);
+    await notifications.sendDueReminders();
+    expect(sentMail.some((m) => m.to.email === email && m.tag === 'session-reminder')).toBe(true);
 
-    const confirmation = sentMail.find((m) => m.tag === 'session-confirmation');
-    expect(confirmation!.text).toContain('Date to be announced');
-
-    // Nothing to announce yet, and the admin is told why rather than guessing.
-    const empty = await notifications.listDateAnnouncements(session.id);
-    expect(empty.blocker).toMatch(/no dates yet/i);
-    expect(empty.rows).toHaveLength(1);
-    expect(empty.rows[0]).toMatchObject({ userId: buyer.id, status: 'PENDING' });
-    await expect(notifications.announceDates(session.id)).rejects.toThrow(/no dates yet/i);
-
-    // The admin fixes the date. That alone must not email anyone — this is the
-    // whole point of the manual flow.
-    sentMail.length = 0;
-    const firstDate = inHours(72);
-    await sessions.update(session.id, { days: [{ startsAt: firstDate, durationMinutes: 90 }] }, { id: adminId });
-    expect(sentMail.filter((m) => m.tag === 'session-dates-announced')).toHaveLength(0);
-
-    // Now the admin presses the button.
-    const first = await notifications.announceDates(session.id);
-    expect(first).toMatchObject({ attempted: 1, sent: 1, failed: [] });
-
-    const announced = sentMail.filter((m) => m.tag === 'session-dates-announced');
-    expect(announced).toHaveLength(1);
-    expect(announced[0].to.email).toBe(buyer.email);
-    expect(announced[0].subject).toContain('Dates confirmed');
-
-    const listed = await notifications.listDateAnnouncements(session.id);
-    expect(listed.blocker).toBeNull();
-    expect(listed.rows[0]).toMatchObject({ userId: buyer.id, status: 'SENT', lastError: null });
-
-    // Pressing it again reaches nobody: the dates have not changed.
-    sentMail.length = 0;
-    const second = await notifications.announceDates(session.id);
-    expect(second).toMatchObject({ attempted: 0, sent: 0, failed: [] });
-    expect(sentMail.filter((m) => m.tag === 'session-dates-announced')).toHaveLength(0);
-
-    // Reschedule: the buyer was told an old date, so they become sendable
-    // again without the admin having to force a re-send to everyone.
-    await sessions.update(session.id, { days: [{ startsAt: inHours(96), durationMinutes: 90 }] }, { id: adminId });
-
-    const afterMove = await notifications.listDateAnnouncements(session.id);
-    expect(afterMove.rows[0]).toMatchObject({ userId: buyer.id, status: 'PENDING', sentAt: null });
-
-    const third = await notifications.announceDates(session.id);
-    expect(third).toMatchObject({ attempted: 1, sent: 1, failed: [] });
-    expect(sentMail.filter((m) => m.tag === 'session-dates-announced')).toHaveLength(1);
+    const after = (await details.overview(session.id)).rows.find((r) => r.userId === user.id)!;
+    expect(after.statuses.join_link).toBe('UP_TO_DATE');
+    expect(after.outstanding).toEqual(['dates']);
   });
 
   it('refunding a deferred session takes the planner back with the seat', async () => {

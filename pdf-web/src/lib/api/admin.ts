@@ -193,23 +193,6 @@ export interface BundleSendResult {
 
 export type AnnouncementStatus = 'PENDING' | 'SENT' | 'FAILED';
 
-/** One buyer's row in the date-announcement table. */
-export interface DateAnnouncement {
-  userId: string;
-  name: string;
-  email: string | null;
-  status: AnnouncementStatus;
-  lastError: string | null;
-  sentAt: string | null;
-  attempts: number;
-}
-
-export interface DateAnnouncementList {
-  blocker: string | null;
-  currentStartsAt: string | null;
-  rows: DateAnnouncement[];
-}
-
 /** A live session as the admin API returns it. Money is paise, as a string. */
 export interface SessionDay {
   id: string;
@@ -238,6 +221,8 @@ export interface AdminSession {
   bundleDeliveryMode: BundleDeliveryMode;
   seatsTaken: number;
   joinUrl: string | null;
+  /** The Telegram group for registered candidates. Private, like the joining link. */
+  telegramUrl: string | null;
   recordingUrl: string | null;
   highlights: string[];
   perkText: string | null;
@@ -275,6 +260,7 @@ export interface SessionInput {
   priceAmountMinor?: string;
   compareAtAmountMinor?: string | null;
   joinUrl?: string | null;
+  telegramUrl?: string | null;
   recordingUrl?: string | null;
   highlights?: string[];
   perkText?: string | null;
@@ -340,17 +326,4 @@ export const adminSessionApi = {
    */
   sendBundle: (id: string, userIds?: string[]) =>
     api.post<BundleSendResult>(`/admin/sessions/${id}/bundle-deliveries/send`, { userIds }),
-
-  /** Who has been told this session's dates, and who has not. */
-  dateAnnouncements: (id: string) =>
-    api.get<DateAnnouncementList>(`/admin/sessions/${id}/date-announcements`),
-
-  /**
-   * Sends the date-announcement email. Omit `userIds` for everyone not yet
-   * told the current dates, which also retries failures and reaches buyers
-   * told about an older date; anyone already told the current dates is
-   * skipped, so repeating this never sends twice.
-   */
-  sendDateAnnouncement: (id: string, userIds?: string[]) =>
-    api.post<BundleSendResult>(`/admin/sessions/${id}/date-announcements/send`, { userIds }),
 };

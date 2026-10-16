@@ -186,130 +186,51 @@ Why this is clean: seats taken = count of active entitlements, computed live (ne
 
 ---
 
-## Part 3 — Backfill the 5-6 existing Payment Page buyers
+## Part 3 — Add the buyers who paid outside the website
 
-### 3a — Test the backfill script locally first
+People who bought through the Razorpay Payment Page, or paid the UPI id
+directly, need to be recorded so reminders, the session details email and the seat
+count include them. The full reference — file format, what each buyer becomes,
+the design — is **[docs/offline-sales](../offline-sales/README.md)**.
 
-Do this before touching production. You need your local Docker stack running (`npm run db:up`).
+### 3a — Try it locally first
 
-**Step 1: Create a dummy `buyers-test.json`** with one fake entry
+1. Store admin (local) → **Sessions** → any test session → **Buyers added by hand → Add buyers**.
+2. **Fill in** one fake buyer (an `@example.com` address), with a discount, and
+   a payment time in IST. **Check** → the review says *New account*.
+3. **Add 1 buyer**. The result lists its order number; the session's
+   **Buyers added by hand** and **Registrations** both show them.
+4. **Add buyers** again with the same buyer → the review says
+   *Already has a seat — skipped*. Nothing is duplicated.
 
-```json
-[
-  {
-    "name": "Test Buyer",
-    "email": "testbuyer@example.com",
-    "whatsappNumber": "9999999999",
-    "exam": "UPSC",
-    "stage": "Prelims",
-    "amountMinor": 100,
-    "razorpayPaymentId": "pay_test123",
-    "paidAt": "2026-09-01"
-  }
-]
-```
+### 3b — On production
 
-**Step 2: Dry run against your local DB**
+Do this **after** the code is deployed and a live payment has been verified.
 
-```bash
-npm run db:backfill:session-buyers -- --session your-session-slug --file buyers-test.json
-```
+1. Store admin → **Sessions** → the session → **Buyers added by hand → Add buyers**.
+2. Type each buyer in (**Fill in**), or upload a JSON file (**Upload a file** —
+   **Download a template** gives one to start from). Per buyer: name, the email
+   they will sign in with, what they paid, any discount, how they paid, and when
+   — with the time. For a Payment Page sale, add the `pay_…` id from the Razorpay
+   dashboard, so a refund there takes the seat back.
+3. **Check**. Fix anything listed against a row; nothing is saved until the
+   check is clean. Read the warnings (over capacity; a reminder about to go out).
+4. **Add N buyers**. No email is sent now.
+5. Verify one buyer in the list. From now on they receive:
+   - Day reminders (with joining link) before each session day
+   - Date announcements from the admin
+   - Bundled PDF delivery when the admin sends it
+   - Correct seat count in the admin's total
 
-Check the output says "would create account, order ₹1.00, entitlement, registration" — not an error.
-
-**Step 3: Commit it**
-
-```bash
-npm run db:backfill:session-buyers -- --session your-session-slug --file buyers-test.json --commit
-```
-
-**Step 4: Verify in the local admin panel**
-
-- Log into your local admin → the test buyer should appear with a seat
-- Check the DB directly if you like:
-  ```sql
-  SELECT u.email, e.status, sr.whatsapp_number
-  FROM users u
-  JOIN entitlements e ON e.user_id = u.id
-  JOIN session_registrations sr ON sr.user_id = u.id
-  WHERE u.email = 'testbuyer@example.com';
-  ```
-- All four rows must exist: user, order, entitlement, session_registration
-
-**Step 5: Run it again — idempotency check**
-
-```bash
-npm run db:backfill:session-buyers -- --session your-session-slug --file buyers-test.json --commit
-```
-
-Output must say **"skipped 1 already seated"** — not create a duplicate.
-
-**Step 6: Clean up the test row (optional)**
-
-Delete the test buyer from your local DB so it doesn't clutter local data. This is local only — no prod impact.
-
----
-
-### 3b — Run on production
-
-Do this **after** the code is deployed and you have verified the live payment works.
-
-### Step 1: Prepare `buyers.json`
-
-One entry per person. Save the file anywhere on your machine.
-
-```json
-[
-  {
-    "name": "Buyer Name",
-    "email": "buyer@gmail.com",
-    "whatsappNumber": "9876543210",
-    "exam": "UPSC",
-    "stage": "Prelims",
-    "amountMinor": 49900,
-    "razorpayPaymentId": "pay_xxxxx",
-    "paidAt": "2026-09-15"
-  }
-]
-```
-
-Field notes:
-
-| Field | Required | Notes |
-|---|---|---|
-| `name` | Yes | As it should appear in emails |
-| `email` | Yes | The address they will sign in with via Google |
-| `whatsappNumber` | No | Digits only, e.g. `9876543210` or `919876543210` — both work |
-| `exam` | Yes | Must match one of the allowed values in the system |
-| `stage` | Yes | Must match one of the allowed values in the system |
-| `amountMinor` | Yes | Amount in paise — ₹499 = `49900` |
-| `razorpayPaymentId` | No | `pay_...` from the Razorpay dashboard — needed for refunds to work |
-| `paidAt` | No | ISO date, e.g. `2026-09-15` — defaults to today if omitted |
-
-### Step 2: Dry run first (writes nothing)
+The terminal does the same if the panel is unavailable, with the same file:
 
 ```bash
 npm run db:backfill:session-buyers -- --session your-session-slug --file buyers.json
-```
-
-Read the output — it tells you what it *would* do for each person. No data is touched.
-
-### Step 3: Commit the data
-
-```bash
 npm run db:backfill:session-buyers -- --session your-session-slug --file buyers.json --commit
 ```
 
-The script is safe to re-run — anyone who already has a seat is skipped automatically.
-
-### Step 4: Verify one buyer
-
-- Log into the admin panel → check that buyer appears with a seat
-- That buyer will now receive:
-  - Day reminders (with joining link) before each session day
-  - Date announcements from the admin
-  - Bundled PDF delivery when the admin sends it
-  - Correct seat count in the admin's total
+The first is a dry run that writes nothing. It needs `DATABASE_URL` pointing at
+the database to write to — point it back at local afterwards.
 
 ---
 

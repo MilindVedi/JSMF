@@ -87,6 +87,8 @@ model User {
   sessionRegistrations   SessionRegistration[]
   bundleDeliveries       SessionBundleDelivery[]
   dateAnnouncements      SessionDateAnnouncement[]
+  sessionDetailReceipts  SessionDetailReceipt[]
+  sessionDetailEmails    SessionDetailEmail[]
   sessionTestimonials    SessionTestimonial[]
   practiceSessions       PracticeSession[]
   pyqAttempts            Attempt[]
@@ -102,6 +104,8 @@ model User {
   legalVersionsPublished LegalDocumentVersion[]    @relation("LegalVersionPublishedBy")
   analyticsEvents        AnalyticsEvent[]
   mentorshipBookings     MentorshipBooking[]
+  offlineSales           OfflineSale[]             @relation("OfflineSaleBuyer")
+  offlineSalesRecorded   OfflineSale[]             @relation("OfflineSaleRecordedBy")
 
   @@map("users")
   @@schema("public")
@@ -450,6 +454,7 @@ model Product {
   inBundles          ProductBundleItem[]   @relation("BundleChild")
   liveSession        LiveSession?
   mentorshipOffering MentorshipOffering?
+  offlineSales       OfflineSale[]
 
   @@index([status, publishedAt(sort: Desc)])
   @@index([type])
@@ -715,6 +720,7 @@ model Order {
   redemption           CouponRedemption?
   sessionRegistrations SessionRegistration[]
   mentorshipBooking    MentorshipBooking?
+  offlineSale          OfflineSale?
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
@@ -752,6 +758,10 @@ enum PaymentProvider {
   /// Development adapter: simulates the full authorize/capture/webhook cycle
   /// so the payment flow can be built and tested before Razorpay keys exist.
   STUB
+  /// Money that arrived outside any provider — a direct UPI transfer, a bank
+  /// transfer, cash — recorded by an admin. Nothing to refund through an API;
+  /// see OfflineSale for how it was paid.
+  OFFLINE
 
   @@schema("public")
 }
@@ -1127,6 +1137,10 @@ model LiveSession {
   /// public response. Nullable because it is often created days after the
   /// session is announced.
   joinUrl                String?            @map("join_url")
+  /// The Telegram group for this session's registered candidates. Private like
+  /// the joining link: sent in the confirmation and the session details email,
+  /// never in a public response.
+  telegramUrl            String?            @map("telegram_url")
   recordingUrl           String?            @map("recording_url")
   /// "What you'll learn" bullets, in display order. An array rather than a
   /// child table: they are never queried, filtered or referenced, and always
@@ -1183,6 +1197,8 @@ model LiveSession {
   registrations     SessionRegistration[]
   deliveries        SessionBundleDelivery[]
   dateAnnouncements SessionDateAnnouncement[]
+  detailReceipts    SessionDetailReceipt[]
+  detailEmails      SessionDetailEmail[]
   testimonials      SessionTestimonial[]
 
   @@index([startsAt])
@@ -2138,5 +2154,131 @@ model MentorshipBooking {
   @@index([userId, startsAt(sort: Desc)])
   @@index([status, startsAt])
   @@map("mentorship_bookings")
+  @@schema("public")
+}
+
+// --- offline sales -----------------------------------------------------------
+
+/// How the money for an offline sale arrived.
+enum OfflinePaymentMethod {
+  /// Razorpay's hosted Payment Page — a real Razorpay payment, refundable there.
+  RAZORPAY_PAYMENT_PAGE
+  UPI_DIRECT
+  BANK_TRANSFER
+  CASH
+  OTHER
+
+  @@schema("public")
+}
+
+/// How an admin put the sale into the system.
+enum OfflineSaleEntry {
+  FORM
+  FILE
+  /// prisma/backfill-session-buyers.ts, from a terminal.
+  SCRIPT
+
+  @@schema("public")
+}
+
+/// A purchase whose money arrived outside checkout, recorded by an admin.
+///
+/// The order, its payment and the entitlement are ordinary rows — every
+/// reminder, seat count and refund path treats this buyer like any other. This
+/// row only says where the money came from and who recorded it, which is what
+/// makes "the buyers we added by hand" a list rather than a guess.
+model OfflineSale {
+  id           String               @id @default(uuid(7)) @db.Uuid
+  /// One order per sale; the order holds the amounts (subtotal, discount, total).
+  orderId      String               @unique @map("order_id") @db.Uuid
+  productId    String               @map("product_id") @db.Uuid
+  userId       String               @map("user_id") @db.Uuid
+  method       OfflinePaymentMethod
+  /// What identifies the payment where it happened: a Razorpay `pay_…` id, a
+  /// UPI transaction reference (UTR), a cheque number.
+  reference    String?              @db.VarChar(100)
+  note         String?              @db.VarChar(500)
+  paidAt       DateTime             @map("paid_at") @db.Timestamptz(6)
+  entry        OfflineSaleEntry
+  /// Null for sales recorded by the script, which has no signed-in admin.
+  recordedById String?              @map("recorded_by_id") @db.Uuid
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  product    Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  user       User    @relation("OfflineSaleBuyer", fields: [userId], references: [id], onDelete: Restrict)
+  recordedBy User?   @relation("OfflineSaleRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([productId, paidAt])
+  @@map("offline_sales")
+  @@schema("public")
+}
+
+// --- session details: what each attendee was actually sent ------------------
+
+/// Which email carried a detail to an attendee.
+enum SessionDetailSource {
+  /// The confirmation straight after payment.
+  CONFIRMATION
+  /// The session details email an admin sends.
+  DETAILS_EMAIL
+  /// The automatic reminder before a day (it carries the joining link).
+  REMINDER
+
+  @@schema("public")
+}
+
+enum SessionDetailEmailStatus {
+  SENT
+  FAILED
+
+  @@schema("public")
+}
+
+/// What one seat holder was last actually sent, one row per detail.
+///
+/// The admin's table compares this with the session as it is now: no row is
+/// "not sent", a different value is "changed since sent", the same value is
+/// "up to date". Storing the value itself rather than a version number is what
+/// makes going back to an earlier link work — whoever last received that exact
+/// link is up to date again.
+model SessionDetailReceipt {
+  liveSessionId String              @map("live_session_id") @db.Uuid
+  userId        String              @map("user_id") @db.Uuid
+  /// "dates", "join_link", "telegram" (events/domain/session-details.ts). Text,
+  /// not an enum, so a new kind of detail needs no migration.
+  item          String              @db.VarChar(40)
+  /// Exactly what they received: the link, or the schedule's fingerprint.
+  value         String
+  source        SessionDetailSource
+  receivedAt    DateTime            @map("received_at") @db.Timestamptz(6)
+
+  liveSession LiveSession @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([liveSessionId, userId, item])
+  @@map("session_detail_receipts")
+  @@schema("public")
+}
+
+/// Every session details email an admin sent, with exactly what it carried —
+/// the history behind the receipts, and where a failure's reason is kept.
+model SessionDetailEmail {
+  id            String                   @id @default(uuid(7)) @db.Uuid
+  liveSessionId String                   @map("live_session_id") @db.Uuid
+  userId        String                   @map("user_id") @db.Uuid
+  /// The details this email carried, item → value: { "join_link": "https://…" }.
+  items         Json
+  status        SessionDetailEmailStatus
+  error         String?
+  /// The admin who sent it.
+  sentById      String?                  @map("sent_by_id") @db.Uuid
+  createdAt     DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  liveSession LiveSession @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([liveSessionId, userId, createdAt(sort: Desc)])
+  @@map("session_detail_emails")
   @@schema("public")
 }

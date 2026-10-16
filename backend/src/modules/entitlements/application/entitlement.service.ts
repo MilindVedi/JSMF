@@ -16,6 +16,11 @@ export interface GrantInput {
   sourceOrderId?: string | null;
   sourceProductId?: string | null;
   expiresAt?: Date | null;
+  /**
+   * When access began, if not now — an offline sale is dated at its real
+   * payment. Only used when this call creates the entitlement.
+   */
+  grantedAt?: Date;
 }
 
 /**
@@ -64,6 +69,7 @@ export class EntitlementService {
           sourceProductId: input.sourceProductId ?? null,
           status: EntitlementStatus.ACTIVE,
           expiresAt: input.expiresAt ?? null,
+          ...(input.grantedAt && { grantedAt: input.grantedAt, createdAt: input.grantedAt }),
         },
       ],
       skipDuplicates: true,

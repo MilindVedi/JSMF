@@ -22,11 +22,12 @@ import { actorFrom } from '../../catalog/http/actor';
 import type { AuthenticatedUser } from '../../identity/application/auth.service';
 import { LiveSessionNotifications } from '../application/live-session-notifications.service';
 import { LiveSessionService } from '../application/live-session.service';
+import { SessionDetailsService } from '../application/session-details.service';
 import {
   CreateLiveSessionDto,
   ReorderTestimonialsDto,
   SendBundleDto,
-  SendDateAnnouncementDto,
+  SendSessionDetailsDto,
   UpdateLiveSessionDto,
 } from './dto/live-session.dto';
 
@@ -41,6 +42,7 @@ export class AdminLiveSessionController {
   constructor(
     private readonly sessions: LiveSessionService,
     private readonly notifications: LiveSessionNotifications,
+    private readonly details: SessionDetailsService,
   ) {}
 
   @Get()
@@ -134,31 +136,33 @@ export class AdminLiveSessionController {
     return this.notifications.releaseBundle(id, { userIds: dto.userIds });
   }
 
-  @Get(':id/date-announcements')
+
+  @Get(':id/details')
   @ApiOperation({
-    summary: 'Who has been told this session\'s dates, and who has not',
+    summary: 'Which seat holders still need the dates, the joining link or the Telegram link',
     description:
-      'For sessions sold before dates were set. Reports each seat holder as PENDING, ' +
-      'SENT or FAILED (with the reason), plus whether sending is possible yet.',
+      'Per seat holder and per detail: UP_TO_DATE, NOT_SENT, CHANGED (they have an older one) ' +
+      'or NOT_SET (the session has none). Counts every email that carried a detail — the ' +
+      'confirmation, the reminder, and the details email.',
   })
-  dateAnnouncements(@Param('id', ParseUUIDPipe) id: string) {
-    return this.notifications.listDateAnnouncements(id);
+  sessionDetails(@Param('id', ParseUUIDPipe) id: string) {
+    return this.details.overview(id);
   }
 
-  @Post(':id/date-announcements/send')
+  @Post(':id/details/send')
   @HttpCode(200)
   @ApiOperation({
-    summary: 'Send the date-announcement email to buyers',
+    summary: 'Email seat holders the details they still need',
     description:
-      'Omit userIds to send to everyone who has not been told the current dates yet, which ' +
-      'also retries previous failures and reaches buyers told about an older date. Anyone ' +
-      'already told the current dates is skipped, so this is safe to repeat.',
+      'Each person gets one email with only what they need — never sent, or changed since. ' +
+      'Omit userIds for everyone; anyone up to date is skipped, so this is safe to repeat.',
   })
-  sendDateAnnouncement(
+  sendSessionDetails(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: SendDateAnnouncementDto,
+    @Body() dto: SendSessionDetailsDto,
+    @CurrentUser() admin: AuthenticatedUser,
   ) {
-    return this.notifications.announceDates(id, { userIds: dto.userIds });
+    return this.details.send(id, { userIds: dto.userIds, sentById: admin.id });
   }
 
   @Post(':id/testimonials')

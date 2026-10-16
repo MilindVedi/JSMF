@@ -81,6 +81,7 @@ export function SessionForm({
     price: paiseToRupees(session?.priceAmountMinor ?? null),
     compareAt: paiseToRupees(session?.compareAtAmountMinor ?? null),
     joinUrl: session?.joinUrl ?? "",
+    telegramUrl: session?.telegramUrl ?? "",
     recordingUrl: session?.recordingUrl ?? "",
     highlights: (session?.highlights ?? []).join("\n"),
     perkText: session?.perkText ?? "",
@@ -149,6 +150,7 @@ export function SessionForm({
         priceAmountMinor: price,
         compareAtAmountMinor: rupeesToPaise(values.compareAt),
         joinUrl: values.joinUrl.trim() || null,
+        telegramUrl: values.telegramUrl.trim() || null,
         recordingUrl: values.recordingUrl.trim() || null,
         highlights: values.highlights
           .split("\n")
@@ -347,8 +349,8 @@ export function SessionForm({
                 Remove every date to go back to &ldquo;to be announced&rdquo;.
               </p>
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                Saving a date does not email existing attendees. Use the &ldquo;Notify attendees&rdquo; card
-                below to tell them the schedule is confirmed.
+                Saving a date does not email existing attendees. The &ldquo;Session details sent&rdquo; card
+                below shows who needs the new schedule, and sends it.
               </p>
             </div>
             <Field label="Platform" className="sm:col-span-2">
@@ -393,9 +395,15 @@ export function SessionForm({
           <CardContent className="grid gap-4">
             <Field
               label="Joining link"
-              hint="Private. Emailed to seat holders on payment (if set) and in the reminder before the start. Reminders wait until this is filled in."
+              hint="Private. Emailed to seat holders on payment (if set), in the reminder before each day, and from Session details sent below. Reminders wait until this is filled in."
             >
               <Input value={values.joinUrl} onChange={set("joinUrl")} placeholder="https://zoom.us/j/…" />
+            </Field>
+            <Field
+              label="Telegram group link"
+              hint="Private. A group just for registered candidates — sent on payment (if set) and from Session details sent below. Changing it shows who needs the new one."
+            >
+              <Input value={values.telegramUrl} onChange={set("telegramUrl")} placeholder="https://t.me/+…" />
             </Field>
             <Field label="Recording link" hint="Shown on the website after the session.">
               <Input value={values.recordingUrl} onChange={set("recordingUrl")} placeholder="https://youtube.com/…" />

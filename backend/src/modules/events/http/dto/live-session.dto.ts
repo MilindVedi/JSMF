@@ -234,6 +234,18 @@ export class CreateLiveSessionDto {
   @MaxLength(2000)
   recordingUrl?: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'The Telegram group for registered candidates. Private: sent in the confirmation and ' +
+      'the session details email, never shown on the website. Empty clears it.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== '')
+  @Matches(/^https:\/\/\S+$/, { message: 'The Telegram link must be an https:// link, like https://t.me/+AbCdEf' })
+  @MaxLength(2000)
+  telegramUrl?: string | null;
+
   @ApiPropertyOptional({ type: [String], description: '"What you\'ll learn", in order.' })
   @IsOptional()
   @IsArray()
@@ -276,12 +288,12 @@ export class SendBundleDto {
   userIds?: string[];
 }
 
-export class SendDateAnnouncementDto {
+export class SendSessionDetailsDto {
   @ApiPropertyOptional({
     type: [String],
     description:
-      'Who to send to. Omit for everyone who has not been told the current dates yet, ' +
-      'which also retries earlier failures and covers buyers told about old dates.',
+      'Who to send to. Omit for every seat holder; each gets only the details they still ' +
+      'need, and anyone up to date is skipped.',
   })
   @IsOptional()
   @IsArray()

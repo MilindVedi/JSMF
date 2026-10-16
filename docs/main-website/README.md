@@ -303,64 +303,30 @@ follow.
 
 Everyone who bought through the Payment Page, or paid the UPI id directly, is
 invisible to the platform — no account, no order, no entitlement — so the seat
-count, the day reminder, the "Notify attendees" send and the bundled PDF all
-pass them by. `npm run db:backfill:session-buyers`
-(`backend/prisma/backfill-session-buyers.ts`) writes them in as ordinary buyers:
-user, PAID order and item, CAPTURED payment, ACTIVE `PURCHASE` entitlement, the
-session's included items when it grants them at payment (`IMMEDIATE` mode,
-exactly as checkout does — the deferred modes release them later to every seat
-holder, backfilled ones included), and a session registration. A registration
-left unfinished on the website by the same person is updated, not duplicated.
+count, the day reminder, the session details email and the bundled PDF all
+pass them by. An admin records them as ordinary buyers from the session's page
+(**Buyers added by hand → Add buyers**), by form or JSON file, with any
+discount; `npm run db:backfill:session-buyers` does the same from a terminal.
+See **[docs/offline-sales](../offline-sales/README.md)** for the file format,
+what each buyer becomes, and the design.
 
-Each buyer has `paidVia`: `razorpay-payment-page` (the default — give the
-`pay_…` id so a refund in Razorpay revokes the seat, as for any purchase) or
-`upi-direct` (no Razorpay id; `payments.method` is `upi`). The admin refund
-button refuses a `upi-direct` order — there is nothing on Razorpay to refund.
-
-The dry run prints a warning when a regular sweep would email them within ~5
-minutes of the run anyway: a session day starting inside the reminder window,
-or an ended `AUTO_AFTER_SESSION` session whose PDF releases automatically.
-
-```
-npm run db:backfill:session-buyers -- --session <product-slug> --file buyers.json
-npm run db:backfill:session-buyers -- --session <product-slug> --file buyers.json --commit
-```
-
-Dry run is the default; nothing is written without `--commit`. Re-running is
-safe — anyone already holding an active seat is skipped whole, so a partial run
-is simply run again. It sends no email: these people were confirmed by hand when
-they paid, and a confirmation weeks later reads as a second charge.
-`confirmationSentAt` is set for the same reason.
-
-Three details that decide whether it works:
+Two details that decide whether it works:
 
 - **The registration row is not optional.** The entitlement alone covers the
-  seat count, the date announcement and the bundled PDF — but the day reminder
+  seat count, the session details email and the bundled PDF — but the day reminder
   query (`sendDueReminders`) reads `sessionRegistration` joined to an active
-  entitlement, so an entitlement-only backfill would silently drop these buyers
-  from the one email that carries the joining link. This was confirmed against
-  a real database, not reasoned about: with both rows present they appear in all
-  four queries.
+  entitlement, so an entitlement-only record would silently drop these buyers
+  from the one email that carries the joining link. The session's offline-sale
+  handler writes it, dated at the payment.
 - **The email must be the one they will sign in with.** Google sign-in attaches
   to an existing account by email only when Google says the address is verified;
   a buyer who signs in with a different address gets a second, empty account and
   no seat. Confirm the addresses with each buyer rather than assuming the one
-  they typed on the Razorpay page.
-  A buyer whose address is not a Google account can instead use **Create
-  account** with that same email: signup sends the usual code, and once it is
-  entered the password is set on the backfilled account (seat included) rather
-  than refused as a duplicate. This only applies to an account nobody has ever
-  signed in to — no password, no Google login, no mobile sign-in, no login on
-  record (`AccountRecoveryService.isUnclaimed`).
-- **`users.phone` is deliberately left unset.** It is `UNIQUE`, and every path
-  that writes it verifies it first; an unverified number there would block the
-  real owner from claiming it later. The number goes on the registration's
-  `whatsappNumber`, which is explicitly a contact number on file.
-
-`exam` and `stage` are required columns with no sensible default, so they are
-required per buyer in the input file and validated against `EXAM_OPTIONS` /
-`STAGE_OPTIONS` before anything is written. Ask the buyers, or use what the
-Razorpay page's custom fields captured.
+  they typed on the Razorpay page. A buyer whose address is not a Google account
+  can instead use **Create account** with that same email: once the code is
+  entered, the password is set on the pre-made account (seat included) rather
+  than refused as a duplicate — only for an account nobody has ever signed in to
+  (`AccountRecoveryService.isUnclaimed`).
 
 ---
 
@@ -402,45 +368,70 @@ optional `userIds` body.
 
 ---
 
-## 3d. Announcing dates to people who already bought
+## 3d. Session details: dates, joining link, Telegram group
 
-A session can be sold before its dates exist (§1). Nothing about saving those
-dates later emails the buyers: `LiveSessionService.update()` sends no mail and
-raises no event, by design. Without a deliberate step, the first a buyer hears
-of the schedule is the ordinary "Starting soon" reminder, an hour before it
-begins — too late for something they booked weeks earlier.
+Three things an attendee needs from us, which often arrive after they pay: the
+**dates** (a session can be sold before they are fixed), the **joining link**,
+and the **Telegram group** for registered candidates (`live_sessions.telegram_url`,
+private like the joining link). Saving any of them emails nobody —
+`LiveSessionService.update()` sends no mail, by design. The admin sends them
+from the **Session details sent** card on the session's page.
 
-So announcing is an **explicit admin action**: a *Notify attendees* card on the
-session's admin page, modelled on the bundle-delivery table above (§3c).
-Pressing it emails every seat holder the confirmed dates
-(`liveSessionDatesAnnounced`, tag `session-dates-announced`), and records the
-outcome per buyer in **`session_date_announcements`** — PENDING / SENT /
-FAILED with the reason, so a bad address is visible and retryable rather than
-lost in a log.
+**What each person was last sent** is stored per detail in
+`session_detail_receipts` — the value itself (the link, or a fingerprint of the
+whole schedule). Comparing it with the session now gives, per person and per
+detail:
 
-The row also stores `announced_starts_at`: the first-day start that buyer was
-told about. That one column is what makes a **reschedule** work without a
-second table — when the dates move, every row's `announced_starts_at` no
-longer matches the session, so those buyers show as PENDING again and the same
-button tells them the new time. Someone already told the *current* dates is
-always skipped, so the button is safe to press repeatedly.
+| Status | Meaning |
+|---|---|
+| Up to date | They received exactly what the session has now |
+| Not sent | They never received this detail |
+| Changed since sent | They have an older value |
+| Not set | The session has none — nothing to send (a removed link) |
 
-Sending is refused, with a message the UI shows verbatim, while the session has
-no dates at all.
+Because the value is stored, not a version number, going back to an earlier link
+makes whoever last received that exact link up to date again.
 
-The admin form says so where the dates are edited ("Saving a date does not
-email existing attendees"), because the failure mode here is an admin assuming
-it was handled.
+**Every email that carries a detail counts:** the confirmation (all three, as
+they are at payment — so someone paying after the links are set is up to date
+at once), the reminder before each day (the joining link), and the details email
+itself. Buyers added by hand (offline sales) received nothing, so everything is
+due for them.
 
-API: `GET /admin/sessions/:id/date-announcements`,
-`POST /admin/sessions/:id/date-announcements/send` with an optional `userIds`
-body (omit it for everyone not yet told the current dates, which also retries
-failures). Log line: `session.dates_announced`.
+**The details email** (`liveSessionDetails`, tag `session-details`) carries only
+what that person still needs, in one email; the session and its time are always
+shown for context. The subject names the one thing when there is one ("Updated
+joining link", "Join the Telegram group", "Updated schedule"); several together
+read "Your session details". With dates but no joining link yet, it says the
+link will follow. The Telegram line reads "A separate Telegram group just for
+registered candidates of this session — join here."
 
-**Not covered:** a date set in the past, or one starting before the next
-5-minute sweep, still produces no automatic reminder — `startsAt: { gt: now }`
-excludes it and nothing backfills. Accepted deliberately; the announcement
-email above is unaffected and still goes out.
+The card shows a count per detail ("5 need the updated joining link"), a
+status per person, and the last details email each person got (with the failure
+reason, if it failed). **Send everything outstanding**, **Send to selected** and
+a per-row **Send** all follow the same rule, so pressing twice sends nothing new.
+Sending is refused only when the session has no dates and no links at all.
+
+History: every details email is kept in `session_detail_emails` with exactly
+what it carried, its outcome and who sent it; every change to the links is in
+the audit log (`live_session.updated`, before and after).
+
+Design: `events/domain/session-details.ts` is pure — the list of details, how to
+read each one's current value, and the status rule. A new detail (a WhatsApp
+group, the recording) is an entry there plus its part of the email; items are
+stored as text, so it needs no migration.
+
+API: `GET /admin/sessions/:id/details`, `POST /admin/sessions/:id/details/send`
+with an optional `userIds` body. Log line: `session.details_sent`.
+
+Migration `20261016150000_session_details` (additive) carried over anyone
+already told the current dates — by the old "Notify attendees" or a real
+confirmation sent after the dates last changed. Links were not carried over:
+nothing recorded which link an earlier email held, so they show as not sent.
+`session_date_announcements` stays in the database, unused.
+
+**Not covered:** a day set in the past, or one starting before the next 5-minute
+sweep, still gets no automatic reminder — `startsAt: { gt: now }` excludes it.
 
 ---
 
@@ -496,7 +487,7 @@ is hidden entirely when a session has no testimonials.
 | `POST /sessions/:id/register` | user | save answers, start Razorpay |
 | `/admin/sessions` (CRUD, publish, unpublish, archive, `/:id/registrations`) | ADMIN, EDUCATOR | managed at **store.jsmf.me/admin/sessions** |
 | `GET /admin/sessions/:id/bundle-deliveries`, `POST …/bundle-deliveries/send` | ADMIN, EDUCATOR | §3c |
-| `GET /admin/sessions/:id/date-announcements`, `POST …/date-announcements/send` | ADMIN, EDUCATOR | §3d |
+| `GET /admin/sessions/:id/details`, `POST …/details/send` | ADMIN, EDUCATOR | §3d |
 | `POST /admin/sessions/:id/testimonials`, `PATCH …/testimonials/reorder`, `DELETE …/testimonials/:testimonialId` | ADMIN, EDUCATOR | §3e |
 | `POST /internal/session-reminders` | Cloud Run IAM | reminder sweep (reminders **and** the `AUTO_AFTER_SESSION` bundle sweep, §3c) |
 | `GET /settings` | public | `{ showSpamFolderNote }` — read by both jsmf.me and store.jsmf.me, §7 |
@@ -578,7 +569,7 @@ writing, prod is still running on **test** Razorpay keys with
   Razorpay test-mode window opening with ₹99. Admin create/edit/publish, the
   registrations table, the bundle-delivery table, and testimonial
   upload/reorder/remove.
-- Not driven: the *Notify attendees* card (§3d) — backend covered by the
+- Not driven: the *Session details sent* card (§3d) — backend covered by the
   integration test above, but the admin UI itself has only been typechecked
   and linted, not clicked; completing a Razorpay payment in the browser
   (settlement is covered by the tests), a real Google sign-in round trip on

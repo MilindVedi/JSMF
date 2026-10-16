@@ -1,12 +1,12 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import {
-  AnnouncementStatus,
   BundleDeliveryMode,
   BundleDeliveryStatus,
   EntitlementSource,
   EntitlementStatus,
   ProductStatus,
   ProductType,
+  SessionDetailSource,
 } from '@prisma/client';
 import { AppConfig } from '../../../config/config.module';
 import { activity } from '../../../shared/logging/activity';
@@ -14,7 +14,6 @@ import { MailService } from '../../../shared/mail/application/mail.service';
 import {
   liveSessionBundleReady,
   liveSessionConfirmation,
-  liveSessionDatesAnnounced,
   liveSessionReminder,
 } from '../../../shared/mail/templates/mail-templates';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
@@ -24,7 +23,9 @@ import {
   type OrderPaidEvent,
   type OrderPaidListener,
 } from '../../orders/application/order-events';
+import { currentDetailValues, valuesToRecord } from '../domain/session-details';
 import { firstName, formatMoney, sessionDayLabel, sessionWhenLines } from '../domain/session-display';
+import { SessionDetailsService } from './session-details.service';
 
 /** One buyer's row in the admin's delivery table. */
 export interface BundleDeliveryRow {
@@ -32,17 +33,6 @@ export interface BundleDeliveryRow {
   name: string;
   email: string | null;
   status: BundleDeliveryStatus;
-  lastError: string | null;
-  sentAt: Date | null;
-  attempts: number;
-}
-
-/** One buyer's row in the admin's date-announcement table. */
-export interface DateAnnouncementRow {
-  userId: string;
-  name: string;
-  email: string | null;
-  status: AnnouncementStatus;
   lastError: string | null;
   sentAt: Date | null;
   attempts: number;
@@ -69,6 +59,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
     private readonly config: AppConfig,
     private readonly orderEvents: OrderEvents,
     private readonly entitlements: EntitlementService,
+    private readonly details: SessionDetailsService,
   ) {}
 
   onModuleInit(): void {
@@ -120,6 +111,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
       whenLines: sessionWhenLines(session.days),
       platformLabel: session.platformLabel,
       joinUrl: session.joinUrl,
+      telegramUrl: session.telegramUrl,
       totalFormatted: formatMoney(event.totalAmountMinor, event.currency),
       orderNumber: event.orderNumber,
       paymentId: event.paymentId,
@@ -143,6 +135,14 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
         where: { liveSessionId: session.productId, userId: event.userId },
         data: { confirmationSentAt: new Date() },
       });
+      // The confirmation carries whatever details exist now — so a buyer who
+      // pays after the links are set is already up to date in the admin table.
+      await this.details.recordReceived(
+        session.productId,
+        event.userId,
+        valuesToRecord(currentDetailValues(session), ['dates', 'join_link', 'telegram']),
+        SessionDetailSource.CONFIRMATION,
+      );
       activity(this.logger, 'session.confirmation_sent', {
         orderNumber: event.orderNumber,
         userId: event.userId,
@@ -261,6 +261,13 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
 
         if (outcome.delivered) {
           sent++;
+          // The reminder carries the joining link, so it counts as received.
+          await this.details.recordReceived(
+            session.productId,
+            registration.userId,
+            [['join_link', session.joinUrl]],
+            SessionDetailSource.REMINDER,
+          );
         } else {
           failed++;
           await this.prisma.sessionDayReminder.delete({
@@ -595,229 +602,5 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
     }
 
     return { sessions: sessions.length, sent, failed };
-  }
-
-  // --- date announcements (admin-triggered "notify attendees") ---------------
-
-  /**
-   * Every seat holder and whether they have been told the dates.
-   *
-   * A buyer with no announcement row has simply never been notified, which is
-   * PENDING. A buyer whose `announcedStartsAt` differs from the session's
-   * current first day has been told about *old* dates and is shown as outdated
-   * (effectively PENDING for the new date).
-   */
-  async listDateAnnouncements(sessionId: string): Promise<{
-    blocker: SendBlocker;
-    currentStartsAt: Date | null;
-    rows: DateAnnouncementRow[];
-  }> {
-    const session = await this.prisma.liveSession.findUnique({
-      where: { productId: sessionId },
-      include: {
-        days: { orderBy: { startsAt: 'asc' }, select: { startsAt: true } },
-        product: { select: { title: true, status: true, deletedAt: true } },
-      },
-    });
-    if (!session) throw new NotFoundException('Session not found');
-
-    const currentStartsAt = session.days[0]?.startsAt ?? null;
-
-    const [holders, announcements] = await Promise.all([
-      this.prisma.entitlement.findMany({
-        where: { productId: sessionId, status: EntitlementStatus.ACTIVE },
-        select: { userId: true, user: { select: { name: true, email: true } } },
-      }),
-      this.prisma.sessionDateAnnouncement.findMany({ where: { liveSessionId: sessionId } }),
-    ]);
-
-    const byUser = new Map(announcements.map((row) => [row.userId, row]));
-
-    return {
-      blocker: this.dateAnnouncementBlocker(session.days.length),
-      currentStartsAt,
-      rows: holders.map((holder) => {
-        const row = byUser.get(holder.userId);
-        // If the dates changed since the last announcement, treat as PENDING.
-        const stale =
-          row?.status === AnnouncementStatus.SENT &&
-          currentStartsAt &&
-          row.announcedStartsAt?.getTime() !== currentStartsAt.getTime();
-        return {
-          userId: holder.userId,
-          name: holder.user.name,
-          email: holder.user.email,
-          status: stale ? AnnouncementStatus.PENDING : (row?.status ?? AnnouncementStatus.PENDING),
-          lastError: row?.lastError ?? null,
-          sentAt: stale ? null : (row?.sentAt ?? null),
-          attempts: row?.attempts ?? 0,
-        };
-      }),
-    };
-  }
-
-  /**
-   * Send the date-announcement email to seat holders.
-   *
-   * `userIds` omitted → everyone whose row is not SENT for the current dates
-   * (i.e. never told, told about old dates, or previously failed). Anyone
-   * already SENT for the current dates is skipped, so this is safe to repeat.
-   */
-  async announceDates(
-    sessionId: string,
-    options: { userIds?: string[] } = {},
-  ): Promise<{
-    attempted: number;
-    sent: number;
-    failed: Array<{ userId: string; name: string; email: string | null; reason: string }>;
-  }> {
-    const session = await this.prisma.liveSession.findUnique({
-      where: { productId: sessionId },
-      include: {
-        days: { orderBy: { startsAt: 'asc' } },
-        product: { select: { title: true, status: true, deletedAt: true } },
-      },
-    });
-    if (!session) throw new NotFoundException('Session not found');
-
-    const blocker = this.dateAnnouncementBlocker(session.days.length);
-    if (blocker) throw new BadRequestException(blocker);
-
-    const currentStartsAt = session.days[0]!.startsAt;
-    const whenLines = sessionWhenLines(session.days);
-
-    const holders = await this.prisma.entitlement.findMany({
-      where: {
-        productId: sessionId,
-        status: EntitlementStatus.ACTIVE,
-        ...(options.userIds?.length ? { userId: { in: options.userIds } } : {}),
-      },
-      select: { userId: true, user: { select: { name: true, email: true } } },
-    });
-
-    // Skip anyone already told about the current date.
-    const alreadySent = new Set(
-      (
-        await this.prisma.sessionDateAnnouncement.findMany({
-          where: {
-            liveSessionId: sessionId,
-            status: AnnouncementStatus.SENT,
-            announcedStartsAt: currentStartsAt,
-          },
-          select: { userId: true },
-        })
-      ).map((row) => row.userId),
-    );
-
-    const targets = holders.filter((h) => !alreadySent.has(h.userId));
-
-    let sent = 0;
-    const failed: Array<{ userId: string; name: string; email: string | null; reason: string }> = [];
-
-    for (const holder of targets) {
-      const result = await this.sendDateAnnouncement(session, whenLines, currentStartsAt, holder);
-      if (result.ok) {
-        sent += 1;
-      } else {
-        failed.push({
-          userId: holder.userId,
-          name: holder.user.name,
-          email: holder.user.email,
-          reason: result.reason,
-        });
-      }
-    }
-
-    if (sent || failed.length) {
-      activity(this.logger, 'session.dates_announced', {
-        sessionId,
-        sent,
-        failed: failed.length,
-        currentStartsAt: currentStartsAt.toISOString(),
-      });
-    }
-
-    return { attempted: targets.length, sent, failed };
-  }
-
-  private dateAnnouncementBlocker(dayCount: number): SendBlocker {
-    if (dayCount === 0) {
-      return 'This session has no dates yet. Add dates in the session form first.';
-    }
-    return null;
-  }
-
-  private async sendDateAnnouncement(
-    session: {
-      productId: string;
-      joinUrl: string | null;
-      platformLabel: string;
-      showNotSpamNotice: boolean;
-      product: { title: string };
-    },
-    whenLines: string[],
-    currentStartsAt: Date,
-    holder: { userId: string; user: { name: string; email: string | null } },
-  ): Promise<{ ok: true } | { ok: false; reason: string }> {
-    const fail = async (reason: string) => {
-      await this.recordDateAnnouncement(
-        session.productId,
-        holder.userId,
-        AnnouncementStatus.FAILED,
-        currentStartsAt,
-        reason,
-      );
-      return { ok: false as const, reason };
-    };
-
-    if (!holder.user.email) {
-      return fail('This account has no email address.');
-    }
-
-    const rendered = liveSessionDatesAnnounced({
-      attendeeName: firstName(holder.user.name),
-      sessionTitle: session.product.title,
-      whenLines,
-      platformLabel: session.platformLabel,
-      joinUrl: session.joinUrl,
-      showNotSpamNotice: session.showNotSpamNotice,
-    });
-
-    const outcome = await this.mail.sendBestEffort({
-      to: { email: holder.user.email, name: holder.user.name },
-      subject: rendered.subject,
-      text: rendered.text,
-      html: rendered.html,
-      tag: 'session-dates-announced',
-    });
-
-    if (!outcome.delivered) {
-      return fail(outcome.reason);
-    }
-
-    await this.recordDateAnnouncement(
-      session.productId,
-      holder.userId,
-      AnnouncementStatus.SENT,
-      currentStartsAt,
-      null,
-    );
-    return { ok: true };
-  }
-
-  private async recordDateAnnouncement(
-    liveSessionId: string,
-    userId: string,
-    status: AnnouncementStatus,
-    announcedStartsAt: Date,
-    lastError: string | null,
-  ): Promise<void> {
-    const sentAt = status === AnnouncementStatus.SENT ? new Date() : null;
-
-    await this.prisma.sessionDateAnnouncement.upsert({
-      where: { liveSessionId_userId: { liveSessionId, userId } },
-      create: { liveSessionId, userId, status, announcedStartsAt, lastError, sentAt, attempts: 1 },
-      update: { status, announcedStartsAt, lastError, sentAt, attempts: { increment: 1 } },
-    });
   }
 }

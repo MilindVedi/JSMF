@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { OfflineSalesList } from "@/components/admin/offline-sales/offline-sales-list";
+import { SessionDetailsCard } from "@/components/admin/session-details/session-details-card";
 import { SessionForm } from "@/components/admin/session-form";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -15,10 +17,10 @@ import {
   adminSessionApi,
   type AdminSession,
   type BundleDeliveryList,
-  type DateAnnouncementList,
   type SessionRegistrationRow,
 } from "@/lib/api/admin";
 import { mainWebsiteHost } from "@/lib/site-content";
+import { useSessionStore } from "@/store/session-store";
 import { istLabel } from "../ist";
 
 const DELIVERY_STYLE: Record<string, string> = {
@@ -30,14 +32,12 @@ const DELIVERY_STYLE: Record<string, string> = {
 export default function EditSessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const { user } = useSessionStore();
   const [session, setSession] = useState<AdminSession | null>(null);
   const [registrations, setRegistrations] = useState<SessionRegistrationRow[]>([]);
   const [deliveries, setDeliveries] = useState<BundleDeliveryList | null>(null);
-  const [announcements, setAnnouncements] = useState<DateAnnouncementList | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
-  const [annSelected, setAnnSelected] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
-  const [annSending, setAnnSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   // Bumped after a save so the form remounts with the saved values.
@@ -47,13 +47,6 @@ export default function EditSessionPage({ params }: { params: Promise<{ id: stri
     adminSessionApi
       .bundleDeliveries(id)
       .then(setDeliveries)
-      .catch(() => undefined);
-  }, [id]);
-
-  const loadAnnouncements = useCallback(() => {
-    adminSessionApi
-      .dateAnnouncements(id)
-      .then(setAnnouncements)
       .catch(() => undefined);
   }, [id]);
 
@@ -67,8 +60,7 @@ export default function EditSessionPage({ params }: { params: Promise<{ id: stri
       .then(setRegistrations)
       .catch(() => undefined);
     loadDeliveries();
-    loadAnnouncements();
-  }, [id, loadDeliveries, loadAnnouncements]);
+  }, [id, loadDeliveries]);
 
   /** Several at once: picking screenshots one by one is the slow way to do this. */
   async function addTestimonials(files: FileList | null) {
@@ -144,31 +136,6 @@ export default function EditSessionPage({ params }: { params: Promise<{ id: stri
       toast.error(error instanceof Error ? error.message : "Could not send the material");
     } finally {
       setSending(false);
-    }
-  }
-
-  async function sendAnnouncement(userIds?: string[]) {
-    setAnnSending(true);
-    try {
-      const result = await adminSessionApi.sendDateAnnouncement(id, userIds);
-
-      if (result.attempted === 0) {
-        toast.info("Everyone has already been notified about the current dates.");
-      } else if (result.failed.length === 0) {
-        toast.success(`Notified ${result.sent} attendee${result.sent === 1 ? "" : "s"}`);
-      } else {
-        toast.warning(
-          `Notified ${result.sent}, ${result.failed.length} failed: ` +
-            result.failed.map((row) => row.name).join(", "),
-        );
-      }
-
-      setAnnSelected([]);
-      loadAnnouncements();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not send the announcement");
-    } finally {
-      setAnnSending(false);
     }
   }
 
@@ -318,116 +285,13 @@ export default function EditSessionPage({ params }: { params: Promise<{ id: stri
         </CardContent>
       </Card>
 
-      {announcements && announcements.rows.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex flex-wrap items-center justify-between gap-3">
-              <span>
-                Notify attendees ·{" "}
-                {announcements.rows.filter((row) => row.status === "SENT").length} of{" "}
-                {announcements.rows.length} notified
-              </span>
-              <span className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={annSending || annSelected.length === 0 || Boolean(announcements.blocker)}
-                  onClick={() => void sendAnnouncement(annSelected)}
-                >
-                  Send to selected ({annSelected.length})
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={annSending || Boolean(announcements.blocker)}
-                  onClick={() => void sendAnnouncement()}
-                >
-                  {annSending ? <Loader2 className="size-4 animate-spin" /> : "Notify everyone pending"}
-                </Button>
-              </span>
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {announcements.blocker ??
-                "Saving a date does not email attendees. Use this to tell them the schedule is confirmed."}
-            </p>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <input
-                      type="checkbox"
-                      aria-label="Select everyone not yet notified"
-                      checked={
-                        annSelected.length > 0 &&
-                        annSelected.length === announcements.rows.filter((r) => r.status !== "SENT").length
-                      }
-                      onChange={(event) =>
-                        setAnnSelected(
-                          event.target.checked
-                            ? announcements.rows.filter((r) => r.status !== "SENT").map((r) => r.userId)
-                            : [],
-                        )
-                      }
-                    />
-                  </TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Sent</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {announcements.rows.map((row) => (
-                  <TableRow key={row.userId}>
-                    <TableCell>
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${row.name}`}
-                        disabled={row.status === "SENT"}
-                        checked={annSelected.includes(row.userId)}
-                        onChange={(event) =>
-                          setAnnSelected((current) =>
-                            event.target.checked
-                              ? [...current, row.userId]
-                              : current.filter((userId) => userId !== row.userId),
-                          )
-                        }
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell>{row.email ?? "—"}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={DELIVERY_STYLE[row.status]}>
-                        {row.status.toLowerCase()}
-                      </Badge>
-                      {row.lastError && (
-                        <p className="mt-1 max-w-xs text-xs text-muted-foreground">{row.lastError}</p>
-                      )}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                      {row.sentAt ? istLabel(row.sentAt) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {row.status !== "SENT" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={annSending || Boolean(announcements.blocker)}
-                          onClick={() => void sendAnnouncement([row.userId])}
-                        >
-                          {row.status === "FAILED" ? "Retry" : "Send"}
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+      {/* Money, so admins only: the API refuses it to educators as well. */}
+      {user?.roles.includes("ADMIN") && (
+        <OfflineSalesList productId={id} addHref={`/admin/sessions/${id}/buyers`} />
       )}
+
+      {/* Dates, joining link, Telegram: who has which, and who needs what. */}
+      <SessionDetailsCard sessionId={id} refreshKey={version} />
 
       <Card>
         <CardHeader>

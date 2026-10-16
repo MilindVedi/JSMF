@@ -739,6 +739,26 @@ gcloud scheduler jobs create http payment-reconciliation `
    * Leave retry config and attempt deadline as default (or set Attempt deadline to `120s`).
    * Click **Create**.
 
+**The second job — session reminders.** Same service account, same audience,
+a second URL. It sends the live-session reminder before each day, and also
+runs the deferred-PDF release and the 1:1 call sweeps. Without it no reminder
+email goes out at all.
+
+```powershell
+gcloud scheduler jobs create http session-reminders `
+  --location=$REGION `
+  --schedule="*/5 * * * *" `
+  --uri="https://jsmf-backend-569375141363.asia-south1.run.app/api/internal/session-reminders" `
+  --http-method=POST `
+  --oidc-service-account-email="jsmf-reconciliation-scheduler@$PROJECT_ID.iam.gserviceaccount.com" `
+  --oidc-token-audience="https://jsmf-backend-569375141363.asia-south1.run.app" `
+  --attempt-deadline=300s
+```
+
+A longer deadline than reconciliation: a sweep emails each due attendee in
+turn. A timed-out run never double-sends — each reminder is claimed in the
+database before its email goes out.
+
 `--oidc-service-account-email` / **Add OIDC token** is what makes this an IAM-verified call rather
 than a bare POST: Cloud Scheduler mints an identity token for that service
 account on every run and Cloud Run checks it against the invoker binding above
