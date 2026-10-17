@@ -33,6 +33,7 @@ export interface LiveSessionInput {
   platformLabel?: string;
   capacity?: number | null;
   showSeats?: boolean;
+  lateRegistration?: boolean;
   displaySeats?: number | null;
   bundleDeliveryMode?: BundleDeliveryMode;
   priceAmountMinor?: string;
@@ -103,6 +104,31 @@ function normalisePhone(raw: string): string {
   if (normalised) return normalised;
   const digits = raw.replace(/\D/g, '');
   return digits.length === 10 ? `91${digits}` : digits;
+}
+
+/**
+ * When the whole session is over: the end of its last day. Null when no dates
+ * are fixed yet. This, not the first day, is what "late registration" runs
+ * against — a four-day session is still worth joining on day two.
+ */
+function lastDayEnd(days: Array<{ startsAt: Date; durationMinutes: number }>): Date | null {
+  if (days.length === 0) return null;
+  return new Date(
+    Math.max(...days.map((day) => day.startsAt.getTime() + day.durationMinutes * 60_000)),
+  );
+}
+
+/**
+ * Is this session still on sale although it has begun? True only while the
+ * admin has asked for it (`lateRegistration`) and the last day has not ended.
+ */
+function openLate(
+  session: { lateRegistration: boolean; days: Array<{ startsAt: Date; durationMinutes: number }> },
+  now: Date,
+): boolean {
+  if (!session.lateRegistration) return false;
+  const end = lastDayEnd(session.days);
+  return end === null || end.getTime() > now.getTime();
 }
 
 /**
@@ -183,7 +209,7 @@ export class LiveSessionService {
       },
     };
 
-    const [upcoming, previous] = await Promise.all([
+    const [scheduled, started] = await Promise.all([
       this.prisma.liveSession.findFirst({
         // A session with no dates yet counts as upcoming: it has not happened,
         // and it is on sale. `nulls: 'last'` keeps it behind anything actually
@@ -200,6 +226,13 @@ export class LiveSessionService {
         include: SESSION_INCLUDE,
       }),
     ]);
+
+    // A session the admin has kept on sale mid-run is still the one to show:
+    // it has started, but it is not over and seats are still being sold. A
+    // genuinely future session wins over it — that one has every day left.
+    const stillSelling = started !== null && openLate(started, now);
+    const upcoming = scheduled ?? (stillSelling ? started : null);
+    const previous = started === upcoming ? null : started;
 
     const taken = await this.seatsTaken(
       [upcoming, previous].filter((s): s is SessionRow => s !== null).map((s) => s.productId),
@@ -283,12 +316,21 @@ export class LiveSessionService {
         productId: sessionId,
         product: { status: ProductStatus.PUBLISHED, deletedAt: null },
       },
+      // The days are what decide whether a late-registration session is still
+      // running, so they are read here as well as the first day's start.
+      include: { days: true },
     });
 
     if (!session) return refuse('session not found or unpublished', new NotFoundException('Session not found'));
 
-    // No date yet means nothing has started, so registration stays open.
-    if (session.startsAt !== null && session.startsAt.getTime() <= Date.now()) {
+    // No date yet means nothing has started, so registration stays open. So
+    // does a session the admin has kept on sale after day 1 (`lateRegistration`),
+    // until its last day ends.
+    if (
+      session.startsAt !== null &&
+      session.startsAt.getTime() <= Date.now() &&
+      !openLate(session, new Date())
+    ) {
       refuse('session already started', new ConflictException('Registration for this session has closed.'));
     }
 
@@ -406,6 +448,7 @@ export class LiveSessionService {
             platformLabel: input.platformLabel!,
             capacity: input.capacity ?? null,
             showSeats: input.showSeats ?? true,
+            lateRegistration: input.lateRegistration ?? false,
             displaySeats: input.displaySeats ?? null,
             bundleDeliveryMode: input.bundleDeliveryMode ?? BundleDeliveryMode.IMMEDIATE,
             joinUrl: blankToNull(input.joinUrl) ?? null,
@@ -486,6 +529,7 @@ export class LiveSessionService {
             platformLabel: input.platformLabel,
             capacity: input.capacity,
             showSeats: input.showSeats,
+            lateRegistration: input.lateRegistration,
             displaySeats: input.displaySeats,
             bundleDeliveryMode: input.bundleDeliveryMode,
             joinUrl: blankToNull(input.joinUrl),
@@ -790,7 +834,12 @@ export class LiveSessionService {
     const { product } = session;
     // Dates not fixed yet: nothing has started, so registration is open and
     // there is no recording to show.
-    const started = session.startsAt !== null && session.startsAt.getTime() <= Date.now();
+    const now = new Date();
+    // Started, but still on sale: the admin has opened late registration and
+    // the last day has not ended. Treated as not started — seats are sold, and
+    // no recording is offered while the thing is still running.
+    const started =
+      session.startsAt !== null && session.startsAt.getTime() <= now.getTime() && !openLate(session, now);
     const seatsRemaining = session.capacity === null ? null : Math.max(0, session.capacity - taken);
 
     return {
@@ -837,6 +886,7 @@ export class LiveSessionService {
       platformLabel: session.platformLabel,
       capacity: session.capacity,
       showSeats: session.showSeats,
+      lateRegistration: session.lateRegistration,
       displaySeats: session.displaySeats,
       bundleDeliveryMode: session.bundleDeliveryMode,
       seatsTaken: taken,

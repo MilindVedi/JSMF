@@ -215,6 +215,7 @@ export interface AdminSession {
   capacity: number | null;
   /** When false, seat counts are hidden from the public website. */
   showSeats: boolean;
+  lateRegistration: boolean;
   /** TEMPORARY external-checkout scarcity number for /prep-kit. Null = hidden, 0 = full. */
   displaySeats: number | null;
   /** When the PDF included with a seat reaches buyers. */
@@ -255,6 +256,7 @@ export interface SessionInput {
   platformLabel?: string;
   capacity?: number | null;
   showSeats?: boolean;
+  lateRegistration?: boolean;
   displaySeats?: number | null;
   bundleDeliveryMode?: BundleDeliveryMode;
   priceAmountMinor?: string;

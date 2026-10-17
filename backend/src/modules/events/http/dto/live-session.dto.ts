@@ -107,6 +107,16 @@ export class CreateLiveSessionDto {
   showSeats?: boolean;
 
   @ApiPropertyOptional({
+    description:
+      'Keeps the session on sale after its first day has started, until its last day ends. ' +
+      'For a multi-day session still worth joining partway through, usually at a reduced price.',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  lateRegistration?: boolean;
+
+  @ApiPropertyOptional({
     nullable: true,
     description:
       'TEMPORARY external-checkout scarcity number for /prep-kit. Null = no seats line, 0 = fully booked.',

@@ -102,6 +102,7 @@ async function createSession(
     capacity?: number | null;
     days?: Array<{ startsAt: string; durationMinutes: number }>;
     bundleDeliveryMode?: BundleDeliveryMode;
+    lateRegistration?: boolean;
   } = {},
 ) {
   const session = await sessions.create(
@@ -112,6 +113,7 @@ async function createSession(
       platformLabel: 'Live on Zoom',
       capacity: overrides.capacity ?? null,
       bundleDeliveryMode: overrides.bundleDeliveryMode,
+      lateRegistration: overrides.lateRegistration,
       priceAmountMinor: PRICE.toString(),
       highlights: ['One', 'Two'],
       perkText: 'Free planner',
@@ -523,6 +525,39 @@ describe('live sessions', () => {
     const after = (await details.overview(session.id)).rows.find((r) => r.userId === user.id)!;
     expect(after.statuses.join_link).toBe('UP_TO_DATE');
     expect(after.outstanding).toEqual(['dates']);
+  });
+
+  it('keeps a started multi-day session on sale while late registration is on', async () => {
+    // Day 1 is already running; day 2 is tomorrow. Exactly the case the flag is
+    // for: the session has begun but is not over.
+    const days = [
+      { startsAt: inHours(-2), durationMinutes: 60 },
+      { startsAt: inHours(24), durationMinutes: 60 },
+    ];
+    const open = await createSession({ days: [{ startsAt: inHours(48), durationMinutes: 60 }], lateRegistration: true });
+    await sessions.update(open.id, { days }, { id: adminId });
+
+    const closed = await createSession({ days: [{ startsAt: inHours(48), durationMinutes: 60 }] });
+    await sessions.update(closed.id, { days }, { id: adminId });
+
+    const openView = await sessions.publicBySlug((await sessions.getForAdmin(open.id)).slug);
+    expect(openView.registrationOpen).toBe(true);
+    // Nothing is offered as a recording while the session is still running.
+    expect(openView.recordingUrl).toBeNull();
+
+    const closedView = await sessions.publicBySlug((await sessions.getForAdmin(closed.id)).slug);
+    expect(closedView.registrationOpen).toBe(false);
+
+    const buyer = await createUser();
+    await expect(sessions.register(buyer.id, open.id, answers)).resolves.toBeDefined();
+    await expect(sessions.register((await createUser()).id, closed.id, answers)).rejects.toThrow(
+      /closed/i,
+    );
+
+    // Once the last day has ended the flag stops mattering: it closes anyway.
+    await sessions.update(open.id, { days: [{ startsAt: inHours(-4), durationMinutes: 60 }] }, { id: adminId });
+    const after = await sessions.publicBySlug((await sessions.getForAdmin(open.id)).slug);
+    expect(after.registrationOpen).toBe(false);
   });
 
   it('refunding a deferred session takes the planner back with the seat', async () => {

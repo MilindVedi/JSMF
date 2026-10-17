@@ -368,6 +368,27 @@ optional `userIds` body.
 
 ---
 
+## 3c-bis. Selling a session that has already started
+
+Registration normally closes the moment the first day begins — a seat bought
+after that is a seat for something partly over. For a multi-day session that is
+not true: day 3 of 4 is still worth joining, usually at a lower price.
+
+`live_sessions.late_registration` (admin switch: **Keep selling after the
+session has started**) keeps it on sale until the end of its **last** day:
+
+- the website keeps showing it as the upcoming session, with Book working;
+- `registrationOpen` stays true, so seats, the confirmation email, reminders
+  for the remaining days and the session details email all behave as usual;
+- no recording is offered while it is still running;
+- when the last day ends it closes by itself — the switch needs no undoing.
+
+A genuinely future session wins over a running one: if both exist, the website
+shows the one that has not started. The price is not touched by any of this —
+the admin lowers it by hand as days pass.
+
+---
+
 ## 3d. Session details: dates, joining link, Telegram group
 
 Three things an attendee needs from us, which often arrive after they pay: the

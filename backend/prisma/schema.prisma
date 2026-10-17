@@ -1128,6 +1128,12 @@ model LiveSession {
   /// from the public-facing API. Lets the admin suppress seat counts without
   /// deleting the underlying data.
   showSeats              Boolean            @default(true) @map("show_seats")
+  /// Keeps the session on sale after its first day has started, until its last
+  /// day ends. A multi-day session is still worth joining on day 2 — usually at
+  /// a lower price, which the admin sets by hand. While this is on the session
+  /// stays on the website as the upcoming one and no recording is offered;
+  /// once the last day ends it closes like any other.
+  lateRegistration       Boolean            @default(false) @map("late_registration")
   /// TEMPORARY (external Razorpay Payment Page phase): a manually-set "seats
   /// available" number shown on /prep-kit to signal demand. NOT real capacity
   /// and not derived from entitlements. NULL = show no seats line, 0 = fully

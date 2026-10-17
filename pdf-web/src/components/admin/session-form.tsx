@@ -75,6 +75,7 @@ export function SessionForm({
     platformLabel: session?.platformLabel ?? "Live on Zoom · Link sent on mail",
     capacity: session?.capacity ? String(session.capacity) : "",
     showSeats: session?.showSeats ?? true,
+    lateRegistration: session?.lateRegistration ?? false,
     displaySeats:
       session?.displaySeats !== null && session?.displaySeats !== undefined ? String(session.displaySeats) : "",
     bundleDeliveryMode: (session?.bundleDeliveryMode ?? "IMMEDIATE") as BundleDeliveryMode,
@@ -145,6 +146,7 @@ export function SessionForm({
         platformLabel: values.platformLabel.trim(),
         capacity: values.capacity ? Number(values.capacity) : null,
         showSeats: values.showSeats,
+        lateRegistration: values.lateRegistration,
         displaySeats: values.displaySeats.trim() === "" ? null : Number(values.displaySeats),
         bundleDeliveryMode: values.bundleDeliveryMode,
         priceAmountMinor: price,
@@ -375,6 +377,22 @@ export function SessionForm({
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 When off, seat counts are hidden from visitors. The actual capacity still applies.
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={values.lateRegistration}
+                  onCheckedChange={(checked: boolean) =>
+                    setValues((c) => ({ ...c, lateRegistration: checked }))
+                  }
+                />
+                <Label className="text-sm font-medium">Keep selling after the session has started</Label>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                For a multi-day session still worth joining partway through. It stays on the website as the
+                upcoming session until its last day ends, and no recording is offered while it runs. Lower the
+                price by hand as days pass.
               </p>
             </div>
             {values.showSeats && (
