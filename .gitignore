@@ -10,3 +10,5 @@ Thumbs.db
 
 # npm workspaces (packages/core + web) install into the repo root
 node_modules/
+
+temp_env_updates_info.json
