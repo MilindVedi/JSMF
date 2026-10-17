@@ -109,8 +109,8 @@ This document provides a reference for all environment variables, flags, and sec
 | `GOOGLE_OAUTH_ENABLED` | Boolean | `true` | Cloud Run Env Var | Enables Google OAuth 2.0 authentication. |
 | `GOOGLE_CLIENT_ID` | String | `<your-client-id>` | Cloud Run Env Var / Secret | Google Cloud OAuth Client ID (e.g. `569375141363-...apps.googleusercontent.com`). |
 | `GOOGLE_CLIENT_SECRET` | String | `<your-client-secret>` | GCP Secret: `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth Client Secret (`GOCSPX-...`). |
-| `GOOGLE_CALLBACK_URL` | URL | `https://store.jsmf.me/api/auth/google/callback` | Cloud Run Env Var | Registered OAuth redirect URL matching Google Console. |
-| `OAUTH_ALLOWED_REDIRECTS` | CSV String | `https://store.jsmf.me/auth/callback,https://jsmf.me/auth/callback` | Cloud Run Env Var | Strict allowlist of frontend URLs permitted to receive session tokens after OAuth. |
+| `GOOGLE_CALLBACK_URL` | URL | `https://resources.jsmf.me/api/auth/google/callback` | Cloud Run Env Var | Registered OAuth redirect URL matching Google Console. |
+| `OAUTH_ALLOWED_REDIRECTS` | CSV String | `https://resources.jsmf.me/auth/callback,https://jsmf.me/auth/callback` | Cloud Run Env Var | Strict allowlist of frontend URLs permitted to receive session tokens after OAuth. |
 | `OAUTH_STATE_SECRET` | String (min 16 chars) | `<Random_Secret>` | GCP Secret: `OAUTH_STATE_SECRET` | Cryptographic key used to sign and verify OAuth state parameter. |
 | `MAIL_DRIVER` | Enum | `resend` | Cloud Run Env Var | HTTPS API, not an SMTP socket — Cloud Run blocks outbound SMTP ports. `log` is **refused in production** by env validation. |
 | `RESEND_API_KEY` | String | `re_...` | GCP Secret: `RESEND_API_KEY` | Required when `MAIL_DRIVER=resend`. Create at https://resend.com/api-keys. |
@@ -133,7 +133,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `WHATSAPP_OTP_TEMPLATE_LANGUAGE` | String | `en` | Cloud Run Env Var | Must match the template's language exactly (`en` ≠ `en_US`). |
 | `WHATSAPP_RECEIPT_TEMPLATE_NAME` | String | `jsmf_purchase_receipt` | Cloud Run Env Var | Optional. An approved **Utility** template for purchase receipts to buyers with no email. Without it those buyers get no receipt; the purchase is unaffected. |
 | `WHATSAPP_RECEIPT_TEMPLATE_LANGUAGE` | String | `en` | Cloud Run Env Var | Must match that template's language. |
-| `STOREFRONT_URL` | URL | `https://store.jsmf.me` | Cloud Run Env Var | The **buyer-facing site**, where purchase receipts link. Not `APP_PUBLIC_URL`, which is this API's own base URL and ends in `/api` — using it produced receipt links to `…/api/library`, a page that does not exist. |
+| `STOREFRONT_URL` | URL | `https://resources.jsmf.me` | Cloud Run Env Var | The **buyer-facing site**, where purchase receipts link. Not `APP_PUBLIC_URL`, which is this API's own base URL and ends in `/api` — using it produced receipt links to `…/api/library`, a page that does not exist. |
 | `WHATSAPP_GRAPH_API_VERSION` | String | `v23.0` | Cloud Run Env Var | Meta retires Graph API versions roughly two years after release. |
 | `PAYMENT_RECONCILIATION_TRIGGER` | Enum | `http` | Cloud Run Env Var | `http` on Cloud Run: an in-process `cron` cannot fire at `--min-instances=0`. No app secret involved — Cloud Scheduler authenticates as an IAM identity granted `roles/run.invoker`, same as the frontend. See *Phase 9.2*. |
 | `SESSION_REMINDER_LEAD_MINUTES` | Number | *(leave unset — 60)* | Cloud Run Env Var | Live-session reminder email lead time, 5–1440 minutes before each day. The sweep runs every 5 minutes (same `/internal/session-reminders` trigger as the reconciliation job), so a reminder can land up to ~5 minutes later than the exact lead time. See `docs/main-website/README.md`. |
@@ -145,7 +145,7 @@ This document provides a reference for all environment variables, flags, and sec
 | Environment Variable | Description | Example Production Value |
 | :--- | :--- | :--- |
 | `BACKEND_API_URL` | URL of the NestJS backend API. Resolved at **runtime** by `middleware.ts` to dynamically reverse proxy requests. | `https://jsmf-backend-67890.a.run.app` |
-| `NEXT_PUBLIC_SITE_URL` | The one public address the site is published at. Drives `<link rel="canonical">` and absolute metadata URLs. **Must be set on every deployed environment** — see the note below. | `https://store.jsmf.me` |
+| `NEXT_PUBLIC_SITE_URL` | The one public address the site is published at. Drives `<link rel="canonical">` and absolute metadata URLs. **Must be set on every deployed environment** — see the note below. | `https://resources.jsmf.me` |
 | `NEXT_PUBLIC_MAIN_SITE_URL` | The main JSMF website (jsmf.me). The storefront's "Visit our main website" link and the footer's legal links (About / Privacy / Terms / Refund / Digital Delivery / Disclaimer — all canonically hosted on jsmf.me, so pdf-web links out to avoid duplicating and letting them drift) both read from this. Unset falls back to `https://jsmf.me`. | `https://jsmf.me` |
 | `NEXT_PUBLIC_MAX_UPLOAD_MB`| Max client file size in MB | `10` |
 | `PORT` | Listening Port | `3001` |
@@ -158,14 +158,14 @@ This document provides a reference for all environment variables, flags, and sec
 >
 > | Hostname | Where it comes from | Removable? |
 > | :--- | :--- | :--- |
-> | `store.jsmf.me` | the custom domain — **the canonical one** | — |
+> | `resources.jsmf.me` | the custom domain — **the canonical one** | — |
 > | `jsmfstore.stackmint.live` | an earlier custom domain | Yes, if no longer wanted |
 > | `production-509708.web.app` | Firebase Hosting's automatic domain | **No** — provisioned per site |
 > | `production-509708.firebaseapp.com` | Firebase Hosting's automatic domain | **No** — provisioned per site |
 > | `jsmf-pdf-web-….a.run.app` | the Cloud Run service itself | Only via ingress restriction |
 >
 > **Firebase rewrites the `Host` header** to the `.run.app` name on the way
-> through: requests to both `store.jsmf.me` and `production-509708.web.app`
+> through: requests to both `resources.jsmf.me` and `production-509708.web.app`
 > appear in Cloud Run's own request logs as `https://jsmf-pdf-web-….run.app/…`.
 > `x-forwarded-host` is no help either,
 > because Next.js synthesises that header from `Host` when no proxy set one, so

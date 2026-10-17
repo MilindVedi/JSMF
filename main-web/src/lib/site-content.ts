@@ -24,7 +24,7 @@ export const links = {
   interviewWatch: "https://www.youtube.com/live/MMLKjFlV1tA",
   interviewEmbed: "https://www.youtube.com/embed/MMLKjFlV1tA",
   /** The PDF store, where the planner that comes with a seat appears. */
-  store: process.env.NEXT_PUBLIC_STORE_URL ?? "https://store.jsmf.me",
+  store: process.env.NEXT_PUBLIC_STORE_URL ?? "https://resources.jsmf.me",
 };
 
 export const credentials = [

@@ -183,7 +183,7 @@ Your files are ready to download in your library.
 | `{{3}}` | total | `₹199` |
 | `{{4}}` | order number | `JSMF-2026-000123` |
 
-**Button:** type *Visit website* → **Dynamic**, URL `https://store.jsmf.me/{{1}}`,
+**Button:** type *Visit website* → **Dynamic**, URL `https://resources.jsmf.me/{{1}}`,
 button text `Download your files`. The backend supplies `library` as that
 variable.
 
@@ -318,7 +318,7 @@ docs.*
 | `WHATSAPP_OTP_TEMPLATE_LANGUAGE` | `en` | must match the template's language |
 | `WHATSAPP_RECEIPT_TEMPLATE_NAME` | — | optional; no receipt without it |
 | `WHATSAPP_RECEIPT_TEMPLATE_LANGUAGE` | `en` | must match that template's language |
-| `STOREFRONT_URL` | `http://localhost:3001` | `https://store.jsmf.me` — where receipts link |
+| `STOREFRONT_URL` | `http://localhost:3001` | `https://resources.jsmf.me` — where receipts link |
 | `WHATSAPP_GRAPH_API_VERSION` | `v23.0` | Meta retires versions ~2 years after release |
 
 Boot refuses: `WHATSAPP_DRIVER=meta` without its three required values;

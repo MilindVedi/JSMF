@@ -1,18 +1,5 @@
 {
   "pending_production_updates": [
-    {
-      "variable": "OAUTH_ALLOWED_REDIRECTS",
-      "action": "append",
-      "value_to_add": "https://jsmf.me/auth/callback,https://store.jsmf.me/auth/callback,https://pyq.jsmf.me/auth/callback",
-      "description": "Ensure the production URL for the new PYQ web app (e.g., https://pyq.jsmf.me/auth/callback or similar) is appended to OAUTH_ALLOWED_REDIRECTS in the Google Cloud Run environment variables for the backend service, so that Google OAuth login works on the new application."
-    },
-    {
-      "variable": "LEGAL_ACCEPTANCE_REQUIRED",
-      "action": "set",
-      "value": "false",
-      "allowed_values": ["true", "false"],
-      "description": "Controls whether signed-in users are required to accept current Terms and acknowledge Privacy Policy before using the API. When 'false' (default), acceptances are recorded without blocking users. When 'true', unaccepted users receive 403 LEGAL_ACCEPTANCE_REQUIRED until accepted on the frontend."
-    }
   ],
   "deployment_notes": [
     "Locally the recorded IP is Docker's own address, not the user's. In production that depends on your proxy settings. After deploying, open GET /api/health/client-ip and check it shows your real IP. Otherwise every record will store Google's load balancer address."

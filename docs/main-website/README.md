@@ -16,12 +16,12 @@ sessions with Dr. Angad Rai**. Design source: `web-main-design/`. Code:
 | Pricing | **Always paid** | Enforced by the API (`PAID`, price > 0). |
 | Account | **An account is required before paying** | The free PDF is granted to that account's email, and the joining link is emailed there. The dialog says so before asking. The ways in are the same as the store — Google, email + password, and mobile when the server enables it — because identity is platform-wide and both sites sign into one account. |
 | Joining link | **Email** — in the confirmation if already set, and in a **reminder** before the start | Reminders run on the existing 5-minute cron. |
-| Resources / Browse pages from the design | **Not built** | Resources live on store.jsmf.me; "Explore resources" links there. |
+| Resources / Browse pages from the design | **Not built** | Resources live on resources.jsmf.me; "Explore resources" links there. |
 | Session dates | **Optional** — a session can be published with no days at all | Lets the admin open registration before the schedule is fixed. The website shows **"Date to be announced"** / **"Time to be announced"** wherever a date would go, and registration stays open (nothing has started yet). Telling existing buyers once dates are set is a **deliberate admin action** — see §3d. |
 | Admin-triggered refunds | **Disabled by default** (`REFUNDS_ENABLED=false`) | The real Razorpay integration is new; this gates only the *admin dashboard* "Refund" button/endpoint, which moves money through Razorpay's API. A refund issued directly in the **Razorpay dashboard** still revokes the buyer's access automatically — see §3a. |
 | The included PDF | **Delivery timing is per-session, admin-chosen** (`IMMEDIATE` \| `AUTO_AFTER_SESSION` \| `MANUAL`) | Lets seats go on sale before the PDF is finished — see §3b. |
 | Seat-count visibility | **Admin toggle**, `showSeats` | Off hides both `seatsRemaining` and the temporary `displaySeats` number from every public response, without touching the underlying numbers. |
-| "Check your spam folder" note | **One platform-wide admin toggle** (`PlatformSettings.showSpamFolderNote`) | Shown wherever a verification email or Google sign-in is offered, on **both** jsmf.me and store.jsmf.me — see §7. |
+| "Check your spam folder" note | **One platform-wide admin toggle** (`PlatformSettings.showSpamFolderNote`) | Shown wherever a verification email or Google sign-in is offered, on **both** jsmf.me and resources.jsmf.me — see §7. |
 
 ---
 
@@ -114,7 +114,7 @@ the session page. See §3e.
 | On delete | **Cascade** — a testimonial image is not a sales record; removing the session should not be blocked by its marketing screenshots. The only exception to this module's otherwise-RESTRICT-everywhere rule. |
 
 **`platform_settings`** — not scoped to a session; one fixed row (`id = 'global'`)
-of site-wide toggles shared by jsmf.me **and** store.jsmf.me. See §7.
+of site-wide toggles shared by jsmf.me **and** resources.jsmf.me. See §7.
 
 Deliberate choices:
 
@@ -506,12 +506,12 @@ is hidden entirely when a session has no testimonials.
 | `GET /sessions/:slug` | public | one session |
 | `GET /sessions/:id/registration` | user | has a seat? saved answers |
 | `POST /sessions/:id/register` | user | save answers, start Razorpay |
-| `/admin/sessions` (CRUD, publish, unpublish, archive, `/:id/registrations`) | ADMIN, EDUCATOR | managed at **store.jsmf.me/admin/sessions** |
+| `/admin/sessions` (CRUD, publish, unpublish, archive, `/:id/registrations`) | ADMIN, EDUCATOR | managed at **resources.jsmf.me/admin/sessions** |
 | `GET /admin/sessions/:id/bundle-deliveries`, `POST …/bundle-deliveries/send` | ADMIN, EDUCATOR | §3c |
 | `GET /admin/sessions/:id/details`, `POST …/details/send` | ADMIN, EDUCATOR | §3d |
 | `POST /admin/sessions/:id/testimonials`, `PATCH …/testimonials/reorder`, `DELETE …/testimonials/:testimonialId` | ADMIN, EDUCATOR | §3e |
 | `POST /internal/session-reminders` | Cloud Run IAM | reminder sweep (reminders **and** the `AUTO_AFTER_SESSION` bundle sweep, §3c) |
-| `GET /settings` | public | `{ showSpamFolderNote }` — read by both jsmf.me and store.jsmf.me, §7 |
+| `GET /settings` | public | `{ showSpamFolderNote }` — read by both jsmf.me and resources.jsmf.me, §7 |
 | `GET /admin/settings`, `PATCH /admin/settings` | ADMIN | §7 |
 
 ---
@@ -552,11 +552,11 @@ account for the single end-to-end payment after deploying.
 
 1. Its own Cloud Run service (same Dockerfile pattern as `pdf-web/`) with
    `BACKEND_API_URL`, `NEXT_PUBLIC_SITE_URL=https://jsmf.me`,
-   `NEXT_PUBLIC_STORE_URL=https://store.jsmf.me`; `jsmf.me` mapped to it; its
+   `NEXT_PUBLIC_STORE_URL=https://resources.jsmf.me`; `jsmf.me` mapped to it; its
    service account granted `roles/run.invoker` on the backend.
 2. Backend env: `https://jsmf.me` in `CORS_ORIGINS` and
    `https://jsmf.me/auth/callback` in `OAUTH_ALLOWED_REDIRECTS`.
-   `GOOGLE_CALLBACK_URL` stays on store.jsmf.me — the OAuth state is a signed
+   `GOOGLE_CALLBACK_URL` stays on resources.jsmf.me — the OAuth state is a signed
    token, not a cookie, so starting on one domain and finishing via the other
    works.
 3. A Cloud Scheduler job: `POST /api/internal/session-reminders` every 5
@@ -602,7 +602,7 @@ writing, prod is still running on **test** Razorpay keys with
 
 ## 7. Platform settings (cross-app, not session-scoped)
 
-A few toggles apply to **both** jsmf.me and store.jsmf.me at once and have
+A few toggles apply to **both** jsmf.me and resources.jsmf.me at once and have
 nothing to do with any one session or product — these live on
 `platform_settings` (§2), a single fixed row (`id = 'global'`), not a
 key/value table: there are only a handful of these, each with its own type,

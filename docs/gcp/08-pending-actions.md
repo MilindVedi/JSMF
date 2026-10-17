@@ -37,7 +37,7 @@ Independent of WhatsApp, and it affected **email receipts that already go
 out**. The "view your library" link was built from `APP_PUBLIC_URL`, which is
 this API's own base URL ending in `/api` — so every purchase confirmation
 linked to `…/api/library`, a page that does not exist. Fixed in code by a new
-`STOREFRONT_URL`, and **`STOREFRONT_URL=https://store.jsmf.me` is already set
+`STOREFRONT_URL`, and **`STOREFRONT_URL=https://resources.jsmf.me` is already set
 on `jsmf-backend`** (confirmed 2026-09-29 by reading the live Cloud Run
 revision) — nothing further to do here. Kept as a record of what the bug was
 and the reasoning, not as an open action:
@@ -45,7 +45,7 @@ and the reasoning, not as an open action:
 ```powershell
 # Already applied. Shown for reference only.
 gcloud run services update jsmf-backend --region=asia-south1 `
-  --update-env-vars=STOREFRONT_URL=https://store.jsmf.me
+  --update-env-vars=STOREFRONT_URL=https://resources.jsmf.me
 ```
 
 ---

@@ -516,7 +516,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
 /**
  * Sign in and Create account — the same screen and the same ways in as the
- * store at store.jsmf.me, because identity is platform-wide and both sites
+ * store at resources.jsmf.me, because identity is platform-wide and both sites
  * sign into one account. Kept deliberately in step with
  * pdf-web/src/components/store/auth-page.tsx.
  */

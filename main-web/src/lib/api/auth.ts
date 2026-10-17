@@ -8,7 +8,7 @@ const OAUTH_NEXT_KEY = "jsmf.main.oauthNext";
  * Google sign-in, the only way into an account on the main website.
  *
  * Identity is platform-wide: this is the same API and the same account as the
- * PDF store, so signing in here and later on store.jsmf.me lands in one
+ * PDF store, so signing in here and later on resources.jsmf.me lands in one
  * account — which is how the planner that comes with a seat shows up there.
  * The callback URL must be in the API's OAUTH_ALLOWED_REDIRECTS.
  */

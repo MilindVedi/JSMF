@@ -113,7 +113,7 @@ describe('purchase receipts', () => {
         items: 'Pathology Revision Notes',
         totalFormatted: '₹499',
         orderNumber: 'JSMF-2026-000123',
-        libraryUrl: 'https://store.jsmf.me/library',
+        libraryUrl: 'https://resources.jsmf.me/library',
       },
     });
 
@@ -133,7 +133,7 @@ describe('purchase receipts', () => {
         ],
       },
       // Only the tail of the URL: Meta fixes the domain when the template is
-      // approved, so the button is configured as `https://store.jsmf.me/{{1}}`.
+      // approved, so the button is configured as `https://resources.jsmf.me/{{1}}`.
       {
         type: 'button',
         sub_type: 'url',
@@ -158,7 +158,7 @@ describe('purchase receipts', () => {
           items: 'B',
           totalFormatted: '₹1',
           orderNumber: 'C',
-          libraryUrl: 'https://store.jsmf.me/library',
+          libraryUrl: 'https://resources.jsmf.me/library',
         },
       })
       .catch((cause: unknown) => cause);
@@ -208,8 +208,8 @@ describe('template parameters', () => {
  */
 describe('library button', () => {
   it.each([
-    ['https://store.jsmf.me/library', 'library'],
-    ['https://store.jsmf.me/library?from=whatsapp', 'library?from=whatsapp'],
+    ['https://resources.jsmf.me/library', 'library'],
+    ['https://resources.jsmf.me/library?from=whatsapp', 'library?from=whatsapp'],
     ['http://localhost:3001/library', 'library'],
   ])('%s → %s', (url, expected) => {
     expect(libraryButtonSuffix(url)).toBe(expected);
@@ -219,6 +219,6 @@ describe('library button', () => {
     // A receipt pointing somewhere sensible beats no receipt for a purchase
     // that really happened.
     expect(libraryButtonSuffix('not-a-url')).toBe('library');
-    expect(libraryButtonSuffix('https://store.jsmf.me')).toBe('library');
+    expect(libraryButtonSuffix('https://resources.jsmf.me')).toBe('library');
   });
 });
