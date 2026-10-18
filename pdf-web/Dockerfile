@@ -1,6 +1,9 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
+ARG NEXT_PUBLIC_MAX_UPLOAD_MB=25
+ENV NEXT_PUBLIC_MAX_UPLOAD_MB=$NEXT_PUBLIC_MAX_UPLOAD_MB
+
 COPY package.json package-lock.json ./
 RUN npm ci
 
