@@ -98,6 +98,16 @@ export class CreateProductDto {
   @IsOptional()
   @IsUUID()
   authorUserId?: string;
+
+  @ApiPropertyOptional({
+    default: true,
+    description:
+      'Show in store. False hides it from browse, search, the featured strip and its page, ' +
+      'and stops anyone buying or claiming it — people who already have it keep it.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  listed?: boolean;
 }
 
 export class UpdateProductDto extends PartialType(CreateProductDto) {}

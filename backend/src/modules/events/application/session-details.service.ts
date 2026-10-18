@@ -14,7 +14,7 @@ import {
   type DetailValues,
   type SessionDetail,
 } from '../domain/session-details';
-import { firstName, sessionWhenLines } from '../domain/session-display';
+import { firstName, sessionDisplayName, sessionWhenLines } from '../domain/session-display';
 
 export interface SessionDetailRow {
   userId: string;
@@ -243,7 +243,7 @@ export class SessionDetailsService {
     const wants = new Set(needed);
     const rendered = liveSessionDetails({
       attendeeName: firstName(holder.user.name),
-      sessionTitle: session.product.title,
+      sessionTitle: sessionDisplayName(session),
       whenLines: sessionWhenLines(session.days),
       platformLabel: session.platformLabel,
       dates: wants.has('dates') ? { changed: statuses.dates === 'CHANGED' } : undefined,

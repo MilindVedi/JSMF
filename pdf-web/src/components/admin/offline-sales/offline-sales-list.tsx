@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, UserPlus } from "lucide-react";
+import { CollapseToggle } from "@/components/admin/collapsible-section";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +23,15 @@ const ENTRY_LABEL: Record<OfflineSale["entry"], string> = {
  * and who added them. Product-agnostic; the product type's own answers come
  * back already labelled in `details`.
  */
-export function OfflineSalesList({ productId, addHref }: { productId: string; addHref: string }) {
+export function OfflineSalesList({
+  productId,
+  addHref,
+  onCollapse,
+}: {
+  productId: string;
+  addHref: string;
+  onCollapse?: () => void;
+}) {
   const [sales, setSales] = useState<OfflineSale[] | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -33,7 +42,7 @@ export function OfflineSalesList({ productId, addHref }: { productId: string; ad
       .catch(() => setFailed(true));
   }, [productId]);
 
-  const active = sales?.filter((sale) => sale.order.status === "PAID") ?? [];
+  const active = sales?.filter((sale) => sale.order.status === "PAID" || sale.order.status === "PARTIALLY_REFUNDED") ?? [];
   const collected = active.reduce((sum, sale) => sum + Number(sale.order.amountPaidMinor), 0);
   const discounted = active.reduce((sum, sale) => sum + Number(sale.order.discountMinor), 0);
   const detailKeys = [...new Set((sales ?? []).flatMap((sale) => Object.keys(sale.details)))];
@@ -42,7 +51,10 @@ export function OfflineSalesList({ productId, addHref }: { productId: string; ad
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
-          <CardTitle>Buyers added by hand{sales ? ` · ${active.length}` : ""}</CardTitle>
+          <CardTitle className="flex items-center">
+            <CollapseToggle onCollapse={onCollapse} />
+            Buyers added by hand{sales ? ` · ${active.length}` : ""}
+          </CardTitle>
           <CardDescription>
             People who paid outside the website — by UPI, Razorpay&apos;s Payment Page, bank transfer or cash.
             {sales && sales.length > 0
@@ -108,7 +120,11 @@ export function OfflineSalesList({ productId, addHref }: { productId: string; ad
                       <span className="text-xs text-muted-foreground">{sale.order.orderNumber}</span>
                       {sale.order.status !== "PAID" && (
                         <Badge variant="outline" className="ml-2 bg-destructive/10 text-destructive">
-                          {sale.order.status === "REFUNDED" ? "Refunded" : sale.order.status}
+                          {sale.order.status === "REFUNDED"
+                            ? "Refunded"
+                            : sale.order.status === "PARTIALLY_REFUNDED"
+                              ? "Partly refunded"
+                              : sale.order.status}
                         </Badge>
                       )}
                     </TableCell>

@@ -13,6 +13,7 @@ import type {
   ProductListItem,
   Taxonomy,
   TaxonomyTerm,
+  ManualRefundMethod,
 } from "./types";
 
 /** Admin-panel endpoints. Every one of these is role-gated server-side too. */
@@ -27,6 +28,8 @@ export interface ProductInput {
   priceAmountMinor?: string;
   compareAtAmountMinor?: string | null;
   language?: string;
+  /** "Show in store". Omitted on create = shown. */
+  listed?: boolean;
 }
 
 export const adminApi = {
@@ -136,16 +139,40 @@ export const adminOrderApi = {
   get: (id: string) => api.get<AdminOrder>(`/admin/orders/${id}`),
 
   /**
+   * Through Razorpay. `amountMinor` omitted refunds everything left.
    * `speed` omitted means NORMAL — the cheap rail. INSTANT costs a per-refund
    * fee and falls back to NORMAL on its own where the payment method cannot
    * take a real-time transfer, so it is a request rather than a guarantee.
    */
-  refund: (id: string, reason?: string, speed?: RefundSpeed) =>
-    api.post<{ orderId: string; status: OrderStatus }>(`/admin/orders/${id}/refund`, {
-      reason,
-      speed,
-    }),
+  refund: (
+    id: string,
+    input: { reason?: string; speed?: RefundSpeed; amountMinor?: string; revokeAccess: boolean; notifyBuyer: boolean },
+  ) => api.post<RefundResult>(`/admin/orders/${id}/refund`, input),
+
+  /** A refund the admin already made by UPI, bank or cash. Nothing is sent to Razorpay. */
+  manualRefund: (
+    id: string,
+    input: {
+      amountMinor: string;
+      method: ManualRefundMethod;
+      reference?: string;
+      refundedAt: string;
+      reason?: string;
+      revokeAccess: boolean;
+      notifyBuyer: boolean;
+    },
+  ) => api.post<RefundResult>(`/admin/orders/${id}/manual-refund`, input),
+
+  /** Takes away what the order gave, without moving money. */
+  revokeAccess: (id: string, reason?: string) =>
+    api.post<{ orderId: string; revoked: number }>(`/admin/orders/${id}/revoke-access`, { reason }),
 };
+
+export interface RefundResult {
+  orderId: string;
+  status: OrderStatus;
+  accessRevoked: boolean;
+}
 
 /**
  * When the PDF included with a seat reaches buyers.
@@ -163,6 +190,31 @@ export interface SessionTestimonial {
   id: string;
   url: string;
   sortOrder: number;
+}
+
+/**
+ * A named gallery beside the original testimonials — "What students said
+ * after Day 1". Shown in the booking band of the home page and /prep-kit.
+ */
+export interface SessionTestimonialSection {
+  id: string;
+  heading: string;
+  subheading: string | null;
+  tag: string | null;
+  /** A day of this session it is about, or null. */
+  dayId: string | null;
+  /** Off hides it from the website. */
+  isVisible: boolean;
+  sortOrder: number;
+  testimonials: SessionTestimonial[];
+}
+
+export interface TestimonialSectionInput {
+  heading?: string;
+  subheading?: string | null;
+  tag?: string | null;
+  dayId?: string | null;
+  isVisible?: boolean;
 }
 
 /** One buyer's row in the included-material delivery table. */
@@ -216,6 +268,7 @@ export interface AdminSession {
   /** When false, seat counts are hidden from the public website. */
   showSeats: boolean;
   lateRegistration: boolean;
+  lateJoinersGetEarlierMaterials: boolean;
   /** TEMPORARY external-checkout scarcity number for /prep-kit. Null = hidden, 0 = full. */
   displaySeats: number | null;
   /** When the PDF included with a seat reaches buyers. */
@@ -227,6 +280,8 @@ export interface AdminSession {
   recordingUrl: string | null;
   highlights: string[];
   perkText: string | null;
+  /** The stable name used in emails and the library. Null = the title is used. */
+  shortName: string | null;
   /** "Who is this session for?" — null hides the section on the website. */
   audienceText: string | null;
   /** Testimonials section copy. Null falls back to a generic default. */
@@ -240,6 +295,8 @@ export interface AdminSession {
   showNotSpamNotice: boolean;
   /** Screenshots of what people said about a past session, in display order. */
   testimonials: SessionTestimonial[];
+  /** Named galleries such as "Day 1 feedback", in display order. */
+  testimonialSections: SessionTestimonialSection[];
   priceAmountMinor: string;
   compareAtAmountMinor: string | null;
   currency: string;
@@ -257,6 +314,7 @@ export interface SessionInput {
   capacity?: number | null;
   showSeats?: boolean;
   lateRegistration?: boolean;
+  lateJoinersGetEarlierMaterials?: boolean;
   displaySeats?: number | null;
   bundleDeliveryMode?: BundleDeliveryMode;
   priceAmountMinor?: string;
@@ -266,6 +324,7 @@ export interface SessionInput {
   recordingUrl?: string | null;
   highlights?: string[];
   perkText?: string | null;
+  shortName?: string | null;
   audienceText?: string | null;
   testimonialsHeading?: string | null;
   testimonialsSubheading?: string | null;
@@ -304,18 +363,33 @@ export const adminSessionApi = {
   registrations: (id: string) =>
     api.get<SessionRegistrationRow[]>(`/admin/sessions/${id}/registrations`),
 
-  addTestimonial(id: string, file: File) {
+  /** Omit `sectionId` for the original gallery. */
+  addTestimonial(id: string, file: File, sectionId?: string) {
     const formData = new FormData();
     formData.append("file", file);
+    if (sectionId) formData.append("sectionId", sectionId);
     return api.upload<SessionTestimonial>(`/admin/sessions/${id}/testimonials`, formData);
   },
 
   removeTestimonial: (id: string, testimonialId: string) =>
     api.delete<void>(`/admin/sessions/${id}/testimonials/${testimonialId}`),
 
-  /** Every testimonial id for this session, once each, in the new display order. */
-  reorderTestimonials: (id: string, testimonialIds: string[]) =>
-    api.patch<void>(`/admin/sessions/${id}/testimonials/reorder`, { testimonialIds }),
+  /** Every testimonial id of one gallery, once each, in the new display order. Omit `sectionId` for the original gallery. */
+  reorderTestimonials: (id: string, testimonialIds: string[], sectionId?: string) =>
+    api.patch<void>(`/admin/sessions/${id}/testimonials/reorder`, { testimonialIds, sectionId }),
+
+  createTestimonialSection: (id: string, input: TestimonialSectionInput) =>
+    api.post<SessionTestimonialSection>(`/admin/sessions/${id}/testimonial-sections`, input),
+
+  updateTestimonialSection: (id: string, sectionId: string, input: TestimonialSectionInput) =>
+    api.patch<SessionTestimonialSection>(`/admin/sessions/${id}/testimonial-sections/${sectionId}`, input),
+
+  /** Deletes the section and its images. Hide it instead to keep it. */
+  removeTestimonialSection: (id: string, sectionId: string) =>
+    api.delete<void>(`/admin/sessions/${id}/testimonial-sections/${sectionId}`),
+
+  reorderTestimonialSections: (id: string, sectionIds: string[]) =>
+    api.patch<void>(`/admin/sessions/${id}/testimonial-sections/reorder`, { sectionIds }),
 
   /** Who has received the material included with this session, and who has not. */
   bundleDeliveries: (id: string) =>

@@ -58,6 +58,16 @@ export function formatMoney(amountMinor: bigint, currency: string): string {
   return `${symbol}${minor === 0n ? major : `${major}.${minor.toString().padStart(2, '0')}`}`;
 }
 
+/**
+ * The name emails and the library use for a session: its short name, or its
+ * title when it has none. The title is the website's booking-card text and can
+ * change every day; the short name is the stable one. The one rule for which
+ * name goes where — every email goes through this, so none can drift.
+ */
+export function sessionDisplayName(session: { shortName: string | null; product: { title: string } }): string {
+  return session.shortName?.trim() || session.product.title;
+}
+
 export function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] || name;
 }

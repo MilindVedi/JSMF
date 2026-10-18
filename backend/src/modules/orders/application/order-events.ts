@@ -25,7 +25,11 @@ export interface OrderPaidListener {
   onOrderPaid(event: OrderPaidEvent): Promise<{ confirmationHandled: boolean }>;
 }
 
-/** An order whose whole payment has been returned. */
+/**
+ * An order that no longer gives what it was bought for: refunded with access
+ * taken away, or its access revoked by an admin afterwards. A refund that keeps
+ * access does not announce this.
+ */
 export interface OrderRefundedEvent {
   orderId: string;
   reason: string;
@@ -87,8 +91,9 @@ export class OrderEvents {
   }
 
   /**
-   * Announced after the refund has committed, for a full refund only — a
-   * partial one leaves the purchase in place. Same rule as `paid`: the money
+   * Announced after the commit, whenever access is taken away — by a refund
+   * the admin chose to revoke with, by an admin afterwards, or by a full refund
+   * in the Razorpay dashboard. Same rule as `paid`: the money
    * has already gone back, so a listener that throws is logged, never turned
    * into an error for the admin or a failed webhook for Razorpay to retry.
    */

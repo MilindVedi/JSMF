@@ -478,17 +478,36 @@ pre-existing header bug where the full wordmark plus both auth buttons pushed
 
 ### Status: built — admin order management and refunds
 
-`backend/src/modules/orders/http/admin-order.controller.ts` (`ADMIN` role only — unlike catalog management, `EDUCATOR` does not get this): `GET /admin/orders` (every customer, filterable by status and by order number/email, paginated), `GET /admin/orders/:id`, and `POST /admin/orders/:id/refund`.
+`backend/src/modules/orders/http/admin-order.controller.ts` (`ADMIN` role only — unlike catalog management, `EDUCATOR` does not get this): `GET /admin/orders` (every customer, filterable by status and by order number/email, paginated), `GET /admin/orders/:id`, `POST /admin/orders/:id/refund`, `POST /admin/orders/:id/manual-refund` and `POST /admin/orders/:id/revoke-access`.
 
-`PaymentService.refund()` is a full refund of the order's captured payment: it calls the provider's `refund()` port method first (never mutating anything locally until the provider confirms), then in one transaction records a `Refund` row attributed to the admin who issued it, marks the `Payment` and `Order` `REFUNDED`, and calls `EntitlementService.revokeForOrder()` so a refund can never leave someone with both their money back and the content. A free order (₹0) skips the provider call entirely — there is nothing to return — and only revokes the entitlement.
+#### Three actions, two separate decisions
 
-The admin Orders page (`pdf-web/src/app/(admin)/admin/orders/page.tsx`) now shows every customer's orders with a status filter, a search box (order number or email), and a Refund button on any `PAID` order, which confirms the amount and customer before calling the API.
+An admin refund answers two questions independently: **how much money goes back** (all that is left, or part of it) and **whether access goes** (revoke, or keep). They used to be one decision — a refund was always full and always revoked — and splitting them is what makes goodwill refunds, partial refunds and "refunded by UPI, keeps the PDF" possible.
 
-**This admin-triggered path is currently disabled** (`REFUNDS_ENABLED=false`
-by default, added alongside the real live-session Razorpay integration — see
-`docs/main-website/README.md` §3a): the endpoint answers `409` without calling
-Razorpay, and the Orders page shows the Refund button disabled with that
-reason. The functionality above is unchanged and intact, just switched off
+| Endpoint | Money | Access |
+| :--- | :--- | :--- |
+| `POST /admin/orders/:id/refund` | Razorpay sends it back (`PaymentService.refund()`). Gated by `REFUNDS_ENABLED`. Body: `amountMinor?`, `speed?`, `reason?`, `revokeAccess?`, `notifyBuyer?` | `revokeAccess`; omitted means "only when this refund completes the full amount" |
+| `POST /admin/orders/:id/manual-refund` | Already sent by the admin by UPI, bank or cash; this only records it (`recordManualRefund()`). Not gated: no money moves here. Body: `amountMinor`, `method`, `reference?`, `refundedAt`, `reason?`, `revokeAccess`, `notifyBuyer?` | `revokeAccess`, required |
+| `POST /admin/orders/:id/revoke-access` | None | Revoked now (`revokeAccess()`), for a refund recorded with "keep access" |
+
+**Rules every path follows:**
+
+- The amount is checked against **what was captured minus every refund that has not failed**, never a figure from the client. Several partial refunds may add up to the whole.
+- A manual refund's check runs inside the transaction with the payment row locked (`SELECT … FOR UPDATE`), so two admins recording at once cannot over-refund between them. A Razorpay refund is checked before the call; once Razorpay has sent the money it is recorded whatever the arithmetic says, because a refund the books do not show is worse than one that shows the books were wrong (Razorpay itself refuses to refund more than was captured).
+- Order status: `PARTIALLY_REFUNDED` while something is left, `REFUNDED` once the total reaches the captured amount (the payment becomes `REFUNDED` then too). Status says where the **money** stands; whether access remains is read from the order's entitlements (`hasAccess` on the admin order view).
+- Revoking access calls `EntitlementService.revokeForOrder()` — every entitlement carrying the order's id: the PDF, a session seat, its day materials, a bundled planner — and announces `OrderEvents.refunded`, which cancels a booked 1:1 call. A refund that **keeps** access announces nothing, so the call stays booked and the seat stays taken.
+- A free order (₹0) has nothing to refund; the endpoints refuse it and point at **Revoke access**.
+- The buyer is emailed when `notifyBuyer` is true (the default): the amount, "part of your payment" for a partial one, how and when for a manual one (with its reference), and whether they still have access — read from the order's state after the refund, so access revoked earlier is never described as kept.
+
+The admin view of an order (`OrderService.listForAdmin` / `findForAdmin`) carries `refundedMinor`, `refundableMinor`, `refundableThroughProvider` and `hasAccess`, worked out on the server so the page does no money arithmetic.
+
+The admin Orders page (`pdf-web/src/app/(admin)/admin/orders/page.tsx`) shows every customer's orders with a status filter and a search box. **Refund** opens one dialog (`components/admin/refund-dialog.tsx`) with both routes; the Razorpay one is disabled, with the reason, for money that never went through Razorpay or while `REFUNDS_ENABLED` is off. Each refund on an order is listed under its status, with "Access kept" or "Access removed". **Revoke access** (`components/admin/revoke-access-dialog.tsx`) appears on a refunded order that still gives access.
+
+**The Razorpay route can be switched off** (`REFUNDS_ENABLED=false` is the
+default, added alongside the real live-session Razorpay integration — see
+`docs/main-website/README.md` §3a): `POST /admin/orders/:id/refund` answers
+`409` without calling Razorpay, and the dialog shows that route disabled with
+the reason. Recording a manual refund and revoking access are never gated. The functionality above is unchanged and intact, just switched off
 until that path has been exercised on the real integration; flip the backend
 env var — the admin Orders page reads `refundsEnabled` from the backend's
 `GET /admin/settings` response, so there is no frontend constant to keep in sync.
@@ -498,11 +517,10 @@ above**, and is the only refund path currently live: the `refund.processed`
 webhook (`PaymentService.applyProviderRefund()`) records a `Refund` row keyed
 on the provider's unique refund id (redelivery-safe) and revokes the
 entitlement — but only once every `Refund` recorded against that payment sums
-to the full captured amount, so a **partial** refund is recorded and leaves
-access in place. This is the partial-refund support that did not exist when
-this section was first written; it only covers provider-initiated refunds,
-since the admin-triggered path above is still always a refund for the full
-amount.
+to the full captured amount (manual refunds count towards it), so a
+**partial** refund is recorded, marks the order `PARTIALLY_REFUNDED`, and leaves
+access in place. Nobody is asked here, so a dashboard refund that completes the
+full amount always revokes, even if an earlier admin refund kept access.
 
 Not yet done: neither path has been run against a live (non-test-mode)
 Razorpay refund yet.

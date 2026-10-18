@@ -207,6 +207,7 @@ export default function ProductEditorPage() {
       subtitle: values.subtitle || undefined,
       description: values.description || undefined,
       accessType: values.accessType,
+      listed: values.listed,
       priceAmountMinor: values.accessType === "PAID" ? rupeesToMinor(values.price ?? "0") : "0",
       compareAtAmountMinor:
         values.accessType === "PAID" && values.compareAtPrice
@@ -345,6 +346,7 @@ export default function ProductEditorPage() {
                   accessType: product.accessType,
                   price: minorToRupees(product.priceAmountMinor),
                   compareAtPrice: minorToRupees(product.compareAtAmountMinor),
+                  listed: product.listed,
                 }}
               />
             </CardContent>

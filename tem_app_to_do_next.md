@@ -87,3 +87,77 @@ Status as of 11 October 2026. Nothing below is committed yet.
   - Deploy the backend before main-web and pdf-web.
   - In Admin → 1:1 calls: create the offering, set the weekly hours, then publish. Until it is published, nothing changes on jsmf.me.
   - Add a 1:1 line to the Refund Policy through Admin → Legal (reschedule up to 24h before; cancellations through support).
+- **Buyers added by hand (offline sales)** (built, not deployed). Details in [docs/offline-sales/README.md](docs/offline-sales/README.md).
+  - Review migration `20261016120000_offline_sales` before committing. It is additive: one table, two enums, one new `PaymentProvider` value. It also copies anyone the old script already added into the new list.
+  - Deploy the backend before pdf-web. No env changes.
+  - Then: store admin → Sessions → a session → **Buyers added by hand → Add buyers**.
+- **Feedback forms (replace the Google Form)** (built, not deployed). Steps: [docs/main-website/admin-guide.md](docs/main-website/admin-guide.md). Reasoning and API: [docs/main-website/README.md](docs/main-website/README.md) §3f.
+  - Review migration `20261018100000_feedback_forms` before committing. It is additive: four enums, six tables, and CHECK constraints. Nothing existing changes.
+  - Deploy the backend before pdf-web and main-web.
+  - Optional: set `FEEDBACK_LINK_SECRET` on the backend. Without it the key is derived from `STORAGE_SIGNING_SECRET`; changing either breaks links already emailed.
+  - Needs the `session-reminders` Cloud Scheduler job below, which also sends the automatic feedback emails.
+  - Check the Privacy Policy says feedback may be shown on the website, before showing replies there.
+- **Home page and header changes** (built, not deployed; main-web only): the "Book a 1:1 session" button at the top, the no-session Telegram button moved to the "coming soon" band, and **JSMF Resources** in the header. Details: [docs/main-website/README.md](docs/main-website/README.md) §3g.
+- **Admin session page sections are collapsible** (built, not deployed; pdf-web only). Details: §3g.
+- **Session short name** (built, not deployed): a steady name for emails and the library, separate from the booking-card title. Details: [docs/main-website/README.md](docs/main-website/README.md) §2.
+  - Review migration `20261018120000_session_short_name` before committing. Additive: one nullable column; blank means the title, so nothing changes until it is filled in.
+  - Deploy the backend before pdf-web.
+- **Partial and manual refunds, keep-or-revoke access** (built, not deployed): Orders → Refund either through Razorpay or as "I already refunded it myself" (UPI/bank/cash), full or partial, with a Revoke access switch and an Email the buyer switch; plus a **Revoke access** button for refunded orders that kept access. Details: [docs/pdf-platform/02-architecture.md](docs/pdf-platform/02-architecture.md) "Three actions, two separate decisions"; steps in [docs/main-website/admin-guide.md](docs/main-website/admin-guide.md) "Refunds".
+  - Review migration `20261018140000_manual_refunds` before committing. Additive: one enum, two nullable columns on `refunds`, two CHECK constraints. Existing rows read as "through the provider".
+  - Deploy the backend before pdf-web: the new Orders page reads fields the old backend does not send.
+  - Razorpay partial refunds from the panel have only been tested against the stub; try one small partial refund in Razorpay test mode before relying on it.
+- **Direct-to-storage uploads (not built; the upload path does not scale).** Downloads already
+  do this correctly — the backend mints a short-lived signed GCS URL and the browser fetches the
+  file straight from Google, so no file bytes cross Cloud Run. **Uploads do the opposite:** the
+  file is buffered whole in the pdf-web proxy (256Mi) and again in the backend (512Mi) before
+  reaching GCS. Three ceilings follow from that, none of which a bigger `MAX_UPLOAD_SIZE_MB` can
+  lift:
+  - Cloud Run refuses any HTTP/1 request over **32 MiB**, so a larger upload fails in production
+    however the app is configured;
+  - the file sits in RAM twice, so a large upload can take an instance down;
+  - the proxy (`pdf-web/next.config.ts` → `proxyClientMaxBodySize`) has to be raised in step, and
+    silently truncates the body when it is not.
+
+  Until this is built, keep **`MAX_UPLOAD_SIZE_MB` at 25** (and `NEXT_PUBLIC_MAX_UPLOAD_MB` to
+  match, with the proxy a little above it). 25 rather than 32 leaves room for the multipart
+  overhead that counts towards Cloud Run's limit.
+
+  **The correct approach**, which removes all three ceilings at once:
+  1. The browser asks the backend for a signed upload URL (`POST /admin/products/:id/assets/upload-url`),
+     naming the file's size and type. The backend checks the admin's rights, refuses an
+     unreasonable size or type, and returns a URL valid for a few minutes, scoped to one object key
+     it chose.
+  2. The browser `PUT`s the file **directly to GCS**. Nothing passes through Cloud Run or Next.js.
+     GCS takes files up to 5 TB and handles concurrency itself.
+  3. The browser calls the backend back (`POST …/assets/confirm` with the object key). The backend
+     reads the object's **metadata** from GCS — size, content type, and the checksum GCS already
+     computed — and only then writes the `product_assets` row.
+
+  What moves, and must not be lost (today all of it happens while the bytes are in hand, in
+  `product-asset.service.ts`): the MIME-type check against the asset kind, the empty-file check,
+  the SHA-256 that blocks a byte-identical re-upload, and storing the file before the database row.
+  Step 3 can do each of these from GCS metadata without downloading the file (`crc32c`/`md5Hash`
+  are returned by the metadata call; the stored checksum column may need to change to one GCS
+  provides, or be computed in the browser).
+
+  Two new things the design needs, which the current one does not:
+  - **a size cap on the signed URL itself** (`x-goog-content-length-range`), or an admin could
+    upload anything to it;
+  - **cleanup of abandoned objects** — uploads that completed in step 2 but never reached step 3.
+    A sweep over objects with no `product_assets` row, on the existing `SweepRegistry` clock.
+
+  Scope it to `PRIMARY_FILE` PDFs first; cover images and small attachments can keep today's path
+  indefinitely, since they are genuinely small. Roughly half a day. Do it before promising anyone
+  that large files work — not by raising the limit.
+- **Cloud Scheduler `session-reminders` job:** without it, no session reminders go out in production. The commands are in [docs/gcp/02-deployment-guide.md](docs/gcp/02-deployment-guide.md).
+- **Feedback sections ("What students said after Day 1")** (built, not deployed). Details are in [docs/main-website/README.md](docs/main-website/README.md) §3e.
+  - Review migration `20261017190000_testimonial_sections` before committing. It is additive: one table and one nullable column.
+  - Deploy the backend before pdf-web and main-web.
+- **Day materials (PDFs per session day) and "Show in store"** (built, not deployed). Details are in [docs/main-website/README.md](docs/main-website/README.md) §3d-bis.
+  - Review migration `20261017150000_session_materials` before committing. It is additive: two columns with defaults that keep today's behaviour, one new entitlement source, two tables.
+  - Deploy the backend before pdf-web.
+  - Recordings are deliberately not built yet (cost).
+- **Session details (dates, joining link, Telegram group)** (built, not deployed). It replaces "Notify attendees". Details are in [docs/main-website/README.md](docs/main-website/README.md) §3d.
+  - Review migration `20261016150000_session_details` before committing. It is additive: one column (`telegram_url`), two enums and two tables.
+  - Deploy the backend before pdf-web.
+  - After deploying, links sent before then show as "Not sent", because nothing recorded which link those emails held. The first "Send everything outstanding" sends them once more.

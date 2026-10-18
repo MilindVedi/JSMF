@@ -23,16 +23,24 @@ import type { AuthenticatedUser } from '../../identity/application/auth.service'
 import { LiveSessionNotifications } from '../application/live-session-notifications.service';
 import { LiveSessionService } from '../application/live-session.service';
 import { SessionDetailsService } from '../application/session-details.service';
+import { SessionMaterialsService } from '../application/session-materials.service';
+import { SessionTestimonialSectionsService } from '../application/session-testimonial-sections.service';
 import {
+  AddSessionMaterialDto,
   CreateLiveSessionDto,
+  CreateTestimonialSectionDto,
+  ReorderTestimonialSectionsDto,
   ReorderTestimonialsDto,
   SendBundleDto,
   SendSessionDetailsDto,
+  SendSessionMaterialsDto,
   UpdateLiveSessionDto,
+  UpdateTestimonialSectionDto,
 } from './dto/live-session.dto';
 
 /** A screenshot, not a document — small enough that a wrong file fails fast. */
 const TESTIMONIAL_MAX_BYTES = 8 * 1024 * 1024;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @ApiTags('admin: sessions')
 @ApiBearerAuth()
@@ -43,6 +51,8 @@ export class AdminLiveSessionController {
     private readonly sessions: LiveSessionService,
     private readonly notifications: LiveSessionNotifications,
     private readonly details: SessionDetailsService,
+    private readonly materials: SessionMaterialsService,
+    private readonly sections: SessionTestimonialSectionsService,
   ) {}
 
   @Get()
@@ -67,13 +77,17 @@ export class AdminLiveSessionController {
   }
 
   @Patch(':id')
-  update(
+  async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateLiveSessionDto,
     @CurrentUser() user: AuthenticatedUser,
     @Req() request: Request,
   ) {
-    return this.sessions.update(id, dto, actorFrom(user, request));
+    const updated = await this.sessions.update(id, dto, actorFrom(user, request));
+    // The late-joiner setting and the days' times both decide who gets the
+    // day materials, so access is brought in line after any edit.
+    await this.materials.reconcile(id);
+    return updated;
   }
 
   @Post(':id/publish')
@@ -165,6 +179,52 @@ export class AdminLiveSessionController {
     return this.details.send(id, { userIds: dto.userIds, sentById: admin.id });
   }
 
+  @Get(':id/materials')
+  @ApiOperation({
+    summary: "Each day's materials, and per seat holder what they have and have been told about",
+  })
+  sessionMaterials(@Param('id', ParseUUIDPipe) id: string) {
+    return this.materials.overview(id);
+  }
+
+  @Post(':id/materials')
+  @ApiOperation({
+    summary: 'Attach a store PDF to a day',
+    description: 'Seat holders due it get it in their library at once. No email is sent.',
+  })
+  addMaterial(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddSessionMaterialDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.materials.add(id, dto, actorFrom(user, request));
+  }
+
+  @Delete(':id/materials/:materialId')
+  @ApiOperation({
+    summary: 'Detach a material from its day',
+    description: 'Access given through this session is taken back. Anyone who bought the PDF keeps it.',
+  })
+  removeMaterial(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('materialId', ParseUUIDPipe) materialId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.materials.remove(id, materialId, actorFrom(user, request));
+  }
+
+  @Post(':id/materials/send')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Email seat holders about materials they have not been told about',
+    description: 'One email per person. Omit userIds for everyone; safe to repeat.',
+  })
+  sendMaterials(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SendSessionMaterialsDto) {
+    return this.materials.send(id, { userIds: dto.userIds });
+  }
+
   @Post(':id/testimonials')
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
@@ -177,19 +237,25 @@ export class AdminLiveSessionController {
     @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentUser() user: AuthenticatedUser,
     @Req() request: Request,
+    @Body('sectionId') sectionId?: string,
   ) {
     if (!file) {
       throw new BadRequestException('No file was uploaded under the field name "file".');
     }
+    // Optional form field: a named section of this session. Omitted, the
+    // image joins the original gallery, exactly as before sections existed.
+    if (sectionId !== undefined && !UUID.test(sectionId)) {
+      throw new BadRequestException('sectionId must be a section id.');
+    }
 
-    return this.sessions.addTestimonial(id, file, actorFrom(user, request));
+    return this.sessions.addTestimonial(id, file, actorFrom(user, request), sectionId ?? null);
   }
 
   @Patch(':id/testimonials/reorder')
   @HttpCode(200)
   @ApiOperation({ summary: "Set the testimonials' display order" })
   async reorderTestimonials(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ReorderTestimonialsDto) {
-    await this.sessions.reorderTestimonials(id, dto.testimonialIds);
+    await this.sessions.reorderTestimonials(id, dto.testimonialIds, dto.sectionId ?? null);
   }
 
   @Delete(':id/testimonials/:testimonialId')
@@ -200,5 +266,55 @@ export class AdminLiveSessionController {
     @Param('testimonialId', ParseUUIDPipe) testimonialId: string,
   ) {
     await this.sessions.removeTestimonial(id, testimonialId);
+  }
+
+  // --- testimonial sections ("Day 1 feedback" and the like) ----------------
+
+  @Post(':id/testimonial-sections')
+  @ApiOperation({
+    summary: 'Add a named testimonial section',
+    description: 'Its images are uploaded through POST :id/testimonials with this sectionId.',
+  })
+  createTestimonialSection(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateTestimonialSectionDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.sections.create(id, dto, actorFrom(user, request));
+  }
+
+  @Patch(':id/testimonial-sections/reorder')
+  @HttpCode(200)
+  @ApiOperation({ summary: "Set the sections' display order" })
+  async reorderTestimonialSections(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReorderTestimonialSectionsDto,
+  ) {
+    await this.sections.reorder(id, dto.sectionIds);
+  }
+
+  @Patch(':id/testimonial-sections/:sectionId')
+  @ApiOperation({ summary: "Edit a section's copy, day or visibility" })
+  updateTestimonialSection(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('sectionId', ParseUUIDPipe) sectionId: string,
+    @Body() dto: UpdateTestimonialSectionDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.sections.update(id, sectionId, dto, actorFrom(user, request));
+  }
+
+  @Delete(':id/testimonial-sections/:sectionId')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Delete a section and its images (hide it instead to keep it)' })
+  async removeTestimonialSection(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('sectionId', ParseUUIDPipe) sectionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    await this.sections.remove(id, sectionId, actorFrom(user, request));
   }
 }

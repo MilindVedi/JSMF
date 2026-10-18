@@ -213,41 +213,71 @@ export function refundConfirmation(input: {
   items: Array<{ title: string }>;
   refundedFormatted: string;
   orderNumber: string;
-  refundId: string;
+  /** The provider's refund id, or a manual refund's reference. Left out when there is neither. */
+  refundId?: string | null;
   /** Whether the money went back over a real-time rail rather than the slow one. */
   instant?: boolean;
+  /** Only part of what was paid came back. */
+  partial?: boolean;
+  /** Whether the items were taken out of the account. Defaults to true. */
+  accessRemoved?: boolean;
+  /** Set when the JSMF team sent the money back themselves (UPI, bank transfer, cash). */
+  manual?: { methodLabel: string | null; dateLabel: string };
 }): RenderedMail {
-  const { buyerName, items, refundedFormatted, orderNumber, refundId, instant = false } = input;
+  const {
+    buyerName,
+    items,
+    refundedFormatted,
+    orderNumber,
+    refundId = null,
+    instant = false,
+    partial = false,
+    accessRemoved = true,
+    manual,
+  } = input;
 
   const titles = items.map((item) => item.title);
   const noun = titles.length === 1 ? 'resource is' : 'resources are';
+
+  const headline = partial ? 'Part of your payment has been refunded.' : 'Your refund has been processed.';
 
   // The timing is the whole reason this email exists, so it states what
   // actually happened rather than a worst case. Promising days for a refund
   // that already landed reads as a mistake; promising minutes for one that
   // takes a week produces the support ticket this is meant to prevent.
-  const timingText = instant
-    ? 'The amount has been sent back to the method you paid with and should reach you within a few minutes.'
-    : 'The amount goes back to the method you paid with. Banks usually take 5-7 working days to show it on your statement.';
+  const via = manual?.methodLabel ? ` by ${manual.methodLabel}` : '';
+  const timingText = manual
+    ? `We sent the amount back to you${via} on ${manual.dateLabel}.`
+    : instant
+      ? 'The amount has been sent back to the method you paid with and should reach you within a few minutes.'
+      : 'The amount goes back to the method you paid with. Banks usually take 5-7 working days to show it on your statement.';
 
-  const timingHtml = instant
-    ? 'The amount has been sent back to the method you paid with and should reach you <strong>within a few minutes</strong>.'
-    : 'The amount goes back to the method you paid with. Banks usually take <strong>5-7 working days</strong> to show it on your statement.';
+  const timingHtml = manual
+    ? `We sent the amount back to you${escapeHtml(via)} on <strong>${escapeHtml(manual.dateLabel)}</strong>.`
+    : instant
+      ? 'The amount has been sent back to the method you paid with and should reach you <strong>within a few minutes</strong>.'
+      : 'The amount goes back to the method you paid with. Banks usually take <strong>5-7 working days</strong> to show it on your statement.';
+
+  const accessLine = accessRemoved
+    ? `The ${noun} no longer available in your JSMF account.`
+    : `Your access is unchanged: the ${noun} still in your JSMF account.`;
+
+  const idLabel = manual ? 'Reference' : 'Refund ID';
 
   const text = [
     `Hi ${buyerName},`,
     ``,
-    `Your refund has been processed.`,
+    headline,
     ``,
     ...titles.map((title) => `  ${title}`),
     ``,
     `Amount refunded: ${refundedFormatted}`,
     `Order ID: ${orderNumber}`,
-    `Refund ID: ${refundId}`,
+    ...(refundId ? [`${idLabel}: ${refundId}`] : []),
     ``,
     timingText,
     ``,
-    `The ${noun} no longer available in your JSMF account.`,
+    accessLine,
     ``,
     `If anything about this looks wrong, reply to this email with your Order ID`,
     `and we will look into it.`,
@@ -269,25 +299,28 @@ export function refundConfirmation(input: {
     </tr>`;
 
   const html = layout(
-    'Your refund has been processed',
+    partial ? 'Part of your payment has been refunded' : 'Your refund has been processed',
     `
     <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Hi ${escapeHtml(buyerName)},</p>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Your refund has been processed.</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">${headline}</p>
     <div style="margin:0 0 20px;padding:16px;background:#fafafa;border-radius:8px;">
       ${itemsHtml}
       <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin-top:12px;">
         ${detailRow('Amount refunded', refundedFormatted)}
         ${detailRow('Order ID', orderNumber)}
-        ${detailRow('Refund ID', refundId)}
+        ${refundId ? detailRow(idLabel, refundId) : ''}
       </table>
     </div>
     <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">${timingHtml}</p>
-    <p style="margin:0 0 20px;font-size:13px;line-height:1.55;color:#71717a;">The ${noun} no longer available in your JSMF account.</p>
+    <p style="margin:0 0 20px;font-size:13px;line-height:1.55;color:#71717a;">${escapeHtml(accessLine)}</p>
     <p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">If anything about this looks wrong, reply to this email with your Order ID and we will look into it.</p>
     `,
   );
 
-  return { subject: `JSMF - Your refund for ${orderNumber} has been processed`, text, html };
+  const subject = partial
+    ? `JSMF - Part of your payment for ${orderNumber} has been refunded`
+    : `JSMF - Your refund for ${orderNumber} has been processed`;
+  return { subject, text, html };
 }
 
 /** The code itself, rendered so it can be read off a phone and retyped. */
@@ -357,36 +390,48 @@ export function signupVerificationCode(input: {
 export function passwordResetCode(input: {
   code: string;
   expiresInMinutes: number;
+  /** The account has never had a password: worded as setting one, not resetting it. */
+  firstPassword?: boolean;
 }): RenderedMail {
-  const { code, expiresInMinutes } = input;
+  const { code, expiresInMinutes, firstPassword = false } = input;
+
+  const asked = firstPassword
+    ? 'Someone asked to set a password for this JSMF account, so it can be signed in to with this email address and a password.'
+    : 'Someone asked to reset the password for this JSMF account.';
+  const unchanged = firstPassword
+    ? 'Nothing about your account has changed'
+    : 'Your password has not been changed';
 
   const text = [
-    `Someone asked to reset the password for this JSMF account.`,
+    asked,
     ``,
-    `Your reset code is:`,
+    `Your code is:`,
     ``,
     `  ${code}`,
     ``,
-    `Enter it on the password reset page to choose a new password.`,
+    `Enter it on the password reset page to choose ${firstPassword ? 'your' : 'a new'} password.`,
     `The code expires in ${expiresInMinutes} minutes and can be used once.`,
     ``,
-    `If this was not you, ignore this email. Your password has not been changed`,
+    `If this was not you, ignore this email. ${unchanged}`,
     `and nothing happens until the code above is used.`,
     ``,
     emailSignatureText(),
   ].join('\n');
 
   const html = layout(
-    'Reset your password',
+    firstPassword ? 'Set your password' : 'Reset your password',
     `
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Someone asked to reset the password for this JSMF account. Enter this code to choose a new one.</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">${asked} Enter this code to choose ${firstPassword ? 'your password' : 'a new one'}.</p>
     ${codeBlock(code)}
     <p style="margin:0 0 20px;font-size:13px;line-height:1.55;color:#71717a;">The code expires in ${expiresInMinutes} minutes and can be used once.</p>
-    <p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">If this was not you, ignore this email. <strong>Your password has not been changed</strong>, and nothing happens until the code above is used.</p>
+    <p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">If this was not you, ignore this email. <strong>${unchanged}</strong>, and nothing happens until the code above is used.</p>
     `,
   );
 
-  return { subject: `JSMF - ${code} is your password reset code`, text, html };
+  const subject = firstPassword
+    ? `JSMF - ${code} is your code to set a password`
+    : `JSMF - ${code} is your password reset code`;
+  return { subject, text, html };
 }
 
 export function escapeHtml(value: string): string {
@@ -671,6 +716,71 @@ export function liveSessionReminder(input: {
   );
 
   return { subject: `JSMF - Starting soon: ${heading}`, text, html };
+}
+
+/**
+ * New material for one or more days of a live session, sent when the admin
+ * chooses to (the session's Day materials card). Lists only what this person
+ * has not been told about yet, grouped by day, and points to the library —
+ * the PDF itself is never attached.
+ */
+export function liveSessionMaterials(input: {
+  attendeeName: string;
+  sessionTitle: string;
+  /** In day order. `dayLabel` is "Day 1" (or "Session" for a one-day session). */
+  days: Array<{ dayLabel: string; titles: string[] }>;
+  libraryUrl: string;
+  showNotSpamNotice?: boolean;
+}): RenderedMail {
+  const { attendeeName, sessionTitle, days, libraryUrl, showNotSpamNotice } = input;
+  const count = days.reduce((total, day) => total + day.titles.length, 0);
+  const oneDay = days.length === 1 ? days[0].dayLabel : null;
+
+  const text = [
+    `Hi ${attendeeName},`,
+    ``,
+    `New material for ${sessionTitle} is in your JSMF library:`,
+    ``,
+    ...days.flatMap((day) => [`${day.dayLabel}`, ...day.titles.map((title) => `  ${title}`), ``]),
+    `${libraryUrl}`,
+    ``,
+    ...(showNotSpamNotice ? [NOT_SPAM_NOTICE_TEXT, ``] : []),
+    emailSignatureText(),
+  ].join('\n');
+
+  const html = layout(
+    'New session material',
+    `
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">Hi ${escapeHtml(attendeeName)},</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.55;">New material for <strong>${escapeHtml(sessionTitle)}</strong> is in your JSMF library.</p>
+    <div style="margin:0 0 24px;padding:16px;background:#fafafa;border-radius:8px;">
+      ${days
+        .map(
+          (day) =>
+            `<p style="margin:0 0 6px;font-size:13px;line-height:1.45;color:#71717a;">${escapeHtml(day.dayLabel)}</p>` +
+            day.titles
+              .map(
+                (title) =>
+                  `<p style="margin:0 0 10px;font-size:15px;line-height:1.45;font-weight:600;">${escapeHtml(title)}</p>`,
+              )
+              .join(''),
+        )
+        .join('')}
+    </div>
+    ${button(libraryUrl, 'Open my library')}
+    <p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">You can open it any time from your JSMF account — you do not need this email.</p>
+    ${showNotSpamNotice ? notSpamNoticeHtml() : ''}
+    `,
+  );
+
+  const subject =
+    oneDay && count === 1
+      ? `JSMF - ${oneDay} material: ${days[0].titles[0]}`
+      : oneDay
+        ? `JSMF - ${oneDay} material for ${sessionTitle}`
+        : `JSMF - New material for ${sessionTitle}`;
+
+  return { subject, text, html };
 }
 
 /** The line next to a session's Telegram group, in every email that carries it. */

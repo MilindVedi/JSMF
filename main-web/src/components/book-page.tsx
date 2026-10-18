@@ -8,6 +8,7 @@ import { FloatingVideo } from "@/components/floating-video";
 import { TelegramFloat } from "@/components/telegram-float";
 import { RegisterDialog } from "@/components/register-dialog";
 import { DoctorPortrait, SessionCard } from "@/components/landing";
+import { SessionFeedback } from "@/components/session-feedback";
 import { TestimonialsSection } from "@/components/testimonials-section";
 import { buttonVariants } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
@@ -158,6 +159,10 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
               <SessionCard session={session} onRegister={bookFrom("session_card")} external={Boolean(checkoutUrl)} />
             </div>
           )}
+
+          {/* This session's own feedback (e.g. after Day 1), beside the Book
+              button. Nothing renders until the admin shows a section. */}
+          {session && <SessionFeedback session={session} className="mt-6 lg:col-span-12" />}
         </div>
       </section>
 

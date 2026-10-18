@@ -250,9 +250,11 @@ function ProductPageContent() {
               </div>
             )}
 
-            <p className="text-xs text-muted-foreground">
-              Instant download after payment. Yours to keep — it is added straight to your library, so you can come back and re-download it any time without digging through email receipts.
-            </p>
+            {!canDownload && (
+              <p className="text-xs text-muted-foreground">
+                Instant download after payment. Yours to keep — it is added straight to your library, so you can come back and re-download it any time without digging through email receipts.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

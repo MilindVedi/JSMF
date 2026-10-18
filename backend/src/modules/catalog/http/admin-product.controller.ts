@@ -39,7 +39,7 @@ import { SetProductTermsDto } from './dto/taxonomy.dto';
  * evaluated when the class is defined, before the DI container exists. Env
  * validation still governs the value; this is only how it is reached here.
  */
-const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_SIZE_MB ?? 64) * 1024 * 1024;
+const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_SIZE_MB ?? 10) * 1024 * 1024;
 
 @ApiTags('admin: catalog')
 @ApiBearerAuth()

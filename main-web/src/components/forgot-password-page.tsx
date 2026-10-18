@@ -151,10 +151,10 @@ function ForgotPasswordForm() {
 
   const subtitle =
     step === "email"
-      ? "Tell us the address on your account and we will send a code."
+      ? "Tell us the address on your account and we will send a code. This also works if you have never set a password."
       : step === "code"
         ? "Enter the 6-digit code we sent to verify it is you."
-        : "Pick something you will remember. This replaces your old password.";
+        : "Pick something you will remember. From now on you can sign in with your email and this password.";
 
   return (
     <section className="auth-stage">

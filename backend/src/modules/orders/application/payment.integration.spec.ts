@@ -835,3 +835,227 @@ describe('go-live hardening', () => {
     expect(await entitlements.findActive(userId, productId)).not.toBeNull();
   });
 });
+
+describe('admin refunds: partial, manual, and keeping access', () => {
+  /** A seat paid by direct UPI and recorded by hand: PAID, CAPTURED, no Razorpay ids. */
+  async function upiOrder() {
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: `SPEC-MR-${randomUUID().slice(0, 8)}`,
+        userId,
+        status: OrderStatus.PAID,
+        subtotalAmountMinor: PRICE,
+        discountAmountMinor: 0n,
+        taxAmountMinor: 0n,
+        totalAmountMinor: PRICE,
+        currency: 'INR',
+        customerEmail: 'payment-spec@jsmf.test',
+        paidAt: new Date(Date.now() - 86_400_000),
+        items: {
+          create: {
+            productId,
+            productTitleSnapshot: 'Payment Spec Product',
+            productTypeSnapshot: ProductType.PDF,
+            unitPriceAmountMinor: PRICE,
+            quantity: 1,
+            totalAmountMinor: PRICE,
+          },
+        },
+        payments: {
+          create: {
+            provider: 'OFFLINE',
+            status: PaymentStatus.CAPTURED,
+            method: 'upi',
+            amountMinor: PRICE,
+            currency: 'INR',
+            capturedAt: new Date(Date.now() - 86_400_000),
+          },
+        },
+      },
+    });
+    await entitlements.grant({ userId, productId, source: 'PURCHASE', sourceOrderId: order.id });
+    return order;
+  }
+
+  const manual = (overrides: Partial<Parameters<typeof payments.recordManualRefund>[2]> = {}) => ({
+    amountMinor: PRICE,
+    method: 'UPI' as const,
+    reference: 'UTR123456789',
+    refundedAt: new Date(),
+    revokeAccess: true,
+    notifyBuyer: true,
+    ...overrides,
+  });
+
+  const refundMails = () => sentMail.filter((m) => m.tag === 'refund-confirmation');
+  const orderRow = (id: string) => prisma.order.findUniqueOrThrow({ where: { id } });
+
+  it('refunds part through Razorpay, keeping access by default, then the rest revokes it', async () => {
+    await clearEntitlement();
+    const checkout = await startCheckout();
+    await pay(checkout);
+    sentMail.length = 0;
+
+    const first = await payments.refund(checkout.orderId, userId, 'goodwill', 'NORMAL', { amountMinor: 10000n });
+    expect(first).toMatchObject({ status: OrderStatus.PARTIALLY_REFUNDED, accessRevoked: false });
+    expect((await orderRow(checkout.orderId)).status).toBe(OrderStatus.PARTIALLY_REFUNDED);
+    expect(await entitlements.findActive(userId, productId)).not.toBeNull();
+    expect(refundMails().at(-1)?.text).toMatch(/Part of your payment has been refunded[\s\S]*still in your JSMF account/);
+
+    const rest = await payments.refund(checkout.orderId, userId, 'the rest');
+    expect(rest).toMatchObject({ status: OrderStatus.REFUNDED, accessRevoked: true });
+    const amounts = (await prisma.refund.findMany({ where: { orderId: checkout.orderId } })).map((r) => r.amountMinor);
+    expect(amounts.reduce((a, b) => a + b, 0n)).toBe(PRICE);
+    expect(await entitlements.findActive(userId, productId)).toBeNull();
+  });
+
+  it('does not tell the buyer they still have access when it was revoked earlier', async () => {
+    await clearEntitlement();
+    const order = await upiOrder();
+    await payments.recordManualRefund(order.id, userId, manual({ amountMinor: 10000n, revokeAccess: false, notifyBuyer: false }));
+    await payments.revokeAccess(order.id, userId);
+    sentMail.length = 0;
+
+    await payments.recordManualRefund(order.id, userId, manual({ amountMinor: PRICE - 10000n, revokeAccess: false }));
+    expect(refundMails().at(-1)?.text).toMatch(/no longer available/);
+  });
+
+  it('refunds in full but keeps access when asked, and access can be revoked later', async () => {
+    await clearEntitlement();
+    const checkout = await startCheckout();
+    await pay(checkout);
+
+    await payments.refund(checkout.orderId, userId, 'keep it', 'NORMAL', { revokeAccess: false });
+    expect((await orderRow(checkout.orderId)).status).toBe(OrderStatus.REFUNDED);
+    expect(await entitlements.findActive(userId, productId)).not.toBeNull();
+
+    await expect(payments.refund(checkout.orderId, userId)).rejects.toThrow(/already been refunded in full/);
+
+    const revoked = await payments.revokeAccess(checkout.orderId, userId, 'changed my mind');
+    expect(revoked.revoked).toBe(1);
+    expect(await entitlements.findActive(userId, productId)).toBeNull();
+    await expect(payments.revokeAccess(checkout.orderId, userId)).rejects.toThrow(/does not give access/);
+  });
+
+  it('refuses more than is left, and changes nothing', async () => {
+    await clearEntitlement();
+    const checkout = await startCheckout();
+    await pay(checkout);
+
+    await expect(
+      payments.refund(checkout.orderId, userId, undefined, 'NORMAL', { amountMinor: PRICE + 1n }),
+    ).rejects.toThrow(/Only ₹499 is left/);
+    expect((await orderRow(checkout.orderId)).status).toBe(OrderStatus.PAID);
+    expect(await prisma.refund.count({ where: { orderId: checkout.orderId } })).toBe(0);
+  });
+
+  it('records a partial UPI refund on a hand-recorded order, revoking access as chosen', async () => {
+    await clearEntitlement();
+    const order = await upiOrder();
+    sentMail.length = 0;
+
+    const result = await payments.recordManualRefund(order.id, userId, manual({ amountMinor: 20000n }));
+    expect(result).toMatchObject({ status: OrderStatus.PARTIALLY_REFUNDED, accessRevoked: true });
+
+    const refund = await prisma.refund.findFirstOrThrow({ where: { orderId: order.id } });
+    expect(refund).toMatchObject({ manualMethod: 'UPI', reference: 'UTR123456789', providerRefundId: null, status: 'PROCESSED' });
+    expect(await entitlements.findActive(userId, productId)).toBeNull();
+
+    const mail = refundMails().at(-1)!;
+    expect(mail.text).toMatch(/by UPI on/);
+    expect(mail.text).toMatch(/Reference: UTR123456789/);
+    expect(mail.text).toMatch(/no longer available/);
+
+    // Recording the rest completes it, and sends nothing when told not to.
+    const before = refundMails().length;
+    const rest = await payments.recordManualRefund(
+      order.id,
+      userId,
+      manual({ amountMinor: PRICE - 20000n, notifyBuyer: false }),
+    );
+    expect(rest.status).toBe(OrderStatus.REFUNDED);
+    expect(refundMails()).toHaveLength(before);
+  });
+
+  it('records a manual refund on a Razorpay order without calling Razorpay', async () => {
+    await clearEntitlement();
+    const checkout = await startCheckout();
+    await pay(checkout);
+
+    await payments.recordManualRefund(
+      checkout.orderId,
+      userId,
+      manual({ revokeAccess: false, method: 'BANK_TRANSFER', reference: undefined }),
+    );
+    expect((await orderRow(checkout.orderId)).status).toBe(OrderStatus.REFUNDED);
+    expect(await entitlements.findActive(userId, productId)).not.toBeNull();
+    const refund = await prisma.refund.findFirstOrThrow({ where: { orderId: checkout.orderId } });
+    expect(refund.providerRefundId).toBeNull();
+    expect(refund.manualMethod).toBe('BANK_TRANSFER');
+  });
+
+  it('refuses a manual refund over what is left, dated in the future, before payment, or of zero', async () => {
+    await clearEntitlement();
+    const order = await upiOrder();
+
+    await expect(payments.recordManualRefund(order.id, userId, manual({ amountMinor: PRICE + 1n }))).rejects.toThrow(
+      /Only ₹499 is left/,
+    );
+    await expect(
+      payments.recordManualRefund(order.id, userId, manual({ refundedAt: new Date(Date.now() + 86_400_000) })),
+    ).rejects.toThrow(/future/);
+    await expect(
+      payments.recordManualRefund(order.id, userId, manual({ refundedAt: new Date(Date.now() - 3 * 86_400_000) })),
+    ).rejects.toThrow(/before the order was paid/);
+    await expect(payments.recordManualRefund(order.id, userId, manual({ amountMinor: 0n }))).rejects.toThrow(
+      /above zero/,
+    );
+
+    expect((await orderRow(order.id)).status).toBe(OrderStatus.PAID);
+    expect(await entitlements.findActive(userId, productId)).not.toBeNull();
+  });
+
+  it('lets only one of two simultaneous full manual refunds through', async () => {
+    await clearEntitlement();
+    const order = await upiOrder();
+
+    const results = await Promise.allSettled([
+      payments.recordManualRefund(order.id, userId, manual({ notifyBuyer: false })),
+      payments.recordManualRefund(order.id, userId, manual({ notifyBuyer: false })),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const sum = await prisma.refund.aggregate({ where: { orderId: order.id }, _sum: { amountMinor: true } });
+    expect(sum._sum.amountMinor).toBe(PRICE);
+  });
+});
+
+describe('refunds made in the Razorpay dashboard', () => {
+  /** The private webhook handler, fed the shape the adapter would hand it. */
+  const applyDashboardRefund = (providerPaymentId: string, refundAmountMinor: bigint) =>
+    (payments as unknown as { applyProviderRefund(event: unknown): Promise<void> }).applyProviderRefund({
+      eventId: `evt_spec_${randomUUID()}`,
+      eventType: 'refund.processed',
+      normalizedType: 'REFUND_PROCESSED',
+      providerPaymentId,
+      providerRefundId: `rfnd_spec_${randomUUID().replace(/-/g, '').slice(0, 14)}`,
+      refundAmountMinor,
+      payload: {},
+    });
+
+  it('marks a partial dashboard refund as partially refunded and keeps access; the rest revokes it', async () => {
+    await clearEntitlement();
+    const checkout = await startCheckout();
+    const providerPaymentId = await pay(checkout);
+
+    await applyDashboardRefund(providerPaymentId, 10000n);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: checkout.orderId } })).status).toBe(
+      OrderStatus.PARTIALLY_REFUNDED,
+    );
+    expect(await entitlements.findActive(userId, productId)).not.toBeNull();
+
+    await applyDashboardRefund(providerPaymentId, PRICE - 10000n);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: checkout.orderId } })).status).toBe(OrderStatus.REFUNDED);
+    expect(await entitlements.findActive(userId, productId)).toBeNull();
+  });
+});

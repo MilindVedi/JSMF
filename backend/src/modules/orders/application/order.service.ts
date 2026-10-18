@@ -7,11 +7,13 @@ import {
 import {
   AccessType,
   EntitlementSource,
+  EntitlementStatus,
   OrderStatus,
   PaymentStatus,
   Prisma,
   ProductStatus,
   ProductType,
+  RefundStatus,
 } from '@prisma/client';
 import { readPyqPlan } from '../../../shared/pyq-plan';
 import { activity } from '../../../shared/logging/activity';
@@ -83,6 +85,9 @@ export class OrderService {
       where: {
         id: request.productId,
         status: ProductStatus.PUBLISHED,
+        // Not in the store means not for sale either: a session handout is
+        // given to seat holders, never bought or claimed on its own.
+        listed: true,
         deletedAt: null,
         type: { in: request.allowedTypes ?? STOREFRONT_TYPES },
       },
@@ -333,16 +338,26 @@ export class OrderService {
         include: {
           items: true,
           payments: {
-            select: { id: true, provider: true, status: true, method: true, capturedAt: true },
+            select: {
+              id: true,
+              provider: true,
+              status: true,
+              method: true,
+              capturedAt: true,
+              amountMinor: true,
+              providerOrderId: true,
+              providerPaymentId: true,
+            },
           },
-          refunds: true,
+          refunds: { orderBy: { createdAt: 'asc' } },
           user: { select: { id: true, name: true, email: true } },
+          entitlements: ACTIVE_ACCESS,
         },
       }),
       this.prisma.order.count({ where }),
     ]);
 
-    return { items, total, page, pageSize };
+    return { items: items.map(withRefundState), total, page, pageSize };
   }
 
   async findForAdmin(orderId: string) {
@@ -351,12 +366,55 @@ export class OrderService {
       include: {
         items: true,
         payments: true,
-        refunds: true,
+        refunds: { orderBy: { createdAt: 'asc' } },
         user: { select: { id: true, name: true, email: true } },
+        entitlements: ACTIVE_ACCESS,
       },
     });
 
     if (!order) throw new NotFoundException('Order not found');
-    return order;
+    return withRefundState(order);
   }
+}
+
+/** Enough to say whether an order still gives access to anything. */
+const ACTIVE_ACCESS = { where: { status: EntitlementStatus.ACTIVE }, select: { id: true }, take: 1 } as const;
+
+/**
+ * What the admin refund screen needs, worked out once here so the page never
+ * does money arithmetic of its own: how much has gone back, how much is left,
+ * whether Razorpay can still do it, and whether the order still gives access.
+ */
+function withRefundState<
+  T extends {
+    payments: Array<{
+      status: PaymentStatus;
+      amountMinor: bigint;
+      providerOrderId: string | null;
+      providerPaymentId: string | null;
+    }>;
+    refunds: Array<{ status: RefundStatus; amountMinor: bigint }>;
+    entitlements: Array<{ id: string }>;
+  },
+>(order: T) {
+  const { entitlements, ...rest } = order;
+  const payment = order.payments.find(
+    (p) => p.status === PaymentStatus.CAPTURED || p.status === PaymentStatus.REFUNDED,
+  );
+  const refundedMinor = order.refunds
+    .filter((refund) => refund.status !== RefundStatus.FAILED)
+    .reduce((sum, refund) => sum + refund.amountMinor, 0n);
+  const capturedMinor = payment?.amountMinor ?? 0n;
+  const refundableMinor =
+    payment?.status === PaymentStatus.CAPTURED && capturedMinor > refundedMinor ? capturedMinor - refundedMinor : 0n;
+
+  return {
+    ...rest,
+    refundedMinor,
+    refundableMinor,
+    /** False for money that never went through Razorpay (a direct UPI transfer recorded by hand). */
+    refundableThroughProvider:
+      refundableMinor > 0n && payment !== undefined && (payment.providerPaymentId !== null || payment.providerOrderId !== null),
+    hasAccess: entitlements.length > 0,
+  };
 }

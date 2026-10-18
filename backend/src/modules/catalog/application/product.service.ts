@@ -71,6 +71,8 @@ export interface CreateProductInput {
   language?: string;
   authorUserId?: string;
   metadata?: Prisma.InputJsonValue;
+  /** Show in store. Defaults to true; see Product.listed. */
+  listed?: boolean;
 }
 
 export type UpdateProductInput = Partial<CreateProductInput>;
@@ -153,6 +155,7 @@ export class ProductService {
           language: input.language ?? 'en',
           authorUserId: input.authorUserId,
           metadata: input.metadata ?? {},
+          listed: input.listed ?? true,
           createdById: actor.id,
           updatedById: actor.id,
         },
@@ -215,6 +218,7 @@ export class ProductService {
           language: input.language,
           authorUserId: input.authorUserId,
           metadata: input.metadata,
+          listed: input.listed,
           updatedById: actor.id,
         },
       });
@@ -469,6 +473,8 @@ export class ProductService {
     const where: Prisma.ProductWhereInput = {
       ...ACTIVE,
       status: ProductStatus.PUBLISHED,
+      // Hidden from the store (session handouts): never browsable.
+      listed: true,
       type: catalogType(query.type),
       accessType: query.accessType,
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' } } : {}),
@@ -529,6 +535,7 @@ export class ProductService {
       where: {
         ...ACTIVE,
         status: ProductStatus.PUBLISHED,
+        listed: true,
         type: catalogType(),
         AND: [NOT_A_PYQ_PLAN],
         featuredOrder: { not: null },
@@ -651,7 +658,9 @@ export class ProductService {
 
   async findPublicBySlug(slug: string) {
     const product = await this.prisma.product.findFirst({
-      where: { slug, status: ProductStatus.PUBLISHED, type: catalogType(), ...ACTIVE, AND: [NOT_A_PYQ_PLAN] },
+      // An unlisted product has no public page: its holders reach it from the
+      // library, which downloads by id and never needs this.
+      where: { slug, status: ProductStatus.PUBLISHED, listed: true, type: catalogType(), ...ACTIVE, AND: [NOT_A_PYQ_PLAN] },
       include: {
         // Only the metadata a storefront needs. Object keys for private assets
         // are deliberately not selected: a buyer gets a signed URL from the

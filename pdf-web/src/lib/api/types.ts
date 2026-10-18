@@ -111,6 +111,8 @@ export interface Product {
    * so nothing should sort by this client-side.
    */
   featuredOrder: number | null;
+  /** "Show in store". False: not browsable, buyable or claimable; holders keep it. */
+  listed: boolean;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -180,6 +182,9 @@ export interface Order {
   }[];
 }
 
+/** How money went back outside Razorpay. */
+export type ManualRefundMethod = "UPI" | "BANK_TRANSFER" | "CASH" | "OTHER";
+
 export interface Refund {
   id: string;
   paymentId: string;
@@ -189,6 +194,9 @@ export interface Refund {
   status: "PENDING" | "PROCESSED" | "FAILED";
   reason: string | null;
   initiatedById: string | null;
+  /** Set when an admin refunded it themselves and recorded it. */
+  manualMethod: ManualRefundMethod | null;
+  reference: string | null;
   createdAt: string;
   processedAt: string | null;
 }
@@ -196,6 +204,14 @@ export interface Refund {
 /** The admin-wide view: every customer's order, not just the signed-in user's. */
 export interface AdminOrder extends Order {
   user: { id: string; name: string; email: string };
+  /** Oldest first. */
   refunds: Refund[];
+  /** Worked out by the server; the page does no money arithmetic of its own. */
+  refundedMinor: string;
+  refundableMinor: string;
+  /** False for money that never went through Razorpay, such as a direct UPI transfer. */
+  refundableThroughProvider: boolean;
+  /** Whether the order still gives access to anything. */
+  hasAccess: boolean;
 }
 

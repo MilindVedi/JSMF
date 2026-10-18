@@ -1,66 +1,52 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { CollapseToggle, CollapsibleSection } from "@/components/admin/collapsible-section";
+import { FeedbackFormsCard } from "@/components/admin/feedback-forms/feedback-forms-card";
 import { OfflineSalesList } from "@/components/admin/offline-sales/offline-sales-list";
 import { SessionDetailsCard } from "@/components/admin/session-details/session-details-card";
+import { SessionMaterialsCard } from "@/components/admin/session-materials/session-materials-card";
+import { IncludedMaterialCard } from "@/components/admin/session-page/included-material-card";
+import { RegistrationsCard } from "@/components/admin/session-page/registrations-card";
+import { TestimonialSectionsCard } from "@/components/admin/testimonial-sections/testimonial-sections-card";
 import { SessionForm } from "@/components/admin/session-form";
 import { StatusBadge } from "@/components/admin/status-badge";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  adminSessionApi,
-  type AdminSession,
-  type BundleDeliveryList,
-  type SessionRegistrationRow,
-} from "@/lib/api/admin";
+import { adminSessionApi, type AdminSession } from "@/lib/api/admin";
 import { mainWebsiteHost } from "@/lib/site-content";
 import { useSessionStore } from "@/store/session-store";
 import { istLabel } from "../ist";
 
-const DELIVERY_STYLE: Record<string, string> = {
-  SENT: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-  PENDING: "bg-muted text-muted-foreground",
-  FAILED: "bg-destructive/10 text-destructive",
-};
-
+/**
+ * One session's admin page.
+ *
+ * Only the session itself is loaded up front — it drives the header and the
+ * form. Every table below is a CollapsibleSection: closed, it makes no
+ * request; the first time it is opened its card loads its own data. Which
+ * sections are open is remembered per browser.
+ */
 export default function EditSessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const { user } = useSessionStore();
   const [session, setSession] = useState<AdminSession | null>(null);
-  const [registrations, setRegistrations] = useState<SessionRegistrationRow[]>([]);
-  const [deliveries, setDeliveries] = useState<BundleDeliveryList | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
-  // Bumped after a save so the form remounts with the saved values.
+  // Bumped after a save so the form remounts with the saved values, and the
+  // open cards that depend on the session (details, materials) reload.
   const [version, setVersion] = useState(0);
-
-  const loadDeliveries = useCallback(() => {
-    adminSessionApi
-      .bundleDeliveries(id)
-      .then(setDeliveries)
-      .catch(() => undefined);
-  }, [id]);
 
   useEffect(() => {
     adminSessionApi
       .get(id)
       .then(setSession)
       .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Session not found"));
-    adminSessionApi
-      .registrations(id)
-      .then(setRegistrations)
-      .catch(() => undefined);
-    loadDeliveries();
-  }, [id, loadDeliveries]);
+  }, [id]);
 
   /** Several at once: picking screenshots one by one is the slow way to do this. */
   async function addTestimonials(files: FileList | null) {
@@ -113,32 +99,6 @@ export default function EditSessionPage({ params }: { params: Promise<{ id: stri
     }
   }
 
-  /** Omitting `userIds` means everyone not yet sent to, retries included. */
-  async function sendMaterial(userIds?: string[]) {
-    setSending(true);
-    try {
-      const result = await adminSessionApi.sendBundle(id, userIds);
-
-      if (result.attempted === 0) {
-        toast.info("Everyone has already received it.");
-      } else if (result.failed.length === 0) {
-        toast.success(`Sent to ${result.sent}`);
-      } else {
-        toast.warning(
-          `Sent to ${result.sent}, ${result.failed.length} failed: ` +
-            result.failed.map((row) => row.name).join(", "),
-        );
-      }
-
-      setSelected([]);
-      loadDeliveries();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not send the material");
-    } finally {
-      setSending(false);
-    }
-  }
-
   async function act(action: "publish" | "unpublish" | "archive") {
     if (
       action === "archive" &&
@@ -174,8 +134,7 @@ export default function EditSessionPage({ params }: { params: Promise<{ id: stri
     );
   }
 
-  const paid = registrations.filter((row) => row.paid);
-  const unfinished = registrations.length - paid.length;
+  const seats = `${session.seatsTaken} paid`;
 
   return (
     <div className="space-y-6">
@@ -224,264 +183,136 @@ export default function EditSessionPage({ params }: { params: Promise<{ id: stri
         }}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            Registrations · {paid.length} paid
-            {unfinished > 0 ? `, ${unfinished} did not finish paying` : ""}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {registrations.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nobody has registered yet.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>WhatsApp</TableHead>
-                  <TableHead>Exam</TableHead>
-                  <TableHead>Stage</TableHead>
-                  <TableHead>Payment</TableHead>
-                  <TableHead>Reminder sent</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {registrations.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-medium">{row.user.name}</TableCell>
-                    <TableCell>{row.user.email}</TableCell>
-                    {/* The form stopped asking for this; older rows still have one. */}
-                    <TableCell className="text-muted-foreground">
-                      {row.whatsappNumber ? `+${row.whatsappNumber}` : "—"}
-                    </TableCell>
-                    <TableCell>{row.exam}</TableCell>
-                    <TableCell>{row.stage}</TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {row.paid ? (
-                        <Badge variant="outline" className="bg-emerald-100 text-emerald-800">
-                          Paid
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">Not paid</Badge>
-                      )}
-                      {row.order && (
-                        <span className="ml-2 text-xs text-muted-foreground">{row.order.orderNumber}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {row.lastReminderSentAt
-                        ? session.days.length > 1
-                          ? `${row.remindersSent} of ${session.days.length} days · last ${istLabel(row.lastReminderSentAt)}`
-                          : istLabel(row.lastReminderSentAt)
-                        : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <CollapsibleSection storageKey="session.registrations" title="Registrations" summary={seats}>
+        {(collapse) => <RegistrationsCard sessionId={id} dayCount={session.days.length} onCollapse={collapse} />}
+      </CollapsibleSection>
 
       {/* Money, so admins only: the API refuses it to educators as well. */}
       {user?.roles.includes("ADMIN") && (
-        <OfflineSalesList productId={id} addHref={`/admin/sessions/${id}/buyers`} />
+        <CollapsibleSection storageKey="session.offline-sales" title="Buyers added by hand">
+          {(collapse) => (
+            <OfflineSalesList productId={id} addHref={`/admin/sessions/${id}/buyers`} onCollapse={collapse} />
+          )}
+        </CollapsibleSection>
       )}
 
       {/* Dates, joining link, Telegram: who has which, and who needs what. */}
-      <SessionDetailsCard sessionId={id} refreshKey={version} />
+      <CollapsibleSection storageKey="session.details" title="Session details sent" summary={seats}>
+        {(collapse) => <SessionDetailsCard sessionId={id} refreshKey={version} onCollapse={collapse} />}
+      </CollapsibleSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex flex-wrap items-center justify-between gap-3">
-            <span>Testimonials · {session.testimonials.length}</span>
-            <label className={buttonVariants({ variant: "outline", size: "sm", className: "cursor-pointer" })}>
-              {uploading ? <Loader2 className="size-4 animate-spin" /> : "Add screenshot"}
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                multiple
-                className="hidden"
-                disabled={uploading}
-                onChange={(event) => void addTestimonials(event.target.files)}
-              />
-            </label>
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Screenshots of what people said about a past session, shown on the session page under
-            &ldquo;What Students Said About the Previous Session&rdquo;. PNG, JPEG or WebP, up to 8MB each.
-          </p>
-        </CardHeader>
-        <CardContent>
-          {session.testimonials.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              None yet. The section stays hidden on the website until you add one.
-            </p>
-          ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {session.testimonials.map((item, index) => (
-                <div key={item.id} className="group relative overflow-hidden rounded-lg border">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={item.url} alt="" className="aspect-[4/3] w-full object-cover" />
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100"
-                    onClick={() => void removeTestimonial(item.id)}
-                  >
-                    Remove
-                  </Button>
-                  {/* Order on the website matches this order, left to right then
-                      wrapping — these move a testimonial one place earlier/later. */}
-                  <div className="absolute bottom-2 left-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="size-7 p-0"
-                      disabled={index === 0}
-                      aria-label="Move earlier"
-                      onClick={() => void moveTestimonial(item.id, -1)}
-                    >
-                      <ChevronLeft className="size-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="size-7 p-0"
-                      disabled={index === session.testimonials.length - 1}
-                      aria-label="Move later"
-                      onClick={() => void moveTestimonial(item.id, 1)}
-                    >
-                      <ChevronRight className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Each day's PDFs, who has them, and who has been emailed about them. */}
+      <CollapsibleSection storageKey="session.materials" title="Day materials">
+        {(collapse) => <SessionMaterialsCard sessionId={id} refreshKey={version} onCollapse={collapse} />}
+      </CollapsibleSection>
 
-      {deliveries && deliveries.mode !== "IMMEDIATE" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex flex-wrap items-center justify-between gap-3">
-              <span>
-                Included material ·{" "}
-                {deliveries.rows.filter((row) => row.status === "SENT").length} of{" "}
-                {deliveries.rows.length} sent
-              </span>
-              <span className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={sending || selected.length === 0 || Boolean(deliveries.blocker)}
-                  onClick={() => void sendMaterial(selected)}
-                >
-                  Send to selected ({selected.length})
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={sending || Boolean(deliveries.blocker)}
-                  onClick={() => void sendMaterial()}
-                >
-                  {sending ? <Loader2 className="size-4 animate-spin" /> : "Send to everyone pending"}
-                </Button>
-              </span>
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {deliveries.blocker ??
-                (deliveries.mode === "AUTO_AFTER_SESSION"
-                  ? `Sending automatically: ${deliveries.includedTitles.join(", ")}. You can also send by hand below.`
-                  : `Ready to send: ${deliveries.includedTitles.join(", ")}.`)}
-            </p>
-          </CardHeader>
-          <CardContent>
-            {deliveries.rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nobody holds a seat yet.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">
-                      <input
-                        type="checkbox"
-                        aria-label="Select everyone not yet sent to"
-                        checked={
-                          selected.length > 0 &&
-                          selected.length === deliveries.rows.filter((r) => r.status !== "SENT").length
-                        }
-                        onChange={(event) =>
-                          setSelected(
-                            event.target.checked
-                              ? deliveries.rows.filter((r) => r.status !== "SENT").map((r) => r.userId)
-                              : [],
-                          )
-                        }
-                      />
-                    </TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Sent</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {deliveries.rows.map((row) => (
-                    <TableRow key={row.userId}>
-                      <TableCell>
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${row.name}`}
-                          disabled={row.status === "SENT"}
-                          checked={selected.includes(row.userId)}
-                          onChange={(event) =>
-                            setSelected((current) =>
-                              event.target.checked
-                                ? [...current, row.userId]
-                                : current.filter((userId) => userId !== row.userId),
-                            )
-                          }
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">{row.name}</TableCell>
-                      <TableCell>{row.email ?? "—"}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={DELIVERY_STYLE[row.status]}>
-                          {row.status.toLowerCase()}
-                        </Badge>
-                        {row.lastError && (
-                          <p className="mt-1 max-w-xs text-xs text-muted-foreground">{row.lastError}</p>
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                        {row.sentAt ? istLabel(row.sentAt) : "—"}
-                      </TableCell>
-                      <TableCell>
-                        {row.status !== "SENT" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={sending || Boolean(deliveries.blocker)}
-                            onClick={() => void sendMaterial([row.userId])}
-                          >
-                            {row.status === "FAILED" ? "Retry" : "Send"}
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
+      <CollapsibleSection
+        storageKey="session.testimonials"
+        title="Testimonials"
+        summary={`${session.testimonials.length} screenshot${session.testimonials.length === 1 ? "" : "s"}`}
+      >
+        {(collapse) => (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex flex-wrap items-center justify-between gap-3">
+                <span className="flex items-center">
+                  <CollapseToggle onCollapse={collapse} />
+                  Testimonials · {session.testimonials.length}
+                </span>
+                <label className={buttonVariants({ variant: "outline", size: "sm", className: "cursor-pointer" })}>
+                  {uploading ? <Loader2 className="size-4 animate-spin" /> : "Add screenshot"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    multiple
+                    className="hidden"
+                    disabled={uploading}
+                    onChange={(event) => void addTestimonials(event.target.files)}
+                  />
+                </label>
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Screenshots of what people said about a past session, shown on the session page under
+                &ldquo;What Students Said About the Previous Session&rdquo;. PNG, JPEG or WebP, up to 8MB each.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {session.testimonials.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  None yet. The section stays hidden on the website until you add one.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                  {session.testimonials.map((item, index) => (
+                    <div key={item.id} className="group relative overflow-hidden rounded-lg border">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={item.url} alt="" className="aspect-[4/3] w-full object-cover" />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100"
+                        onClick={() => void removeTestimonial(item.id)}
+                      >
+                        Remove
+                      </Button>
+                      {/* Order on the website matches this order, left to right then
+                          wrapping — these move a testimonial one place earlier/later. */}
+                      <div className="absolute bottom-2 left-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="size-7 p-0"
+                          disabled={index === 0}
+                          aria-label="Move earlier"
+                          onClick={() => void moveTestimonial(item.id, -1)}
+                        >
+                          <ChevronLeft className="size-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="size-7 p-0"
+                          disabled={index === session.testimonials.length - 1}
+                          aria-label="Move later"
+                          onClick={() => void moveTestimonial(item.id, 1)}
+                        >
+                          <ChevronRight className="size-4" />
+                        </Button>
+                      </div>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </CollapsibleSection>
+
+      {/* Forms students fill in on the website after each day, in place of
+          Google Forms. Replies picked from here show in the sections below. */}
+      <CollapsibleSection storageKey="session.feedback-forms" title="Feedback forms">
+        {(collapse) => <FeedbackFormsCard session={session} onCollapse={collapse} />}
+      </CollapsibleSection>
+
+      {/* Named galleries such as "Day 1 feedback", shown in the booking band. */}
+      <CollapsibleSection
+        storageKey="session.feedback"
+        title="Feedback sections"
+        summary={`${session.testimonialSections.length} section${session.testimonialSections.length === 1 ? "" : "s"}`}
+      >
+        {(collapse) => (
+          <TestimonialSectionsCard session={session} onSessionChange={setSession} onCollapse={collapse} />
+        )}
+      </CollapsibleSection>
+
+      {/* Only for a session that holds its included material back. */}
+      {session.bundleDeliveryMode !== "IMMEDIATE" && (
+        <CollapsibleSection storageKey="session.included" title="Included material">
+          {(collapse) => <IncludedMaterialCard sessionId={id} onCollapse={collapse} />}
+        </CollapsibleSection>
       )}
     </div>
   );

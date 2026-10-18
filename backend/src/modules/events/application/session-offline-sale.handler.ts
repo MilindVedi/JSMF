@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Optional } from '@nestjs/common';
 import { BundleDeliveryMode, EntitlementStatus, Prisma, ProductStatus, ProductType } from '@prisma/client';
 import { AppConfig } from '../../../config/config.module';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
@@ -8,6 +8,7 @@ import {
   type OfflineSaleHandler,
 } from '../../orders/application/offline-sale-handlers';
 import { EXAM_OPTIONS, STAGE_OPTIONS } from '../domain/session-display';
+import { SessionMaterialsService } from './session-materials.service';
 
 const DETAIL_KEYS = new Set(['exam', 'stage']);
 
@@ -28,6 +29,9 @@ export class SessionOfflineSaleHandler implements OfflineSaleHandler, OnModuleIn
     private readonly prisma: PrismaService,
     private readonly handlers: OfflineSaleHandlers,
     private readonly config: AppConfig,
+    // Optional so the terminal script, which builds this handler by hand,
+    // keeps working; there the 5-minute sweep gives the materials instead.
+    @Optional() private readonly materials?: SessionMaterialsService,
   ) {}
 
   onModuleInit(): void {
@@ -92,6 +96,9 @@ export class SessionOfflineSaleHandler implements OfflineSaleHandler, OnModuleIn
       // a number already on it is kept when none was given.
       update: { ...registration, ...(context.whatsappNumber ? { whatsappNumber: context.whatsappNumber } : {}) },
     });
+
+    // The day materials this seat is due, judged by when they really paid.
+    await this.materials?.reconcile(context.productId, tx);
   }
 
   async warnings(productId: string, count: number): Promise<string[]> {

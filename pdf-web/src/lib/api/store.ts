@@ -45,7 +45,11 @@ export interface Entitlement {
     type: string;
     accessType: string;
     status: string;
+    /** False: hidden from the store, so there is no product page to link to. */
+    listed: boolean;
   };
+  /** For a session handout: the session it came with. */
+  sourceProduct: { id: string; title: string; type: string } | null;
 }
 
 export const storeApi = {

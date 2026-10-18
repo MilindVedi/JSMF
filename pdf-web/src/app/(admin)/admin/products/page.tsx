@@ -155,6 +155,11 @@ export default function AdminProductsPage() {
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={product.status} />
+                        {!product.listed && (
+                          <Badge variant="outline" className="ml-1.5">
+                            Hidden from store
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
                         {product.accessType === "FREE" ? (

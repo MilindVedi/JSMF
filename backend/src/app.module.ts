@@ -15,6 +15,7 @@ import { WhatsAppModule } from './shared/whatsapp/whatsapp.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { EntitlementsModule } from './modules/entitlements/entitlements.module';
 import { EventsModule } from './modules/events/events.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
 import { MentorshipModule } from './modules/mentorship/mentorship.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { OrdersModule } from './modules/orders/orders.module';
@@ -87,6 +88,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     PaymentsModule,
     CatalogModule,
     EventsModule,
+    FeedbackModule,
     MentorshipModule,
     EntitlementsModule,
     OrdersModule,

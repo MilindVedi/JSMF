@@ -20,6 +20,7 @@ export default function NewProductPage() {
         subtitle: values.subtitle || undefined,
         description: values.description || undefined,
         accessType: values.accessType,
+        listed: values.listed,
         priceAmountMinor:
           values.accessType === "PAID" ? rupeesToMinor(values.price ?? "0") : undefined,
         compareAtAmountMinor:

@@ -49,6 +49,8 @@ export interface VerificationDelivery {
   addressKind: VerificationAddressKind;
   /** Used to address the message when known — absent for password reset. */
   name?: string;
+  /** Password reset only: the account has never had a password, so the message says "set", not "reset". */
+  firstPassword?: boolean;
   /** How long the recipient has, so the message can say so accurately. */
   expiresInMinutes: number;
 }

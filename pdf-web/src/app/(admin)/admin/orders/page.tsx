@@ -23,9 +23,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { RefundDialog } from "@/components/admin/refund-dialog";
+import { RevokeAccessDialog } from "@/components/admin/revoke-access-dialog";
 import { adminOrderApi } from "@/lib/api/admin";
 import { adminSettingsApi } from "@/lib/api/settings";
-import type { AdminOrder, OrderStatus } from "@/lib/api/types";
+import type { AdminOrder, ManualRefundMethod, OrderStatus, Refund } from "@/lib/api/types";
 import { formatMoney } from "@/lib/money";
 
 const STATUS_STYLE: Record<OrderStatus, string> = {
@@ -38,7 +39,24 @@ const STATUS_STYLE: Record<OrderStatus, string> = {
   PARTIALLY_REFUNDED: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
 };
 
-const REFUNDABLE: OrderStatus[] = ["PAID"];
+const MANUAL_LABEL: Record<ManualRefundMethod, string> = {
+  UPI: "UPI",
+  BANK_TRANSFER: "bank transfer",
+  CASH: "cash",
+  OTHER: "by hand",
+};
+
+/** "₹100 by UPI · UTR123 · Duplicate payment" — one refund on one line. */
+function refundLine(refund: Refund, currency: string): string {
+  const how = refund.manualMethod ? ` by ${MANUAL_LABEL[refund.manualMethod]}` : " via Razorpay";
+  const pending = refund.status === "PENDING" ? " (pending)" : refund.status === "FAILED" ? " (failed)" : "";
+  return [`${formatMoney(refund.amountMinor, currency)}${how}${pending}`, refund.reference, refund.reason]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** A refunded order that still gives access is the case "Revoke access" exists for. */
+const REVOCABLE: OrderStatus[] = ["REFUNDED", "PARTIALLY_REFUNDED"];
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<AdminOrder[] | null>(null);
@@ -48,6 +66,7 @@ export default function OrdersPage() {
   const [q, setQ] = useState("");
   /** The order whose refund dialog is open, or null when none is. */
   const [refundOrder, setRefundOrder] = useState<AdminOrder | null>(null);
+  const [revokeOrder, setRevokeOrder] = useState<AdminOrder | null>(null);
   /**
    * Whether this deployment permits admin refunds, asked of the server rather
    * than hardcoded here — the two drifted apart once already, leaving the
@@ -88,7 +107,8 @@ export default function OrdersPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Orders</h1>
         <p className="text-sm text-muted-foreground">
-          Every order across every customer. Refunding one revokes the access it granted.
+          Every order across every customer. Refund through Razorpay, or record a refund you made yourself by UPI,
+          bank or cash — in full or in part, keeping or removing access.
         </p>
       </div>
 
@@ -169,9 +189,14 @@ export default function OrdersPage() {
                       <Badge variant="outline" className={STATUS_STYLE[order.status]}>
                         {order.status.replace(/_/g, " ").toLowerCase()}
                       </Badge>
-                      {order.refunds.length > 0 && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {order.refunds[0].reason ?? "No reason given"}
+                      {order.refunds.map((refund) => (
+                        <p key={refund.id} className="mt-1 text-xs text-muted-foreground">
+                          {refundLine(refund, order.currency)}
+                        </p>
+                      ))}
+                      {REVOCABLE.includes(order.status) && (
+                        <p className="mt-1 text-xs font-medium text-muted-foreground">
+                          {order.hasAccess ? "Access kept" : "Access removed"}
                         </p>
                       )}
                     </TableCell>
@@ -183,21 +208,18 @@ export default function OrdersPage() {
                       })}
                     </TableCell>
                     <TableCell>
-                      {REFUNDABLE.includes(order.status) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={!refundsEnabled}
-                          title={
-                            refundsEnabled
-                              ? undefined
-                              : "Refunds are temporarily disabled. Issue it in the Razorpay dashboard instead — access is still revoked automatically."
-                          }
-                          onClick={() => setRefundOrder(order)}
-                        >
-                          Refund
-                        </Button>
-                      )}
+                      <div className="flex flex-col items-end gap-2">
+                        {order.refundableMinor !== "0" && (
+                          <Button variant="outline" size="sm" onClick={() => setRefundOrder(order)}>
+                            Refund
+                          </Button>
+                        )}
+                        {order.hasAccess && REVOCABLE.includes(order.status) && (
+                          <Button variant="ghost" size="sm" onClick={() => setRevokeOrder(order)}>
+                            Revoke access
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -230,9 +252,11 @@ export default function OrdersPage() {
 
       <RefundDialog
         order={refundOrder}
+        refundsEnabled={refundsEnabled}
         onClose={() => setRefundOrder(null)}
         onRefunded={load}
       />
+      <RevokeAccessDialog order={revokeOrder} onClose={() => setRevokeOrder(null)} onRevoked={load} />
     </div>
   );
 }

@@ -7,6 +7,8 @@ import {
 import {
   BundleDeliveryMode,
   EntitlementSource,
+  EntitlementStatus,
+  ManualRefundMethod,
   OrderStatus,
   PaymentStatus,
   Prisma,
@@ -28,6 +30,67 @@ import {
   type PaymentWebhookEvent,
   type RefundSpeed,
 } from '../../payments/domain/payment-provider.port';
+
+/** What an admin decides when refunding through the provider. Every field may be omitted. */
+export interface RefundChoices {
+  /** Paise. Omitted refunds everything not refunded yet. */
+  amountMinor?: bigint;
+  /**
+   * Take away what the order gave. Omitted means "only when this refund
+   * completes the full amount" — the rule the platform has always followed.
+   */
+  revokeAccess?: boolean;
+  /** Email the buyer. Omitted means yes. */
+  notifyBuyer?: boolean;
+}
+
+/** A refund an admin made themselves (UPI, bank, cash) and is recording. */
+export interface ManualRefundInput {
+  amountMinor: bigint;
+  method: ManualRefundMethod;
+  reference?: string;
+  /** When the money went back. */
+  refundedAt: Date;
+  reason?: string;
+  revokeAccess: boolean;
+  notifyBuyer: boolean;
+}
+
+/** What one refund changed. */
+interface RefundOutcome {
+  orderStatus: OrderStatus;
+  fullyRefunded: boolean;
+  /** Whether access was taken away (the admin's decision, not a row count). */
+  accessRevoked: boolean;
+}
+
+/** What the buyer's refund email needs to say. */
+interface RefundNotice {
+  amountMinor: bigint;
+  /** The provider's refund id, or a manual refund's reference. */
+  refundId: string | null;
+  speed: RefundSpeed;
+  partial: boolean;
+  accessRemoved: boolean;
+  manual?: { method: ManualRefundMethod; refundedAt: Date };
+}
+
+const MANUAL_METHOD_LABEL: Record<ManualRefundMethod, string | null> = {
+  UPI: 'UPI',
+  BANK_TRANSFER: 'bank transfer',
+  CASH: 'cash',
+  OTHER: null,
+};
+
+/** "18 October 2026", in IST — the zone every JSMF email speaks in. */
+function istDate(date: Date): string {
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(date);
+}
 
 export interface VerifyCheckoutRequest {
   userId: string;
@@ -965,10 +1028,20 @@ export class PaymentService {
       // no-op rather than a second revocation.
       const already = await tx.refund.findUnique({
         where: { providerRefundId: event.providerRefundId },
-        select: { id: true },
+        select: { id: true, status: true },
       });
 
-      if (already) return null;
+      if (already) {
+        // A refund `refund()` recorded while Razorpay still had it pending:
+        // this event is the news that it went through.
+        if (already.status === RefundStatus.PENDING) {
+          await tx.refund.update({
+            where: { id: already.id },
+            data: { status: RefundStatus.PROCESSED, processedAt: new Date() },
+          });
+        }
+        return null;
+      }
 
       await tx.refund.create({
         data: {
@@ -995,6 +1068,10 @@ export class PaymentService {
       });
 
       if ((returned._sum.amountMinor ?? 0n) < payment.amountMinor) {
+        await tx.order.updateMany({
+          where: { id: payment.orderId, status: OrderStatus.PAID },
+          data: { status: OrderStatus.PARTIALLY_REFUNDED },
+        });
         this.logger.log(
           `Partial refund recorded on order ${payment.orderId}; access left in place`,
         );
@@ -1026,12 +1103,13 @@ export class PaymentService {
 
     if (refundedInFull !== null) {
       await this.events.refunded({ orderId: payment.orderId, reason: 'Refunded in the Razorpay dashboard' });
-      await this.sendRefundNotice(
-        payment.orderId,
-        refundedInFull,
-        event.providerRefundId,
-        event.refundSpeedProcessed ?? 'NORMAL',
-      );
+      await this.sendRefundNotice(payment.orderId, {
+        amountMinor: refundedInFull,
+        refundId: event.providerRefundId,
+        speed: event.refundSpeedProcessed ?? 'NORMAL',
+        partial: false,
+        accessRemoved: true,
+      });
     }
   }
 
@@ -1080,13 +1158,14 @@ export class PaymentService {
   }
 
   /**
-   * Full refund of a paid order, initiated by an admin.
+   * Refund through the payment provider, initiated by an admin — all of what is
+   * left, or part of it.
    *
-   * Always refunds the captured amount on record — never a client-supplied
-   * figure — and revokes every entitlement the order granted in the same
-   * transaction as the local bookkeeping, so a refund can never leave someone
-   * with both their money back and the content. The call to the provider
-   * happens first: if that fails, nothing local has changed yet to reconcile.
+   * Never a client-supplied total: the amount is checked against what was
+   * captured minus what has already gone back. Whether access goes is a
+   * separate decision (`choices.revokeAccess`); left out, it goes only when this
+   * refund completes the full amount. The provider call happens first: if it
+   * fails, nothing local has changed yet to reconcile.
    *
    * `speed` defaults to the slow rail rather than being required, so the
    * cheaper option is what an omitted argument buys — an instant refund costs
@@ -1097,7 +1176,154 @@ export class PaymentService {
     adminUserId: string,
     reason?: string,
     speed: RefundSpeed = 'NORMAL',
+    choices: RefundChoices = {},
   ) {
+    const { order, payment } = await this.refundableOrder(orderId);
+
+    // A paid order with no Razorpay payment behind it — a seat bought by direct
+    // UPI transfer and brought in by backfill-session-buyers — has nothing on
+    // Razorpay to refund. Asking would send an empty id to the provider.
+    if (!payment.providerPaymentId && !payment.providerOrderId) {
+      throw new BadRequestException(
+        'This payment was not taken through Razorpay (for example a direct UPI transfer), so it cannot be refunded from here. ' +
+          'Refund it yourself and record it with "I already refunded it myself".',
+      );
+    }
+
+    const remaining = payment.amountMinor - (await this.returnedSoFar(this.prisma, payment.id));
+    const amountMinor = choices.amountMinor ?? remaining;
+    this.checkRefundAmount(amountMinor, remaining, order.currency);
+
+    const providerRefund = await this.provider.refund({
+      providerPaymentId: payment.providerPaymentId ?? payment.providerOrderId ?? '',
+      amountMinor,
+      reason,
+      speed,
+    });
+
+    const outcome = await this.prisma.$transaction((tx) =>
+      this.recordRefund(tx, {
+        order,
+        payment,
+        amountMinor: providerRefund.amountMinor,
+        reason,
+        adminUserId,
+        providerRefundId: providerRefund.providerRefundId,
+        status: providerRefund.status as RefundStatus,
+        processedAt: providerRefund.status === 'PROCESSED' ? new Date() : null,
+        raw: providerRefund.raw,
+        revokeAccess: choices.revokeAccess,
+        // The money has already left: it is recorded whatever the arithmetic
+        // says, because a refund the books do not show is worse than one that
+        // shows the books were wrong. Razorpay itself refuses to over-refund.
+        enforceRemaining: false,
+      }),
+    );
+
+    this.logger.log(`Refunded order ${order.orderNumber} (${providerRefund.providerRefundId})`);
+
+    await this.afterRefund(order.id, reason, outcome, choices.notifyBuyer ?? true, {
+      amountMinor: providerRefund.amountMinor,
+      refundId: providerRefund.providerRefundId,
+      // What the provider did, not what was asked of it. When it does not say,
+      // the email describes the slow rail: a refund that arrives sooner than
+      // promised costs nothing, one that arrives later becomes a support ticket.
+      speed: providerRefund.speedProcessed ?? 'NORMAL',
+      partial: !outcome.fullyRefunded,
+      accessRemoved: outcome.accessRevoked,
+    });
+
+    return { orderId: order.id, status: outcome.orderStatus, accessRevoked: outcome.accessRevoked };
+  }
+
+  /**
+   * Records a refund an admin made themselves — money sent back by UPI, bank
+   * transfer or cash — on any paid order, whether it was paid through Razorpay
+   * or recorded by hand. Nothing is sent to the provider.
+   *
+   * The amount cannot exceed what is left, checked under a lock on the payment
+   * so two admins recording at once cannot over-refund between them.
+   */
+  async recordManualRefund(orderId: string, adminUserId: string, input: ManualRefundInput) {
+    const { order, payment } = await this.refundableOrder(orderId);
+
+    if (input.refundedAt.getTime() > Date.now() + 5 * 60_000) {
+      throw new BadRequestException('The refund date cannot be in the future.');
+    }
+    const paidAt = payment.capturedAt ?? order.paidAt;
+    if (paidAt && input.refundedAt.getTime() < paidAt.getTime() - 60_000) {
+      throw new BadRequestException('The refund date is before the order was paid.');
+    }
+
+    const reference = input.reference?.trim() || null;
+    const reason = input.reason?.trim() || undefined;
+
+    const outcome = await this.prisma.$transaction((tx) =>
+      this.recordRefund(tx, {
+        order,
+        payment,
+        amountMinor: input.amountMinor,
+        reason,
+        adminUserId,
+        providerRefundId: null,
+        manualMethod: input.method,
+        reference,
+        status: RefundStatus.PROCESSED,
+        processedAt: input.refundedAt,
+        raw: null,
+        revokeAccess: input.revokeAccess,
+        enforceRemaining: true,
+      }),
+    );
+
+    activity(this.logger, 'order.manual_refund_recorded', {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      amountMinor: input.amountMinor.toString(),
+      method: input.method,
+      accessRevoked: outcome.accessRevoked,
+      adminUserId,
+    });
+
+    await this.afterRefund(order.id, reason, outcome, input.notifyBuyer, {
+      amountMinor: input.amountMinor,
+      refundId: reference,
+      speed: 'NORMAL',
+      partial: !outcome.fullyRefunded,
+      accessRemoved: outcome.accessRevoked,
+      manual: { method: input.method, refundedAt: input.refundedAt },
+    });
+
+    return { orderId: order.id, status: outcome.orderStatus, accessRevoked: outcome.accessRevoked };
+  }
+
+  /**
+   * Takes away what an order gave, after the fact — for a refund recorded with
+   * "keep access", or any order an admin decides should no longer give access.
+   * Money is not touched. A booked one-to-one call on the order is cancelled
+   * too, exactly as a revoking refund would.
+   */
+  async revokeAccess(orderId: string, adminUserId: string, reason?: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, orderNumber: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    const why = reason?.trim() || 'Access removed by an admin';
+    const revoked = await this.entitlements.revokeForOrder(order.id, why);
+    if (revoked === 0) {
+      throw new BadRequestException('This order does not give access to anything any more.');
+    }
+
+    activity(this.logger, 'order.access_revoked', { orderId: order.id, orderNumber: order.orderNumber, revoked, adminUserId });
+    await this.events.refunded({ orderId: order.id, reason: why });
+
+    return { orderId: order.id, revoked };
+  }
+
+  /** The order and its captured payment, refusing anything there is nothing left to refund on. */
+  private async refundableOrder(orderId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { payments: true },
@@ -1105,84 +1331,152 @@ export class PaymentService {
 
     if (!order) throw new NotFoundException('Order not found');
 
+    if (order.status === OrderStatus.REFUNDED) {
+      throw new BadRequestException('This order has already been refunded in full.');
+    }
+
     const payment = order.payments.find((p) => p.status === PaymentStatus.CAPTURED);
     if (!payment) {
       throw new BadRequestException('This order has no captured payment to refund.');
     }
 
-    if (order.status === OrderStatus.REFUNDED) {
-      throw new BadRequestException('This order has already been refunded.');
-    }
-
-    // A paid order with no Razorpay payment behind it — a seat bought by direct
-    // UPI transfer and brought in by backfill-session-buyers — has nothing on
-    // Razorpay to refund. Asking would send an empty id to the provider.
-    if (payment.amountMinor > 0n && !payment.providerPaymentId && !payment.providerOrderId) {
+    if (payment.amountMinor === 0n) {
       throw new BadRequestException(
-        'This payment was not taken through Razorpay (for example a direct UPI transfer), so it cannot be refunded from here.',
+        'Nothing was paid for this order, so there is nothing to refund. Use "Revoke access" to take the access away.',
       );
     }
 
-    // Free orders (amount 0) settle without ever contacting the provider —
-    // there is nothing to refund there, only the entitlement to revoke.
-    const providerRefund =
-      payment.amountMinor > 0n
-        ? await this.provider.refund({
-            providerPaymentId: payment.providerPaymentId ?? payment.providerOrderId ?? '',
-            amountMinor: payment.amountMinor,
-            reason,
-            speed,
-          })
-        : {
-            providerRefundId: `free_${order.id}`,
-            amountMinor: 0n,
-            status: 'PROCESSED' as const,
-            speedProcessed: undefined,
-            raw: null,
-          };
+    return { order, payment };
+  }
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.refund.create({
-        data: {
-          paymentId: payment.id,
-          orderId: order.id,
-          providerRefundId: providerRefund.providerRefundId,
-          amountMinor: providerRefund.amountMinor,
-          status: providerRefund.status as RefundStatus,
-          reason,
-          initiatedById: adminUserId,
-          rawResponse: providerRefund.raw as Prisma.InputJsonValue,
-        },
-      });
+  /** Everything returned on a payment so far. A failed refund returned nothing. */
+  private async returnedSoFar(db: Prisma.TransactionClient | PrismaService, paymentId: string): Promise<bigint> {
+    const sum = await db.refund.aggregate({
+      where: { paymentId, status: { not: RefundStatus.FAILED } },
+      _sum: { amountMinor: true },
+    });
+    return sum._sum.amountMinor ?? 0n;
+  }
 
-      await tx.payment.update({
-        where: { id: payment.id },
-        data: { status: PaymentStatus.REFUNDED },
-      });
+  private checkRefundAmount(amountMinor: bigint, remainingMinor: bigint, currency: string): void {
+    if (remainingMinor <= 0n) {
+      throw new BadRequestException('This order has already been refunded in full.');
+    }
+    if (amountMinor <= 0n) {
+      throw new BadRequestException('Enter an amount above zero.');
+    }
+    if (amountMinor > remainingMinor) {
+      throw new BadRequestException(
+        `Only ${formatMoney(remainingMinor, currency)} is left to refund on this order.`,
+      );
+    }
+  }
 
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: OrderStatus.REFUNDED, cancelledAt: new Date() },
-      });
+  /**
+   * The bookkeeping every admin refund shares: the refund row, the order and
+   * payment status, and access if the admin chose to take it. Runs inside the
+   * caller's transaction with the payment row locked, so the "what is left"
+   * arithmetic cannot race another refund on the same order.
+   */
+  private async recordRefund(
+    tx: Prisma.TransactionClient,
+    args: {
+      order: { id: string; currency: string };
+      payment: { id: string; amountMinor: bigint };
+      amountMinor: bigint;
+      reason?: string;
+      adminUserId: string;
+      providerRefundId: string | null;
+      manualMethod?: ManualRefundMethod;
+      reference?: string | null;
+      status: RefundStatus;
+      processedAt: Date | null;
+      raw: unknown;
+      revokeAccess?: boolean;
+      enforceRemaining: boolean;
+    },
+  ): Promise<RefundOutcome> {
+    await tx.$queryRaw`SELECT id FROM payments WHERE id = ${args.payment.id}::uuid FOR UPDATE`;
 
-      await this.entitlements.revokeForOrder(order.id, reason ?? 'Order refunded', tx);
+    const before = await this.returnedSoFar(tx, args.payment.id);
+    if (args.enforceRemaining) {
+      this.checkRefundAmount(args.amountMinor, args.payment.amountMinor - before, args.order.currency);
+    }
+
+    await tx.refund.create({
+      data: {
+        paymentId: args.payment.id,
+        orderId: args.order.id,
+        providerRefundId: args.providerRefundId,
+        manualMethod: args.manualMethod ?? null,
+        reference: args.reference ?? null,
+        amountMinor: args.amountMinor,
+        status: args.status,
+        reason: args.reason,
+        initiatedById: args.adminUserId,
+        rawResponse: (args.raw ?? undefined) as Prisma.InputJsonValue | undefined,
+        processedAt: args.processedAt,
+      },
     });
 
-    this.logger.log(`Refunded order ${order.orderNumber} (${providerRefund.providerRefundId})`);
+    const fullyRefunded = before + args.amountMinor >= args.payment.amountMinor;
 
-    await this.events.refunded({ orderId: order.id, reason: reason ?? 'Order refunded' });
+    if (fullyRefunded) {
+      await tx.payment.update({
+        where: { id: args.payment.id },
+        data: { status: PaymentStatus.REFUNDED },
+      });
+      await tx.order.update({
+        where: { id: args.order.id },
+        data: { status: OrderStatus.REFUNDED, cancelledAt: new Date() },
+      });
+    } else {
+      await tx.order.updateMany({
+        where: { id: args.order.id, status: OrderStatus.PAID },
+        data: { status: OrderStatus.PARTIALLY_REFUNDED },
+      });
+    }
 
-    // What the provider did, not what was asked of it. When it does not say,
-    // the email describes the slow rail: a refund that arrives sooner than
-    // promised costs nothing, one that arrives later becomes a support ticket.
-    await this.sendRefundNotice(
-      order.id,
-      providerRefund.amountMinor,
-      providerRefund.providerRefundId,
-      providerRefund.speedProcessed ?? 'NORMAL',
-    );
+    const revoke = args.revokeAccess ?? fullyRefunded;
+    if (revoke) {
+      await this.entitlements.revokeForOrder(args.order.id, args.reason ?? 'Order refunded', tx);
+    }
 
-    return { orderId: order.id, status: OrderStatus.REFUNDED };
+    return {
+      orderStatus: fullyRefunded ? OrderStatus.REFUNDED : OrderStatus.PARTIALLY_REFUNDED,
+      fullyRefunded,
+      accessRevoked: revoke,
+    };
+  }
+
+  /** After the commit: let go of anything tied to the order, then tell the buyer. */
+  private async afterRefund(
+    orderId: string,
+    reason: string | undefined,
+    outcome: RefundOutcome,
+    notifyBuyer: boolean,
+    notice: RefundNotice,
+  ): Promise<void> {
+    // Only when access went: a refund that keeps access keeps the booked call too.
+    if (outcome.accessRevoked) {
+      await this.events.refunded({ orderId, reason: reason ?? 'Order refunded' });
+    }
+
+    if (notifyBuyer) {
+      // Describes where the buyer stands now, not only what this refund did:
+      // access revoked earlier is still gone, and the email must not say otherwise.
+      const accessRemoved = notice.accessRemoved || (await this.accessAlreadyGone(orderId));
+      await this.sendRefundNotice(orderId, { ...notice, accessRemoved });
+    }
+  }
+
+  /** The order gave access once and gives none now. False for orders that never grant any (a 1:1 call). */
+  private async accessAlreadyGone(orderId: string): Promise<boolean> {
+    const [granted, active] = await Promise.all([
+      this.prisma.entitlement.count({ where: { sourceOrderId: orderId } }),
+      this.prisma.entitlement.count({ where: { sourceOrderId: orderId, status: EntitlementStatus.ACTIVE } }),
+    ]);
+    return granted > 0 && active === 0;
   }
 
   /**
@@ -1198,14 +1492,9 @@ export class PaymentService {
    * no address on the order is someone support is already in a conversation
    * with, since that is the only way the refund got requested.
    */
-  private async sendRefundNotice(
-    orderId: string,
-    refundedAmountMinor: bigint,
-    refundId: string,
-    speed: RefundSpeed,
-  ): Promise<void> {
+  private async sendRefundNotice(orderId: string, notice: RefundNotice): Promise<void> {
     // A free order returns no money, so there is nothing to confirm.
-    if (refundedAmountMinor <= 0n) return;
+    if (notice.amountMinor <= 0n) return;
 
     try {
       const order = await this.prisma.order.findUnique({
@@ -1215,7 +1504,12 @@ export class PaymentService {
           currency: true,
           customerEmail: true,
           user: { select: { name: true } },
-          items: { select: { productTitleSnapshot: true } },
+          items: {
+            select: {
+              productTitleSnapshot: true,
+              product: { select: { liveSession: { select: { shortName: true } } } },
+            },
+          },
         },
       });
 
@@ -1228,11 +1522,20 @@ export class PaymentService {
 
       const rendered = refundConfirmation({
         buyerName: firstName(order.user.name),
-        items: order.items.map((item) => ({ title: item.productTitleSnapshot })),
-        refundedFormatted: formatMoney(refundedAmountMinor, order.currency),
+        // Same rule as sessionDisplayName(): a session's short name is the
+        // stable one, while the title is booking-card copy that changes.
+        items: order.items.map((item) => ({
+          title: item.product.liveSession?.shortName?.trim() || item.productTitleSnapshot,
+        })),
+        refundedFormatted: formatMoney(notice.amountMinor, order.currency),
         orderNumber: order.orderNumber,
-        refundId,
-        instant: speed === 'INSTANT',
+        refundId: notice.refundId,
+        instant: notice.speed === 'INSTANT',
+        partial: notice.partial,
+        accessRemoved: notice.accessRemoved,
+        manual: notice.manual
+          ? { methodLabel: MANUAL_METHOD_LABEL[notice.manual.method], dateLabel: istDate(notice.manual.refundedAt) }
+          : undefined,
       });
 
       const outcome = await this.mail.sendBestEffort({

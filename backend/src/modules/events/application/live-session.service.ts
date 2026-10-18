@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { activity } from '../../../shared/logging/activity';
 import {
@@ -23,6 +24,7 @@ import { OrderService, type CheckoutResult } from '../../orders/application/orde
 import { StorageService } from '../../storage/application/storage.service';
 import { objectRefOf } from '../../storage/domain/storage-provider.port';
 import { normaliseContactPhone } from '../../../shared/sms/domain/contact-phone';
+import { SessionShowcase, type SectionQuote } from './session-showcase';
 
 export interface LiveSessionInput {
   title?: string;
@@ -34,6 +36,7 @@ export interface LiveSessionInput {
   capacity?: number | null;
   showSeats?: boolean;
   lateRegistration?: boolean;
+  lateJoinersGetEarlierMaterials?: boolean;
   displaySeats?: number | null;
   bundleDeliveryMode?: BundleDeliveryMode;
   priceAmountMinor?: string;
@@ -43,6 +46,8 @@ export interface LiveSessionInput {
   recordingUrl?: string | null;
   highlights?: string[];
   perkText?: string | null;
+  /** The stable name for emails and the library. Blank falls back to the title. */
+  shortName?: string | null;
   audienceText?: string | null;
   testimonialsHeading?: string | null;
   testimonialsSubheading?: string | null;
@@ -75,7 +80,12 @@ export interface RegistrationAnswers {
 
 const SESSION_INCLUDE = {
   days: { orderBy: { startsAt: 'asc' } },
-  testimonials: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+  // The original gallery only. Named sections carry their own images below.
+  testimonials: { where: { sectionId: null }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+  testimonialSections: {
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    include: { testimonials: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } },
+  },
   product: {
     include: {
       bundleItems: {
@@ -173,6 +183,9 @@ export class LiveSessionService {
     private readonly audit: AuditService,
     private readonly storage: StorageService,
     private readonly config: AppConfig,
+    // Optional so scripts and specs can build this service without the
+    // registry; sections then show their screenshots only.
+    @Optional() private readonly showcase?: SessionShowcase,
   ) {}
 
   /**
@@ -181,10 +194,39 @@ export class LiveSessionService {
    * the local driver has no public surface and signs them instead.
    */
   private testimonialUrls(session: SessionRow): Promise<string[]> {
+    return this.imageUrls(session.testimonials);
+  }
+
+  private imageUrls(rows: SessionRow['testimonials']): Promise<string[]> {
     return Promise.all(
-      session.testimonials.map((row) =>
-        this.storage.getSignedDownloadUrl(objectRefOf(row), { disposition: 'inline' }),
-      ),
+      rows.map((row) => this.storage.getSignedDownloadUrl(objectRefOf(row), { disposition: 'inline' })),
+    );
+  }
+
+  /**
+   * The named sections the website shows: visible ones with something in them
+   * (a screenshot, or a written reply picked from a feedback form), in the
+   * admin's order. `dayNumber` is the tied day's position in the session
+   * (1-based), or null — the page can label "Day 1" without knowing how days
+   * are stored. `quotes` come from whoever registered with SessionShowcase.
+   */
+  private async publicSections(session: SessionRow) {
+    const candidates = session.testimonialSections.filter((s) => s.isVisible);
+    const quotes = (await this.showcase?.quotesFor(candidates.map((s) => s.id))) ?? new Map<string, SectionQuote[]>();
+    const visible = candidates.filter((s) => s.testimonials.length > 0 || (quotes.get(s.id)?.length ?? 0) > 0);
+    return Promise.all(
+      visible.map(async (section) => {
+        const index = section.dayId ? session.days.findIndex((d) => d.id === section.dayId) : -1;
+        return {
+          id: section.id,
+          heading: section.heading,
+          subheading: section.subheading,
+          tag: section.tag,
+          dayNumber: index >= 0 ? index + 1 : null,
+          urls: await this.imageUrls(section.testimonials),
+          quotes: quotes.get(section.id) ?? [],
+        };
+      }),
     );
   }
 
@@ -449,6 +491,7 @@ export class LiveSessionService {
             capacity: input.capacity ?? null,
             showSeats: input.showSeats ?? true,
             lateRegistration: input.lateRegistration ?? false,
+            lateJoinersGetEarlierMaterials: input.lateJoinersGetEarlierMaterials ?? true,
             displaySeats: input.displaySeats ?? null,
             bundleDeliveryMode: input.bundleDeliveryMode ?? BundleDeliveryMode.IMMEDIATE,
             joinUrl: blankToNull(input.joinUrl) ?? null,
@@ -456,6 +499,7 @@ export class LiveSessionService {
             recordingUrl: blankToNull(input.recordingUrl) ?? null,
             highlights: input.highlights ?? [],
             perkText: blankToNull(input.perkText) ?? null,
+            shortName: blankToNull(input.shortName?.trim()) ?? null,
             audienceText: blankToNull(input.audienceText) ?? null,
             testimonialsHeading: blankToNull(input.testimonialsHeading) ?? null,
             testimonialsSubheading: blankToNull(input.testimonialsSubheading) ?? null,
@@ -530,6 +574,7 @@ export class LiveSessionService {
             capacity: input.capacity,
             showSeats: input.showSeats,
             lateRegistration: input.lateRegistration,
+            lateJoinersGetEarlierMaterials: input.lateJoinersGetEarlierMaterials,
             displaySeats: input.displaySeats,
             bundleDeliveryMode: input.bundleDeliveryMode,
             joinUrl: blankToNull(input.joinUrl),
@@ -537,6 +582,7 @@ export class LiveSessionService {
             recordingUrl: blankToNull(input.recordingUrl),
             highlights: input.highlights,
             perkText: blankToNull(input.perkText),
+            shortName: input.shortName === undefined ? undefined : blankToNull(input.shortName?.trim() ?? null),
             audienceText: blankToNull(input.audienceText),
             testimonialsHeading: blankToNull(input.testimonialsHeading),
             testimonialsSubheading: blankToNull(input.testimonialsSubheading),
@@ -704,8 +750,28 @@ export class LiveSessionService {
     const removed = existing.filter((d) => !kept.has(d.id)).map((d) => d.id);
 
     if (removed.length > 0) {
+      // A day with materials attached is refused rather than taking the
+      // materials (and everyone's access to them) with it unnoticed.
+      const withMaterials = await tx.sessionMaterial.count({ where: { dayId: { in: removed } } });
+      if (withMaterials > 0) {
+        throw new BadRequestException(
+          'A day you removed has materials attached. Remove them from that day first, then delete the day.',
+        );
+      }
       await tx.sessionDayReminder.deleteMany({ where: { liveSessionDayId: { in: removed } } });
-      await tx.liveSessionDay.deleteMany({ where: { id: { in: removed } } });
+      try {
+        await tx.liveSessionDay.deleteMany({ where: { id: { in: removed } } });
+      } catch (error) {
+        // Something else still points at the day (a feedback form, say) and
+        // its foreign key refuses. Said plainly rather than as a database error.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+          throw new BadRequestException(
+            'A day you removed still has something attached to it, such as a feedback form. ' +
+              'Move it to another day or delete it first, then delete the day.',
+          );
+        }
+        throw error;
+      }
     }
 
     for (const day of days) {
@@ -740,8 +806,11 @@ export class LiveSessionService {
     sessionId: string,
     file: { buffer: Buffer; originalname: string; mimetype: string },
     actor: Actor,
+    /** A named section of this session; omitted = the original gallery. */
+    sectionId: string | null = null,
   ) {
     await this.getRowOrThrow(sessionId);
+    if (sectionId) await this.sectionOrThrow(sessionId, sectionId);
 
     if (!/^image\/(png|jpeg|webp)$/.test(file.mimetype)) {
       throw new BadRequestException('A testimonial must be a PNG, JPEG or WebP image.');
@@ -756,7 +825,7 @@ export class LiveSessionService {
     });
 
     const last = await this.prisma.sessionTestimonial.findFirst({
-      where: { liveSessionId: sessionId },
+      where: { liveSessionId: sessionId, sectionId },
       orderBy: { sortOrder: 'desc' },
       select: { sortOrder: true },
     });
@@ -771,6 +840,7 @@ export class LiveSessionService {
         sizeBytes: BigInt(stored.sizeBytes),
         sortOrder: (last?.sortOrder ?? -1) + 1,
         uploadedById: actor.id,
+        sectionId,
       },
     });
 
@@ -811,9 +881,10 @@ export class LiveSessionService {
    * duplicate) is rejected rather than silently reordering a subset, since a
    * partial reorder would leave the list in an order nobody asked for.
    */
-  async reorderTestimonials(sessionId: string, testimonialIds: string[]) {
+  async reorderTestimonials(sessionId: string, testimonialIds: string[], sectionId: string | null = null) {
+    // One gallery at a time: the original one, or a named section.
     const rows = await this.prisma.sessionTestimonial.findMany({
-      where: { liveSessionId: sessionId },
+      where: { liveSessionId: sessionId, sectionId },
       select: { id: true },
     });
 
@@ -828,6 +899,14 @@ export class LiveSessionService {
         this.prisma.sessionTestimonial.update({ where: { id }, data: { sortOrder } }),
       ),
     );
+  }
+
+  private async sectionOrThrow(sessionId: string, sectionId: string) {
+    const section = await this.prisma.sessionTestimonialSection.findFirst({
+      where: { id: sectionId, liveSessionId: sessionId },
+    });
+    if (!section) throw new NotFoundException('That section is not on this session.');
+    return section;
   }
 
   private async toPublic(session: SessionRow, taken: number) {
@@ -858,6 +937,7 @@ export class LiveSessionService {
       testimonialsSubheading: session.testimonialsSubheading,
       testimonialsTag: session.testimonialsTag,
       testimonialUrls: await this.testimonialUrls(session),
+      testimonialSections: await this.publicSections(session),
       priceAmountMinor: product.priceAmountMinor,
       compareAtAmountMinor: product.compareAtAmountMinor,
       currency: product.currency,
@@ -887,6 +967,7 @@ export class LiveSessionService {
       capacity: session.capacity,
       showSeats: session.showSeats,
       lateRegistration: session.lateRegistration,
+      lateJoinersGetEarlierMaterials: session.lateJoinersGetEarlierMaterials,
       displaySeats: session.displaySeats,
       bundleDeliveryMode: session.bundleDeliveryMode,
       seatsTaken: taken,
@@ -894,6 +975,7 @@ export class LiveSessionService {
       telegramUrl: session.telegramUrl,
       recordingUrl: session.recordingUrl,
       highlights: session.highlights,
+      shortName: session.shortName,
       perkText: session.perkText,
       audienceText: session.audienceText,
       testimonialsHeading: session.testimonialsHeading,
@@ -907,6 +989,24 @@ export class LiveSessionService {
           id: row.id,
           url: await this.storage.getSignedDownloadUrl(objectRefOf(row), { disposition: 'inline' }),
           sortOrder: row.sortOrder,
+        })),
+      ),
+      testimonialSections: await Promise.all(
+        session.testimonialSections.map(async (section) => ({
+          id: section.id,
+          heading: section.heading,
+          subheading: section.subheading,
+          tag: section.tag,
+          dayId: section.dayId,
+          isVisible: section.isVisible,
+          sortOrder: section.sortOrder,
+          testimonials: await Promise.all(
+            section.testimonials.map(async (row) => ({
+              id: row.id,
+              url: await this.storage.getSignedDownloadUrl(objectRefOf(row), { disposition: 'inline' }),
+              sortOrder: row.sortOrder,
+            })),
+          ),
         })),
       ),
       priceAmountMinor: product.priceAmountMinor,

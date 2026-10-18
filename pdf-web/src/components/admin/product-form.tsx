@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 
 /**
  * Mirrors the server's pricing rules so the admin is told what is wrong before
@@ -25,6 +26,7 @@ const schema = z
     accessType: z.enum(["FREE", "PAID"]),
     price: z.string().optional(),
     compareAtPrice: z.string().optional(),
+    listed: z.boolean(),
   })
   .superRefine((values, ctx) => {
     if (values.accessType !== "PAID") return;
@@ -78,10 +80,11 @@ export const ProductForm = forwardRef<StepSectionHandle, Props>(function Product
     formState: { errors, isSubmitting, isDirty },
   } = useForm<ProductFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { accessType: "PAID", ...defaultValues },
+    defaultValues: { accessType: "PAID", listed: true, ...defaultValues },
   });
 
   const accessType = watch("accessType");
+  const listed = watch("listed");
 
   /**
    * Saving has to re-baseline the form, not just persist it: react-hook-form
@@ -169,6 +172,23 @@ export const ProductForm = forwardRef<StepSectionHandle, Props>(function Product
           </div>
         </div>
       )}
+
+      <div className="space-y-1">
+        <div className="flex items-center gap-3">
+          <Switch
+            id="listed"
+            checked={listed}
+            onCheckedChange={(checked: boolean) => setValue("listed", checked, { shouldDirty: true })}
+          />
+          <Label htmlFor="listed" className="font-medium">
+            Show in store
+          </Label>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Off hides it from the store: it cannot be found, bought or claimed there. Use this for material handed out
+          to a live session&apos;s seat holders. Anyone who already has it keeps it in their library.
+        </p>
+      </div>
 
       {!hideSubmit && (
         <Button type="submit" disabled={isSubmitting}>

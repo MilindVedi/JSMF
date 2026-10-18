@@ -2,11 +2,12 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { BookOpen, Home, LogIn, LogOut, Mail, Menu, Users, Video, X } from "lucide-react";
+import { BookOpen, ExternalLink, Home, Library, LogIn, LogOut, Mail, Menu, Users, Video, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { buttonVariants } from "@/components/ui/button";
 import { ContactDialog } from "@/components/contact-dialog";
 import { currentOffering } from "@/lib/api/mentorship";
+import { links } from "@/lib/site-content";
 import { useSessionStore } from "@/store/session-store";
 
 /**
@@ -122,9 +123,9 @@ function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-5 lg:px-8">
-        <div className="flex items-center gap-8">
+        <div className="flex items-center gap-6">
           <Brand />
-          <nav className="hidden items-center gap-1 lg:flex" aria-label="Main navigation">
+          <nav className="nav-compact hidden items-center gap-0.5 xl:flex" aria-label="Main navigation">
             <Link href="/" className={navClass(section === "home")}>
               <Home size={16} /> Home
             </Link>
@@ -141,11 +142,16 @@ function SiteHeader() {
                 <Video size={16} /> Book 1:1
               </Link>
             )}
+            {/* The study resources live on the store, a separate site: opened
+                in a new tab, and the icon says it leaves this one. */}
+            <a href={links.store} target="_blank" rel="noreferrer" className={navClass(false)}>
+              <Library size={16} /> JSMF Resources <ExternalLink size={12} className="opacity-60" />
+            </a>
           </nav>
         </div>
         <div className="hidden items-center gap-2 md:flex">{account}</div>
         <button
-          className="grid size-10 place-items-center rounded-full text-foreground lg:hidden"
+          className="grid size-10 place-items-center rounded-full text-foreground xl:hidden"
           onClick={() => setOpen(!open)}
           aria-label="Toggle navigation"
           aria-expanded={open}
@@ -157,7 +163,7 @@ function SiteHeader() {
           just navigated to, which reads as a failed tap. */}
       {open && (
         <nav
-          className="flex flex-col gap-2 border-t border-border bg-background p-4 lg:hidden"
+          className="flex flex-col gap-2 border-t border-border bg-background p-4 xl:hidden"
           onClick={() => setOpen(false)}
         >
           <Link href="/" className={navClass(section === "home")}>
@@ -176,6 +182,9 @@ function SiteHeader() {
               <Video size={16} /> Book 1:1
             </Link>
           )}
+          <a href={links.store} target="_blank" rel="noreferrer" className={navClass(false)}>
+            <Library size={16} /> JSMF Resources <ExternalLink size={12} className="opacity-60" />
+          </a>
           <div className="mt-1 flex flex-col gap-2 border-t border-border pt-3 md:hidden">
             {ready && user ? (
               <button onClick={() => void logout()} className="nav-link">

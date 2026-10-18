@@ -44,7 +44,7 @@ export class DownloadService {
   async authorize(request: DownloadRequest): Promise<DownloadGrant> {
     const product = await this.prisma.product.findFirst({
       where: { id: request.productId, deletedAt: null },
-      select: { id: true, accessType: true, status: true, title: true },
+      select: { id: true, accessType: true, status: true, listed: true, title: true },
     });
 
     if (!product) throw new NotFoundException('Product not found');
@@ -63,7 +63,9 @@ export class DownloadService {
           : new UnauthorizedException('Sign in to download this product.');
       }
 
-      if (product.status !== ProductStatus.PUBLISHED) {
+      // A free download without an account is a store feature; a product
+      // hidden from the store is only for the people it was given to.
+      if (product.status !== ProductStatus.PUBLISHED || !product.listed) {
         throw new NotFoundException('Product not found');
       }
     }

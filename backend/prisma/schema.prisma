@@ -89,6 +89,8 @@ model User {
   dateAnnouncements      SessionDateAnnouncement[]
   sessionDetailReceipts  SessionDetailReceipt[]
   sessionDetailEmails    SessionDetailEmail[]
+  sessionMaterialsAdded  SessionMaterial[]         @relation("SessionMaterialAddedBy")
+  sessionMaterialNotices SessionMaterialNotice[]
   sessionTestimonials    SessionTestimonial[]
   practiceSessions       PracticeSession[]
   pyqAttempts            Attempt[]
@@ -106,6 +108,10 @@ model User {
   mentorshipBookings     MentorshipBooking[]
   offlineSales           OfflineSale[]             @relation("OfflineSaleBuyer")
   offlineSalesRecorded   OfflineSale[]             @relation("OfflineSaleRecordedBy")
+  feedbackFormsCreated   FeedbackForm[]            @relation("FeedbackFormCreatedBy")
+  feedbackInvites        FeedbackInvite[]
+  feedbackResponses      FeedbackResponse[]
+  feedbackHighlights     FeedbackHighlight[]       @relation("FeedbackHighlightCreatedBy")
 
   @@map("users")
   @@schema("public")
@@ -432,6 +438,13 @@ model Product {
   /// the storefront renders, which is the only version of this that cannot
   /// drift.
   featuredOrder        Int?          @map("featured_order")
+  /// "Show in store". False keeps a product out of the public store — browse,
+  /// search, the featured strip and its /p page — and stops anyone buying or
+  /// freely claiming it, while everyone who already holds it keeps it in their
+  /// library. For material handed out to a live session's seat holders that is
+  /// not for sale on its own. Independent of `status`: an unlisted product is
+  /// usually PUBLISHED.
+  listed               Boolean       @default(true)
   publishedAt          DateTime?     @map("published_at") @db.Timestamptz(6)
   createdById          String?       @map("created_by") @db.Uuid
   updatedById          String?       @map("updated_by") @db.Uuid
@@ -455,6 +468,7 @@ model Product {
   liveSession        LiveSession?
   mentorshipOffering MentorshipOffering?
   offlineSales       OfflineSale[]
+  sessionMaterials   SessionMaterial[]
 
   @@index([status, publishedAt(sort: Desc)])
   @@index([type])
@@ -853,18 +867,39 @@ enum RefundStatus {
   @@schema("public")
 }
 
+/// How money went back to a buyer outside the payment provider.
+enum ManualRefundMethod {
+  UPI
+  BANK_TRANSFER
+  CASH
+  OTHER
+
+  @@schema("public")
+}
+
+/// One return of money on an order. Several can add up to the amount paid.
+///
+/// Either the provider moved the money (`providerRefundId` set) or an admin
+/// did it themselves and recorded it here (`manualMethod` set) — never both.
+/// Whether access was taken away is not stored here: it is a separate decision
+/// the admin makes, and the order's entitlements are what record it.
 model Refund {
-  id               String       @id @default(uuid(7)) @db.Uuid
-  paymentId        String       @map("payment_id") @db.Uuid
-  orderId          String       @map("order_id") @db.Uuid
-  providerRefundId String?      @unique @map("provider_refund_id") @db.VarChar(120)
-  amountMinor      BigInt       @map("amount_minor")
-  status           RefundStatus @default(PENDING)
+  id               String              @id @default(uuid(7)) @db.Uuid
+  paymentId        String              @map("payment_id") @db.Uuid
+  orderId          String              @map("order_id") @db.Uuid
+  providerRefundId String?             @unique @map("provider_refund_id") @db.VarChar(120)
+  amountMinor      BigInt              @map("amount_minor")
+  status           RefundStatus        @default(PENDING)
   reason           String?
-  initiatedById    String?      @map("initiated_by") @db.Uuid
-  rawResponse      Json?        @map("raw_response")
-  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  processedAt      DateTime?    @map("processed_at") @db.Timestamptz(6)
+  initiatedById    String?             @map("initiated_by") @db.Uuid
+  rawResponse      Json?               @map("raw_response")
+  /// Set only for a refund an admin made outside the provider and recorded.
+  manualMethod     ManualRefundMethod? @map("manual_method")
+  /// What identifies a manual refund where it happened: a UPI UTR, a bank reference.
+  reference        String?             @db.VarChar(100)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// When the money actually went back. For a manual refund, the date the admin gives.
+  processedAt      DateTime?           @map("processed_at") @db.Timestamptz(6)
 
   payment     Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
   order       Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
@@ -885,6 +920,10 @@ enum EntitlementSource {
   ADMIN_GRANT
   SUBSCRIPTION
   BUNDLE
+  /// A PDF attached to one day of a live session, given to its seat holders.
+  /// `sourceProductId` is the session and `sourceOrderId` the seat's order, so
+  /// a refund of the seat takes it back with everything else.
+  SESSION_MATERIAL
 
   @@schema("public")
 }
@@ -1109,7 +1148,7 @@ model AuditLog {
 model LiveSession {
   /// Shares the product's id: one session per product, and the product is the
   /// thing orders point at.
-  productId              String             @id @map("product_id") @db.Uuid
+  productId                      String             @id @map("product_id") @db.Uuid
   /// The first day's start. A copy kept by LiveSessionService — the only writer
   /// — in the same transaction that writes the days, so listing, ordering and
   /// "registration closes when it starts" stay one indexed column.
@@ -1117,95 +1156,109 @@ model LiveSession {
   /// NULL when the session has no days yet: announced, open for booking, dates
   /// still to be fixed. The website shows "To be announced" for those, and
   /// registration stays open because nothing has started.
-  startsAt               DateTime?          @map("starts_at") @db.Timestamptz(6)
+  startsAt                       DateTime?          @map("starts_at") @db.Timestamptz(6)
   /// "Live on Zoom · Link sent on mail". Display text, not a URL.
-  platformLabel          String             @map("platform_label") @db.VarChar(160)
+  platformLabel                  String             @map("platform_label") @db.VarChar(160)
+  /// The session's stable name, used in every email and the library label,
+  /// e.g. "NEET-PG Revision Bootcamp". The product's title is what the
+  /// website's booking card shows and is often reworded day to day ("Day 2
+  /// starts tonight!"); this one is not. NULL falls back to the title, so a
+  /// session without one behaves exactly as before. Read through
+  /// `sessionDisplayName()`, never directly.
+  shortName                      String?            @map("short_name") @db.VarChar(120)
   /// NULL = unlimited. Seats taken are counted from entitlements, never stored,
   /// so this is the only number here that can go stale — and only by an admin
   /// changing it.
-  capacity               Int?
+  capacity                       Int?
   /// Admin toggle: when false, both seatsRemaining and displaySeats are hidden
   /// from the public-facing API. Lets the admin suppress seat counts without
   /// deleting the underlying data.
-  showSeats              Boolean            @default(true) @map("show_seats")
+  showSeats                      Boolean            @default(true) @map("show_seats")
   /// Keeps the session on sale after its first day has started, until its last
   /// day ends. A multi-day session is still worth joining on day 2 — usually at
   /// a lower price, which the admin sets by hand. While this is on the session
   /// stays on the website as the upcoming one and no recording is offered;
   /// once the last day ends it closes like any other.
-  lateRegistration       Boolean            @default(false) @map("late_registration")
+  lateRegistration               Boolean            @default(false) @map("late_registration")
+  /// Whether someone who buys a seat after a day has started still gets that
+  /// day's (and earlier days') materials. True: every seat holder gets every
+  /// day's materials. False: only the days that had not ended when they paid.
+  lateJoinersGetEarlierMaterials Boolean            @default(true) @map("late_joiners_get_earlier_materials")
   /// TEMPORARY (external Razorpay Payment Page phase): a manually-set "seats
   /// available" number shown on /prep-kit to signal demand. NOT real capacity
   /// and not derived from entitlements. NULL = show no seats line, 0 = fully
   /// booked. Remove this column when the external checkout flow is retired.
-  displaySeats           Int?               @map("display_seats")
+  displaySeats                   Int?               @map("display_seats")
   /// The joining link. Private: sent only to people holding a seat, never in a
   /// public response. Nullable because it is often created days after the
   /// session is announced.
-  joinUrl                String?            @map("join_url")
+  joinUrl                        String?            @map("join_url")
   /// The Telegram group for this session's registered candidates. Private like
   /// the joining link: sent in the confirmation and the session details email,
   /// never in a public response.
-  telegramUrl            String?            @map("telegram_url")
-  recordingUrl           String?            @map("recording_url")
+  telegramUrl                    String?            @map("telegram_url")
+  recordingUrl                   String?            @map("recording_url")
   /// "What you'll learn" bullets, in display order. An array rather than a
   /// child table: they are never queried, filtered or referenced, and always
   /// edited as one list.
-  highlights             String[]           @default([])
+  highlights                     String[]           @default([])
   /// "Every attendee gets Dr. Angad's high-yield revision planner (PDF) free."
-  perkText               String?            @map("perk_text") @db.VarChar(300)
+  perkText                       String?            @map("perk_text") @db.VarChar(300)
   /// "Who is this session for?" — one paragraph naming the exams and the kind
   /// of preparation it suits. Null hides the section entirely rather than
   /// printing an empty heading.
-  audienceText           String?            @map("audience_text") @db.VarChar(600)
+  audienceText                   String?            @map("audience_text") @db.VarChar(600)
   /// Copy around the testimonials section. All three fall back to a generic
   /// default when null, so a session shows reasonable text the moment its
   /// first testimonial is added, without the admin having to fill these in.
-  testimonialsHeading    String?            @map("testimonials_heading") @db.VarChar(150)
-  testimonialsSubheading String?            @map("testimonials_subheading") @db.VarChar(300)
+  testimonialsHeading            String?            @map("testimonials_heading") @db.VarChar(150)
+  testimonialsSubheading         String?            @map("testimonials_subheading") @db.VarChar(300)
   /// The small label on the right, e.g. "Previous FMGE session". Null hides
   /// it entirely — unlike the heading and subheading, this one has no
   /// generic fallback, because an empty tag reads as broken decoration.
-  testimonialsTag        String?            @map("testimonials_tag") @db.VarChar(80)
+  testimonialsTag                String?            @map("testimonials_tag") @db.VarChar(80)
   /// Subject line of the confirmation email sent when a seat is paid for.
   /// NULL keeps the built-in "JSMF - Your seat is confirmed: {title}". The
   /// token `{title}` is substituted with the session's title wherever it
   /// appears, so a custom subject can still carry it without being retyped
   /// every time the session is renamed.
-  confirmationSubject    String?            @map("confirmation_subject") @db.VarChar(200)
+  confirmationSubject            String?            @map("confirmation_subject") @db.VarChar(200)
   /// What the confirmation email says in place of the joining link while
   /// `joinUrl` is still empty. NULL keeps the built-in "We will email you the
   /// joining link before the session starts." Editable because that sentence
   /// is wrong whenever the dates themselves are not fixed yet — there is no
   /// "before the session starts" to point at.
-  pendingJoinLinkText    String?            @map("pending_join_link_text") @db.VarChar(300)
+  pendingJoinLinkText            String?            @map("pending_join_link_text") @db.VarChar(300)
   /// Appends a short "if this landed in Spam, mark it Not spam" info box to
   /// every email sent for this session — the confirmation, the dates
   /// announcement, each day's reminder, and the bundle-ready note. On per
   /// session rather than platform-wide: a brand-new session with no sender
   /// reputation benefits from the nudge; a steady one does not need to pester
   /// everyone forever. Defaults off, so existing sessions are unchanged.
-  showNotSpamNotice      Boolean            @default(false) @map("show_not_spam_notice")
+  showNotSpamNotice              Boolean            @default(false) @map("show_not_spam_notice")
   /// When and how the items included with a seat (the bundled PDF) reach
   /// buyers. IMMEDIATE grants them at payment, named in the confirmation
   /// email. The other two hold them back until the session has ended and the
   /// item is published — AUTO_AFTER_SESSION releases them on the reminder
   /// sweep's clock, MANUAL only when an admin sends them. A deferred mode is
   /// what makes it possible to sell seats before the PDF exists.
-  bundleDeliveryMode     BundleDeliveryMode @default(IMMEDIATE) @map("bundle_delivery_mode")
-  createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  bundleDeliveryMode             BundleDeliveryMode @default(IMMEDIATE) @map("bundle_delivery_mode")
+  createdAt                      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   /// Restrict: a session that has been sold must keep its product forever,
   /// the same rule every other product follows (archive, never delete).
-  product           Product                   @relation(fields: [productId], references: [id], onDelete: Restrict)
-  days              LiveSessionDay[]
-  registrations     SessionRegistration[]
-  deliveries        SessionBundleDelivery[]
-  dateAnnouncements SessionDateAnnouncement[]
-  detailReceipts    SessionDetailReceipt[]
-  detailEmails      SessionDetailEmail[]
-  testimonials      SessionTestimonial[]
+  product             Product                     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  days                LiveSessionDay[]
+  registrations       SessionRegistration[]
+  deliveries          SessionBundleDelivery[]
+  dateAnnouncements   SessionDateAnnouncement[]
+  detailReceipts      SessionDetailReceipt[]
+  detailEmails        SessionDetailEmail[]
+  testimonials        SessionTestimonial[]
+  testimonialSections SessionTestimonialSection[]
+  materials           SessionMaterial[]
+  feedbackForms       FeedbackForm[]
 
   @@index([startsAt])
   @@map("live_sessions")
@@ -1223,8 +1276,11 @@ model LiveSessionDay {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  liveSession LiveSession          @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
-  reminders   SessionDayReminder[]
+  liveSession         LiveSession                 @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
+  reminders           SessionDayReminder[]
+  materials           SessionMaterial[]
+  testimonialSections SessionTestimonialSection[]
+  feedbackForms       FeedbackForm[]
 
   /// Not unique: moving a session's days by one day passes through a moment
   /// where two rows share a start. LiveSessionService refuses overlapping days,
@@ -1315,12 +1371,52 @@ model SessionTestimonial {
   sortOrder       Int             @default(0) @map("sort_order")
   uploadedById    String?         @map("uploaded_by") @db.Uuid
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Which gallery it belongs to. NULL is the original one — what students
+  /// said about a previous session, whose copy lives on `live_sessions`
+  /// (`testimonials_heading` etc.). Anything else is a named section such as
+  /// "Day 1 feedback". Restrict: a section is removed with its images by
+  /// the service, which also deletes the stored files.
+  sectionId       String?         @map("section_id") @db.Uuid
 
-  liveSession LiveSession @relation(fields: [liveSessionId], references: [productId], onDelete: Cascade)
-  uploadedBy  User?       @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  liveSession LiveSession                @relation(fields: [liveSessionId], references: [productId], onDelete: Cascade)
+  uploadedBy  User?                      @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  section     SessionTestimonialSection? @relation(fields: [sectionId], references: [id], onDelete: Restrict)
 
   @@index([liveSessionId, sortOrder])
+  @@index([sectionId, sortOrder])
   @@map("session_testimonials")
+  @@schema("public")
+}
+
+/// A named gallery of screenshots on a session's pages, alongside the original
+/// "previous session" testimonials — "What students said after Day 1", later
+/// Day 2, toppers' messages, anything. Each carries its own copy and can be
+/// hidden without deleting it. New kinds of section need no schema change.
+///
+/// `dayId` optionally ties it to one day of this session (feedback from that
+/// day); SetNull so editing the dates never fails because of a gallery.
+model SessionTestimonialSection {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  liveSessionId String   @map("live_session_id") @db.Uuid
+  dayId         String?  @map("day_id") @db.Uuid
+  heading       String   @db.VarChar(150)
+  subheading    String?  @db.VarChar(300)
+  /// The small label beside the heading, e.g. "Day 1 · live". Null hides it.
+  tag           String?  @db.VarChar(80)
+  /// Off hides the whole section from the website; admin still sees it.
+  isVisible     Boolean  @default(true) @map("is_visible")
+  /// Display order among this session's sections, lowest first.
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  liveSession  LiveSession          @relation(fields: [liveSessionId], references: [productId], onDelete: Cascade)
+  day          LiveSessionDay?      @relation(fields: [dayId], references: [id], onDelete: SetNull)
+  testimonials SessionTestimonial[]
+  highlights   FeedbackHighlight[]
+
+  @@index([liveSessionId, sortOrder])
+  @@map("session_testimonial_sections")
   @@schema("public")
 }
 
@@ -2286,5 +2382,306 @@ model SessionDetailEmail {
 
   @@index([liveSessionId, userId, createdAt(sort: Desc)])
   @@map("session_detail_emails")
+  @@schema("public")
+}
+
+/// A PDF from the store, attached to one day of a live session. Seat holders
+/// get it as an entitlement (source SESSION_MATERIAL), so it appears in their
+/// library and downloads through the ordinary path. Who gets it is decided by
+/// the session's `lateJoinersGetEarlierMaterials` and when each person paid.
+///
+/// Restrict on the day: a day with materials cannot be deleted by editing the
+/// session's dates — the admin removes the materials first, which also takes
+/// the access back, rather than losing it silently.
+model SessionMaterial {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  liveSessionId String   @map("live_session_id") @db.Uuid
+  dayId         String   @map("day_id") @db.Uuid
+  productId     String   @map("product_id") @db.Uuid
+  sortOrder     Int      @default(0) @map("sort_order")
+  addedById     String?  @map("added_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  liveSession LiveSession             @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
+  day         LiveSessionDay          @relation(fields: [dayId], references: [id], onDelete: Restrict)
+  product     Product                 @relation(fields: [productId], references: [id], onDelete: Restrict)
+  addedBy     User?                   @relation("SessionMaterialAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
+  notices     SessionMaterialNotice[]
+
+  @@unique([dayId, productId])
+  @@index([liveSessionId])
+  @@index([productId])
+  @@map("session_materials")
+  @@schema("public")
+}
+
+/// Whether one seat holder has been emailed about one material. Exists so the
+/// admin can see per person who has been told and send to the rest; access
+/// itself never depends on it. A failure keeps the row with `sentAt` null and
+/// the reason, so it is retried by the next send.
+model SessionMaterialNotice {
+  materialId String    @map("material_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  sentAt     DateTime? @map("sent_at") @db.Timestamptz(6)
+  lastError  String?   @map("last_error") @db.VarChar(500)
+  attempts   Int       @default(0)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  material SessionMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([materialId, userId])
+  @@map("session_material_notices")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Feedback: forms seat holders fill in after a session day, on jsmf.me
+// ---------------------------------------------------------------------------
+//
+// Replaces the Google Form. Owned by the feedback module, which reads the live
+// session tables (who holds a seat, when a day ends). Nothing in the events
+// module reads these tables; the website gets highlights through the
+// SessionShowcase registry.
+//
+//   form ─┬─ questions          what is asked, in order
+//         ├─ invites            per seat holder: emailed? opened? (the tracking)
+//         └─ responses ── answers     one row per question, typed columns
+//                     └── highlights  a reply picked to show on the website
+
+enum FeedbackFormStatus {
+  /// Being written. Not reachable; nothing is emailed.
+  DRAFT
+  /// Taking replies; emails go out as `emailMode` says.
+  OPEN
+  /// No new replies or edits. Results stay.
+  CLOSED
+
+  @@schema("public")
+}
+
+enum FeedbackEmailMode {
+  /// The 5-minute sweep emails every eligible seat holder once the form's day
+  /// has ended (plus `emailDelayMinutes`) while the form is open.
+  AUTO_AFTER_DAY
+  /// Nothing goes out until an admin sends it.
+  MANUAL
+
+  @@schema("public")
+}
+
+enum FeedbackQuestionKind {
+  /// 1 to 5 stars.
+  RATING
+  /// 0 to 10, "how likely are you to recommend".
+  SCALE
+  SHORT_TEXT
+  LONG_TEXT
+  /// Exactly one of `options`.
+  SINGLE_CHOICE
+  /// Any of `options`.
+  MULTI_CHOICE
+
+  @@schema("public")
+}
+
+enum FeedbackResponseSource {
+  /// The personal link in the email: no sign-in.
+  EMAIL_LINK
+  /// The shared (Telegram) link, signed in with Google.
+  SIGNED_IN
+
+  @@schema("public")
+}
+
+/// One feedback form, usually for one day of a session ("Day 1 feedback").
+/// `dayId` null means the session as a whole, sent after its last day.
+model FeedbackForm {
+  id                  String             @id @default(uuid(7)) @db.Uuid
+  liveSessionId       String             @map("live_session_id") @db.Uuid
+  /// Restrict: a day with a feedback form cannot be removed by editing the
+  /// session's dates, because its replies are about that day.
+  dayId               String?            @map("day_id") @db.Uuid
+  title               String             @db.VarChar(150)
+  /// Shown above the questions. Plain text; line breaks are kept.
+  intro               String?            @db.VarChar(1000)
+  /// Shown after a reply is saved. Null uses a built-in thank-you.
+  thankYouText        String?            @map("thank_you_text") @db.VarChar(500)
+  status              FeedbackFormStatus @default(DRAFT)
+  emailMode           FeedbackEmailMode  @default(AUTO_AFTER_DAY) @map("email_mode")
+  /// How long after the day ends the automatic email goes out. 0 = at the end.
+  emailDelayMinutes   Int                @default(0) @map("email_delay_minutes")
+  /// Offers the student a "hide my name from the team" choice. The reply is
+  /// still tied to their account (one reply per person, and they can edit it),
+  /// but no admin screen or export shows who wrote it.
+  allowAnonymous      Boolean            @default(false) @map("allow_anonymous")
+  /// Asks the student "Can we show this on our website?". Off (the default):
+  /// the team decides which replies to show, and any reply can be picked. On:
+  /// only replies that said yes can be.
+  askConsentToPublish Boolean            @default(false) @map("ask_consent_to_publish")
+  /// Asks the student whether they would like their first name shown if
+  /// their reply appears on the website. Off (default): not asked. Either
+  /// way the admin decides when picking a reply; the answer is shown to them
+  /// as guidance only.
+  askShowName         Boolean            @default(false) @map("ask_show_name")
+  /// After this the form takes no new replies, as if CLOSED. Null = open until closed by hand.
+  closesAt            DateTime?          @map("closes_at") @db.Timestamptz(6)
+  createdById         String?            @map("created_by_id") @db.Uuid
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  liveSession LiveSession        @relation(fields: [liveSessionId], references: [productId], onDelete: Restrict)
+  day         LiveSessionDay?    @relation(fields: [dayId], references: [id], onDelete: Restrict)
+  createdBy   User?              @relation("FeedbackFormCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  questions   FeedbackQuestion[]
+  invites     FeedbackInvite[]
+  responses   FeedbackResponse[]
+
+  @@index([liveSessionId, createdAt])
+  @@index([status])
+  @@map("feedback_forms")
+  @@schema("public")
+}
+
+/// One question on a form. A question with answers is never deleted: removing
+/// it from the form archives it, so past replies keep their meaning. For the
+/// same reason its `kind` cannot change once it has been answered.
+model FeedbackQuestion {
+  id         String               @id @default(uuid(7)) @db.Uuid
+  formId     String               @map("form_id") @db.Uuid
+  kind       FeedbackQuestionKind
+  label      String               @db.VarChar(300)
+  helpText   String?              @map("help_text") @db.VarChar(500)
+  required   Boolean              @default(false)
+  /// The choices for SINGLE_CHOICE and MULTI_CHOICE; empty otherwise. Answers
+  /// store the chosen text itself, so renaming a choice later leaves earlier
+  /// answers as they were given.
+  options    String[]             @default([])
+  sortOrder  Int                  @default(0) @map("sort_order")
+  /// Set when it is removed from a form that already had answers to it.
+  archivedAt DateTime?            @map("archived_at") @db.Timestamptz(6)
+  createdAt  DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  /// Cascade, but only reachable for a form with no replies: the service
+  /// refuses to delete any other.
+  form    FeedbackForm     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  answers FeedbackAnswer[]
+
+  @@index([formId, sortOrder])
+  @@map("feedback_questions")
+  @@schema("public")
+}
+
+/// Per seat holder and form: whether they have been emailed their personal
+/// link, and whether they opened it. This is the table behind "who has been
+/// asked, who replied". The personal link carries this row's `id`, signed
+/// (see feedback/domain/feedback-link.ts), so no secret is stored here.
+model FeedbackInvite {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  formId        String    @map("form_id") @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  /// The last successful email. Null = never emailed.
+  emailedAt     DateTime? @map("emailed_at") @db.Timestamptz(6)
+  /// Successful emails: 1 is the invitation, anything more is reminders.
+  emailCount    Int       @default(0) @map("email_count")
+  attempts      Int       @default(0)
+  lastError     String?   @map("last_error") @db.VarChar(500)
+  /// Set while a send is emailing this person, cleared when it finishes, so
+  /// two overlapping sends (a sweep and an admin click, or two instances)
+  /// cannot both email them. A claim older than a few minutes is treated as
+  /// abandoned: the process died mid-send.
+  claimedAt     DateTime? @map("claimed_at") @db.Timestamptz(6)
+  firstOpenedAt DateTime? @map("first_opened_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  form FeedbackForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([formId, userId])
+  @@map("feedback_invites")
+  @@schema("public")
+}
+
+/// One person's reply to one form, one per person: filling the form in again
+/// edits this row rather than adding a second.
+model FeedbackResponse {
+  id               String                 @id @default(uuid(7)) @db.Uuid
+  formId           String                 @map("form_id") @db.Uuid
+  userId           String                 @map("user_id") @db.Uuid
+  source           FeedbackResponseSource
+  /// The student asked for their name to be hidden from the team.
+  isAnonymous      Boolean                @default(false) @map("is_anonymous")
+  /// "Yes, you can show this on your website." Only asked when the form's
+  /// `askConsentToPublish` is on; otherwise stays false and is not consulted.
+  consentToPublish Boolean                @default(false) @map("consent_to_publish")
+  /// The student's answer to "show my first name with it?". Null when the
+  /// form did not ask. Guidance for the admin, who decides.
+  showName         Boolean?               @map("show_name")
+  submittedAt      DateTime               @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  /// The last time the student changed it. Null = never edited.
+  editedAt         DateTime?              @map("edited_at") @db.Timestamptz(6)
+
+  /// Restrict: a form with replies is closed, never deleted.
+  form       FeedbackForm        @relation(fields: [formId], references: [id], onDelete: Restrict)
+  user       User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  answers    FeedbackAnswer[]
+  highlights FeedbackHighlight[]
+
+  @@unique([formId, userId])
+  @@index([formId, submittedAt])
+  @@map("feedback_responses")
+  @@schema("public")
+}
+
+/// One answer. Typed columns rather than a JSON blob, so averages and counts
+/// are plain SQL: `ratingValue` for RATING and SCALE, `textValue` for the text
+/// kinds, `choiceValues` for the choice kinds. CHECK constraints keep values
+/// in range (see this table's migration).
+model FeedbackAnswer {
+  responseId   String   @map("response_id") @db.Uuid
+  questionId   String   @map("question_id") @db.Uuid
+  ratingValue  Int?     @map("rating_value") @db.SmallInt
+  textValue    String?  @map("text_value")
+  choiceValues String[] @default([]) @map("choice_values")
+
+  response FeedbackResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question FeedbackQuestion @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@id([responseId, questionId])
+  @@index([questionId])
+  @@map("feedback_answers")
+  @@schema("public")
+}
+
+/// A reply an admin picked to show on the website, inside one of the session's
+/// feedback sections ("What students said after Day 1") next to the
+/// screenshots. Only possible when the student consented. `quote` and
+/// `attribution` are copies the admin can tidy (a typo, a long reply cut down)
+/// without changing what the student actually wrote.
+model FeedbackHighlight {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  responseId  String   @map("response_id") @db.Uuid
+  sectionId   String   @map("section_id") @db.Uuid
+  quote       String   @db.VarChar(1000)
+  /// "Riya · Final year". "A JSMF student" for an anonymous reply.
+  attribution String   @db.VarChar(120)
+  /// Stars shown on the card, 1 to 5. Null shows none.
+  rating      Int?     @db.SmallInt
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  /// Cascade both ways: a highlight is only a display pointer. Deleting the
+  /// reply or the section takes it off the page.
+  response  FeedbackResponse          @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  section   SessionTestimonialSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  createdBy User?                     @relation("FeedbackHighlightCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([responseId, sectionId])
+  @@index([sectionId, sortOrder])
+  @@map("feedback_highlights")
   @@schema("public")
 }

@@ -81,7 +81,7 @@ export default function LandingPage() {
                   <span className="eyebrow shrink-0">FEATURED RESOURCES</span>
                   <div className="h-px flex-1 bg-border" />
                 </div>
-                <div className="pr-0 sm:pr-8 lg:pr-12">
+                <div className="max-w-xl">
                   <ResourceCard key={featured[0].id} product={featured[0]} layout="horizontal" />
                 </div>
               </div>

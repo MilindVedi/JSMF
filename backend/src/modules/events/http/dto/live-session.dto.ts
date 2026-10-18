@@ -117,6 +117,16 @@ export class CreateLiveSessionDto {
   lateRegistration?: boolean;
 
   @ApiPropertyOptional({
+    description:
+      "Whether someone who buys after a day has ended still gets that day's materials. " +
+      'Off: only the days that had not ended when they paid.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  lateJoinersGetEarlierMaterials?: boolean;
+
+  @ApiPropertyOptional({
     nullable: true,
     description:
       'TEMPORARY external-checkout scarcity number for /prep-kit. Null = no seats line, 0 = fully booked.',
@@ -272,6 +282,20 @@ export class CreateLiveSessionDto {
   perkText?: string | null;
 
   @ApiPropertyOptional({
+    nullable: true,
+    maxLength: 120,
+    example: 'NEET-PG Revision Bootcamp',
+    description:
+      "The session's stable name, used in every email and the library label. The title is what " +
+      'the booking card shows and can change daily. Blank uses the title.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(120)
+  shortName?: string | null;
+
+  @ApiPropertyOptional({
     type: [String],
     description: 'PDF products granted free with a seat (the revision planner). Replaces the set.',
   })
@@ -321,6 +345,11 @@ export class ReorderTestimonialsDto {
   @ArrayMaxSize(100)
   @IsUUID(undefined, { each: true })
   testimonialIds!: string[];
+
+  @ApiPropertyOptional({ description: 'A named section; omitted = the original gallery.' })
+  @IsOptional()
+  @IsUUID()
+  sectionId?: string;
 }
 
 export class RegisterForSessionDto {
@@ -341,4 +370,67 @@ export class RegisterForSessionDto {
   @ApiProperty({ enum: STAGE_OPTIONS })
   @IsIn(STAGE_OPTIONS as unknown as string[], { message: 'Select where you are right now' })
   stage!: string;
+}
+
+export class AddSessionMaterialDto {
+  @ApiProperty({ description: 'The day of this session to attach it to.' })
+  @IsUUID()
+  dayId!: string;
+
+  @ApiProperty({ description: 'A PDF from the store (any status; it needs its file uploaded).' })
+  @IsUUID()
+  productId!: string;
+}
+
+export class SendSessionMaterialsDto {
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Who to email. Omit for every seat holder; each gets only the materials they have not ' +
+      'been told about, and anyone with nothing new is skipped.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsUUID(undefined, { each: true })
+  userIds?: string[];
+}
+
+export class CreateTestimonialSectionDto {
+  @ApiProperty({ example: 'What students said after Day 1', maxLength: 150 })
+  @IsString()
+  @MaxLength(150)
+  heading!: string;
+
+  @ApiPropertyOptional({ nullable: true, maxLength: 300 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  subheading?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, maxLength: 80, description: 'Small label beside the heading. Blank hides it.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  tag?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'A day of this session the feedback is about.' })
+  @IsOptional()
+  @IsUUID()
+  dayId?: string | null;
+
+  @ApiPropertyOptional({ default: true, description: 'Off hides the section from the website.' })
+  @IsOptional()
+  @IsBoolean()
+  isVisible?: boolean;
+}
+
+export class UpdateTestimonialSectionDto extends PartialType(CreateTestimonialSectionDto) {}
+
+export class ReorderTestimonialSectionsDto {
+  @ApiProperty({ type: [String], description: "Every section id for this session, once each, in display order." })
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID(undefined, { each: true })
+  sectionIds!: string[];
 }

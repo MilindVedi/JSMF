@@ -19,9 +19,9 @@ import { VerificationCodeService } from './verification-code.service';
 const prisma = new PrismaService();
 const hasher = new Argon2PasswordHasher();
 const codes = new VerificationCodeService(prisma, hasher);
-const sent: Array<{ destination: string; code: string }> = [];
+const sent: Array<{ destination: string; code: string; firstPassword?: boolean }> = [];
 const delivery = {
-  deliver: (_channel: string, request: { destination: string; code: string }) => {
+  deliver: (_channel: string, request: { destination: string; code: string; firstPassword?: boolean }) => {
     sent.push(request);
     return Promise.resolve();
   },
@@ -129,5 +129,52 @@ describe('email signup claiming a never-used account', () => {
       service.completeSignup({ email: user.email!, code: lastCode(user.email!) }, context),
     ).rejects.toBeInstanceOf(ConflictException);
     expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).passwordHash).toBeNull();
+  });
+});
+
+describe('forgot password on an account that has never had a password', () => {
+  it('lets a backfilled buyer set their first password on the same account', async () => {
+    const user = await account();
+
+    await service.startPasswordReset({ email: user.email! }, context);
+    const code = lastCode(user.email!);
+    expect(sent.at(-1)).toMatchObject({ firstPassword: true });
+
+    const result = await service.completePasswordReset(
+      { email: user.email!, code, password: 'a-very-long-passphrase' },
+      context,
+    );
+
+    expect(result.user.id).toBe(user.id);
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(await hasher.verify(after.passwordHash!, 'a-very-long-passphrase')).toBe(true);
+    expect(after.emailVerifiedAt).not.toBeNull();
+  });
+
+  it('lets a Google-only account add a password, keeping the Google login', async () => {
+    const user = await account({ google: true });
+
+    await service.startPasswordReset({ email: user.email! }, context);
+    await service.completePasswordReset(
+      { email: user.email!, code: lastCode(user.email!), password: 'a-very-long-passphrase' },
+      context,
+    );
+
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id }, include: { oauthAccounts: true } });
+    expect(after.passwordHash).not.toBeNull();
+    expect(after.oauthAccounts).toHaveLength(1);
+  });
+
+  it('still words a normal reset as a reset', async () => {
+    const user = await account({ passwordHash: await hasher.hash('existing-long-passphrase') });
+    await service.startPasswordReset({ email: user.email! }, context);
+    expect(sent.at(-1)).toMatchObject({ destination: user.email, firstPassword: false });
+  });
+
+  it('sends nothing for an unknown address, and answers the same', async () => {
+    const before = sent.length;
+    const answer = await service.startPasswordReset({ email: `nobody-${randomUUID()}@jsmf.test` }, context);
+    expect(sent.length).toBe(before);
+    expect(answer).toEqual({ channel: 'email', expiresInMinutes: 15 });
   });
 });

@@ -16,7 +16,7 @@ import { AppConfig } from '../../../config/config.module';
 import type { AuthenticatedUser } from '../../identity/application/auth.service';
 import { OrderService } from '../application/order.service';
 import { PaymentService } from '../application/payment.service';
-import { AdminOrderQueryDto, RefundOrderDto } from './dto/admin-order.dto';
+import { AdminOrderQueryDto, ManualRefundDto, RefundOrderDto, RevokeAccessDto } from './dto/admin-order.dto';
 
 /**
  * Platform-wide order visibility and refunds. Financially sensitive, so
@@ -49,8 +49,10 @@ export class AdminOrderController {
   @Post(':id/refund')
   @HttpCode(200)
   @ApiOperation({
-    summary: 'Refund an order and revoke the entitlements it granted',
-    description: 'Disabled while REFUNDS_ENABLED is false — answers 409 rather than touching Razorpay.',
+    summary: 'Refund an order through Razorpay, in full or in part',
+    description:
+      'Disabled while REFUNDS_ENABLED is false — answers 409 rather than touching Razorpay. ' +
+      'Access is revoked when revokeAccess is true, or when it is omitted and the refund completes the full amount.',
   })
   refund(
     @Param('id', ParseUUIDPipe) id: string,
@@ -63,6 +65,50 @@ export class AdminOrderController {
       );
     }
 
-    return this.payments.refund(id, admin.id, body.reason, body.speed ?? 'NORMAL');
+    return this.payments.refund(id, admin.id, body.reason, body.speed ?? 'NORMAL', {
+      amountMinor: body.amountMinor === undefined ? undefined : BigInt(body.amountMinor),
+      revokeAccess: body.revokeAccess,
+      notifyBuyer: body.notifyBuyer,
+    });
+  }
+
+  /**
+   * Not gated by REFUNDS_ENABLED: that switch protects the Razorpay call, and
+   * this one makes none — the money has already gone back by UPI, bank or cash.
+   */
+  @Post(':id/manual-refund')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Record a refund already made outside Razorpay (UPI, bank, cash)',
+    description: 'Full or partial. Access is revoked only if revokeAccess is true.',
+  })
+  recordManualRefund(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ManualRefundDto,
+    @CurrentUser() admin: AuthenticatedUser,
+  ) {
+    return this.payments.recordManualRefund(id, admin.id, {
+      amountMinor: BigInt(body.amountMinor),
+      method: body.method,
+      reference: body.reference,
+      refundedAt: new Date(body.refundedAt),
+      reason: body.reason,
+      revokeAccess: body.revokeAccess,
+      notifyBuyer: body.notifyBuyer ?? true,
+    });
+  }
+
+  @Post(':id/revoke-access')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Take away what an order gave, without moving money',
+    description: 'Also cancels a booked one-to-one call on the order. The buyer is not emailed.',
+  })
+  revokeAccess(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: RevokeAccessDto,
+    @CurrentUser() admin: AuthenticatedUser,
+  ) {
+    return this.payments.revokeAccess(id, admin.id, body.reason);
   }
 }

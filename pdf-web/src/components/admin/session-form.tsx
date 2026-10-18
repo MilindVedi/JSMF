@@ -76,6 +76,7 @@ export function SessionForm({
     capacity: session?.capacity ? String(session.capacity) : "",
     showSeats: session?.showSeats ?? true,
     lateRegistration: session?.lateRegistration ?? false,
+    lateJoinersGetEarlierMaterials: session?.lateJoinersGetEarlierMaterials ?? true,
     displaySeats:
       session?.displaySeats !== null && session?.displaySeats !== undefined ? String(session.displaySeats) : "",
     bundleDeliveryMode: (session?.bundleDeliveryMode ?? "IMMEDIATE") as BundleDeliveryMode,
@@ -86,6 +87,7 @@ export function SessionForm({
     recordingUrl: session?.recordingUrl ?? "",
     highlights: (session?.highlights ?? []).join("\n"),
     perkText: session?.perkText ?? "",
+    shortName: session?.shortName ?? "",
     audienceText: session?.audienceText ?? "",
     testimonialsHeading: session?.testimonialsHeading ?? "",
     testimonialsSubheading: session?.testimonialsSubheading ?? "",
@@ -147,6 +149,7 @@ export function SessionForm({
         capacity: values.capacity ? Number(values.capacity) : null,
         showSeats: values.showSeats,
         lateRegistration: values.lateRegistration,
+        lateJoinersGetEarlierMaterials: values.lateJoinersGetEarlierMaterials,
         displaySeats: values.displaySeats.trim() === "" ? null : Number(values.displaySeats),
         bundleDeliveryMode: values.bundleDeliveryMode,
         priceAmountMinor: price,
@@ -159,6 +162,7 @@ export function SessionForm({
           .map((line) => line.trim())
           .filter(Boolean),
         perkText: values.perkText.trim() || null,
+        shortName: values.shortName.trim() || null,
         audienceText: values.audienceText.trim() || null,
         testimonialsHeading: values.testimonialsHeading.trim() || null,
         testimonialsSubheading: values.testimonialsSubheading.trim() || null,
@@ -182,8 +186,19 @@ export function SessionForm({
           <CardTitle>What it is</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <Field label="Title">
+          <Field label="Title" hint="Shown on the website's booking card. Fine to reword it day to day.">
             <Input value={values.title} onChange={set("title")} required maxLength={200} />
+          </Field>
+          <Field
+            label="Short name (optional)"
+            hint="The session's steady name, used in every email and in students' libraries, e.g. “NEET-PG Revision Bootcamp”. Blank uses the title."
+          >
+            <Input
+              value={values.shortName}
+              onChange={set("shortName")}
+              maxLength={120}
+              placeholder={values.title || "NEET-PG Revision Bootcamp"}
+            />
           </Field>
           <Field label="Tagline" hint="One line under the title on the website.">
             <Textarea value={values.tagline} onChange={set("tagline")} required maxLength={300} rows={2} />
@@ -395,6 +410,21 @@ export function SessionForm({
                 price by hand as days pass.
               </p>
             </div>
+            <div className="sm:col-span-2">
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={values.lateJoinersGetEarlierMaterials}
+                  onCheckedChange={(checked: boolean) =>
+                    setValues((c) => ({ ...c, lateJoinersGetEarlierMaterials: checked }))
+                  }
+                />
+                <Label className="text-sm font-medium">Late joiners get earlier days&apos; materials</Label>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                On: someone who joins on Day 3 also gets the Day 1 and Day 2 PDFs. Off: they get only the days that
+                had not ended when they paid. People who paid before the session always get every day.
+              </p>
+            </div>
             {values.showSeats && (
               <Field
                 label="Displayed seats (Razorpay phase)"
@@ -436,7 +466,7 @@ export function SessionForm({
           <CardContent className="grid gap-4">
             <Field
               label="Subject line"
-              hint="Blank uses “JSMF - Your seat is confirmed: {title}”. Write {title} anywhere to drop the session title in."
+              hint="Blank uses “JSMF - Your seat is confirmed: {title}”. Write {title} anywhere to drop the session's name in (the short name, or the title when there is none)."
             >
               <Input
                 value={values.confirmationSubject}

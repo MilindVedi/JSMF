@@ -112,6 +112,16 @@ code, `POST /auth/password/reset` sets the new password — and revokes every
 live session, because a reset is often a response to someone else holding the
 account and leaving their refresh tokens alive would make it cosmetic.
 
+It also works for an account that has **never had a password**: a buyer an
+admin added by email (offline sale, backfill) or someone who has only used
+Google. They get the same code, worded as "set a password", and from then on can
+sign in with email and password on the same account, seat and library included.
+A Google login already on the account stays. The code reaching the inbox is the
+proof, exactly as for an ordinary reset, and the reply is identical whether or
+not the account exists. This matters for Gmail `+` addresses
+(`name+tag@gmail.com`): they are not Google accounts of their own, so Google
+sign-in can never produce them, and this is their only way in.
+
 ### When the code cannot be sent
 
 This is the case the flow is actually designed around, because on a plan of 100

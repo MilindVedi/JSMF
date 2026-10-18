@@ -85,7 +85,7 @@ This tests the `refund.processed` webhook — the path you'll actually use for r
   - order and payment are marked **REFUNDED**
   - a row exists in the `refund` table
   - the seat count goes back up
-  - the buyer receives the **refund confirmation email** (full refunds only — a partial refund leaves access in place and sends nothing)
+  - the buyer receives the **refund confirmation email** (full refunds only — a partial dashboard refund marks the order **partially refunded**, leaves access in place and sends nothing)
 
 #### Refund speed: normal vs instant
 

@@ -232,14 +232,14 @@ export default function AdminMentorshipBookingPage({ params }: { params: Promise
           <CardHeader>
             <CardTitle className="text-base">Cancel or refund</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Refunding returns the money and cancels the call by itself (the attendee gets the refund email). Cancel
-              without a refund only when the money is being handled another way.
+              Refunding with &ldquo;Revoke access&rdquo; on cancels the call by itself. Refunding with it off keeps the
+              call booked. Cancel without a refund only when the money is being handled another way.
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
-            {booking.order?.status === "PAID" && (
-              <Button variant="outline" disabled={!refundsEnabled} onClick={() => void openRefund()}>
-                <RotateCcw className="size-4" /> Refund {formatMoney(booking.order.totalAmountMinor, booking.order.currency)}
+            {(booking.order?.status === "PAID" || booking.order?.status === "PARTIALLY_REFUNDED") && (
+              <Button variant="outline" onClick={() => void openRefund()}>
+                <RotateCcw className="size-4" /> Refund
               </Button>
             )}
             <div className="space-y-2 rounded-lg border border-border p-3">
@@ -274,7 +274,12 @@ export default function AdminMentorshipBookingPage({ params }: { params: Promise
         </Card>
       )}
 
-      <RefundDialog order={refundOrder} onClose={() => setRefundOrder(null)} onRefunded={load} />
+      <RefundDialog
+        order={refundOrder}
+        refundsEnabled={refundsEnabled}
+        onClose={() => setRefundOrder(null)}
+        onRefunded={load}
+      />
     </div>
   );
 }

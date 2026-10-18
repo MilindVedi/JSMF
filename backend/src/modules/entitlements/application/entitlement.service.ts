@@ -178,7 +178,7 @@ export class EntitlementService {
 
   /** The buyer's library. */
   async listForUser(userId: string) {
-    return this.prisma.entitlement.findMany({
+    const rows = await this.prisma.entitlement.findMany({
       // A seat at a live session is an entitlement too, but it is not a file:
       // listed here it would show a Download button with nothing behind it.
       // The planner that comes with the session is a PDF, so it still appears.
@@ -199,9 +199,26 @@ export class EntitlementService {
             type: true,
             accessType: true,
             status: true,
+            // Unlisted products have no store page, so the library shows the
+            // title without a link.
+            listed: true,
           },
         },
+        // Where a session handout came from, for the library's label.
+        sourceProduct: { select: { id: true, title: true, type: true, liveSession: { select: { shortName: true } } } },
       },
     });
+
+    // The label names a session by its short name when it has one — the
+    // stable name, not the booking card's title, which admins reword daily.
+    // Same rule as the emails (events/domain/session-display.ts).
+    return rows.map(({ sourceProduct, ...row }) => ({
+      ...row,
+      sourceProduct: sourceProduct && {
+        id: sourceProduct.id,
+        type: sourceProduct.type,
+        title: sourceProduct.liveSession?.shortName?.trim() || sourceProduct.title,
+      },
+    }));
   }
 }

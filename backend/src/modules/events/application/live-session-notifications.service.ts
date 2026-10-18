@@ -24,7 +24,13 @@ import {
   type OrderPaidListener,
 } from '../../orders/application/order-events';
 import { currentDetailValues, valuesToRecord } from '../domain/session-details';
-import { firstName, formatMoney, sessionDayLabel, sessionWhenLines } from '../domain/session-display';
+import {
+  firstName,
+  formatMoney,
+  sessionDayLabel,
+  sessionDisplayName,
+  sessionWhenLines,
+} from '../domain/session-display';
 import { SessionDetailsService } from './session-details.service';
 
 /** One buyer's row in the admin's delivery table. */
@@ -107,7 +113,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
 
     const rendered = liveSessionConfirmation({
       attendeeName: firstName(event.customerName),
-      sessionTitle: session.product.title,
+      sessionTitle: sessionDisplayName(session),
       whenLines: sessionWhenLines(session.days),
       platformLabel: session.platformLabel,
       joinUrl: session.joinUrl,
@@ -243,7 +249,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
 
         const rendered = liveSessionReminder({
           attendeeName: firstName(registration.user.name),
-          sessionTitle: session.product.title,
+          sessionTitle: sessionDisplayName(session),
           whenLabel: sessionDayLabel(day),
           dayMarker,
           platformLabel: session.platformLabel,
@@ -488,7 +494,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
    * row so the admin can see it and retry that person alone.
    */
   private async deliverTo(
-    session: { productId: string; showNotSpamNotice: boolean; product: { title: string } },
+    session: { productId: string; shortName: string | null; showNotSpamNotice: boolean; product: { title: string } },
     items: Array<{ id: string; title: string }>,
     holder: { userId: string; sourceOrderId: string | null; user: { name: string; email: string | null } },
   ): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -524,7 +530,7 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
 
     const rendered = liveSessionBundleReady({
       attendeeName: firstName(holder.user.name),
-      sessionTitle: session.product.title,
+      sessionTitle: sessionDisplayName(session),
       includedTitles: items.map((item) => item.title),
       libraryUrl: `${this.config.get('STOREFRONT_URL').replace(/\/$/, '')}/library`,
       showNotSpamNotice: session.showNotSpamNotice,

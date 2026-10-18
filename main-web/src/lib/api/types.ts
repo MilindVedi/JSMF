@@ -11,6 +11,30 @@ export interface AuthSession {
 }
 
 /** A session as the public API returns it. Money is paise, as a string. */
+/** One named testimonial gallery on a session's pages. */
+export interface TestimonialSection {
+  id: string;
+  heading: string;
+  subheading: string | null;
+  /** Small label beside the heading; null hides it. */
+  tag: string | null;
+  /** Which day of the session it is about (1-based), or null. */
+  dayNumber: number | null;
+  urls: string[];
+  /** Written replies picked from the feedback form. Optional: older APIs send none. */
+  quotes?: SectionQuote[];
+}
+
+/** A student's written reply, shown as a card. */
+export interface SectionQuote {
+  id: string;
+  quote: string;
+  /** "Riya · Final year", or "A JSMF student". */
+  attribution: string;
+  /** 1 to 5 stars, or null for none. */
+  rating: number | null;
+}
+
 export interface LiveSession {
   id: string;
   slug: string;
@@ -32,6 +56,12 @@ export interface LiveSession {
   testimonialsTag: string | null;
   /** Testimonial screenshots, in display order. Empty hides the section. */
   testimonialUrls: string[];
+  /**
+   * Named galleries beside the original one — "What students said after
+   * Day 1". Only visible sections with at least one image, in display order.
+   * Optional so a page still renders against an API that predates them.
+   */
+  testimonialSections?: TestimonialSection[];
   priceAmountMinor: string;
   compareAtAmountMinor: string | null;
   currency: string;

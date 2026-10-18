@@ -91,12 +91,17 @@ function LibraryContent() {
             <Card key={entitlement.id}>
               <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <Link
-                    href={`/p/${entitlement.product.slug}`}
-                    className="font-medium hover:underline"
-                  >
-                    {entitlement.product.title}
-                  </Link>
+                  {entitlement.product.listed ? (
+                    <Link
+                      href={`/p/${entitlement.product.slug}`}
+                      className="font-medium hover:underline"
+                    >
+                      {entitlement.product.title}
+                    </Link>
+                  ) : (
+                    // Hidden from the store: there is no product page to open.
+                    <p className="font-medium">{entitlement.product.title}</p>
+                  )}
                   {entitlement.product.subtitle && (
                     <p className="truncate text-sm text-muted-foreground">
                       {entitlement.product.subtitle}
@@ -104,8 +109,15 @@ function LibraryContent() {
                   )}
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <Badge variant="outline" className="text-xs">
-                      {entitlement.source === "FREE_CLAIM" ? "Free" : "Purchased"}
+                      {entitlement.source === "FREE_CLAIM"
+                        ? "Free"
+                        : entitlement.source === "SESSION_MATERIAL"
+                          ? "Session material"
+                          : "Purchased"}
                     </Badge>
+                    {entitlement.source === "SESSION_MATERIAL" && entitlement.sourceProduct && (
+                      <span className="text-xs text-muted-foreground">{entitlement.sourceProduct.title}</span>
+                    )}
                     <span className="text-xs text-muted-foreground">
                       {new Date(entitlement.grantedAt).toLocaleDateString("en-IN", {
                         day: "numeric",

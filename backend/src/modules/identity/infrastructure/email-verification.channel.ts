@@ -51,6 +51,7 @@ export class EmailVerificationChannel extends VerificationChannel {
         : passwordResetCode({
             code: delivery.code,
             expiresInMinutes: delivery.expiresInMinutes,
+            firstPassword: delivery.firstPassword,
           });
 
     const outcome = await this.mail.sendBestEffort({

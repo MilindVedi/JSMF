@@ -66,7 +66,7 @@ export const author = {
   title: "Founder & Medical Lead",
   /** From the existing hero card in `web/`. */
   qualification: "MBBS, MD — Medical Lead, JSMF",
-  credentials: ["AIR 9 · FMGE 2023", "MBBS Bronze Medalist"],
+  credentials: ["AIR 925 · NEET-PG 2026", "AIR 9 · FMGE 2023", "MBBS Bronze Medalist"],
   /**
    * Served from `public/`. Setting this to `null` restores the initials
    * portrait everywhere the photograph appears, with no other change.

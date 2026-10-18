@@ -398,6 +398,14 @@ const schema = z
     /// download-link signing cannot be turned into forging sign-in state.
     OAUTH_STATE_SECRET: z.string().min(16),
 
+    /// Signs the personal feedback links emailed to seat holders
+    /// (jsmf.me/feedback/<form>?k=...), which open the form without signing
+    /// in. Optional: when unset, a key is derived from STORAGE_SIGNING_SECRET
+    /// with its own purpose label, so the two never sign the same thing. Set
+    /// it to rotate feedback links on their own; rotating either one makes
+    /// links already emailed stop working.
+    FEEDBACK_LINK_SECRET: z.string().min(16).optional(),
+
     /// Front-ends permitted to receive a completed sign-in.
     ///
     /// Identity is platform-wide: the PYQ app (3000), the PDF platform (3001)

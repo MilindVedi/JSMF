@@ -4,6 +4,10 @@ The public home of JSMF. Today it does one job: **sell seats at paid live
 sessions with Dr. Angad Rai**. Design source: `web-main-design/`. Code:
 `main-web/` (Next.js, port 3002).
 
+**Running a session day to day? Start with the [admin guide](./admin-guide.md):**
+step-by-step tasks. This document is the reasoning, data model and API behind
+them; the guide links into it section by section.
+
 ---
 
 ## 1. Decisions
@@ -32,7 +36,13 @@ trick: orders, order items, payments, Razorpay, refunds, audit and entitlements
 work unchanged — the schema was designed for new product types from day one.
 
 What only a session has lives in four tables (migrations
-`20260930150000_live_sessions` and `20261001120000_live_session_days`):
+`20260930150000_live_sessions` and `20261001120000_live_session_days`).
+Later features added their own tables and columns, each described where the
+feature is: §3c (`session_bundle_deliveries`), §3d (`session_detail_receipts`,
+`session_detail_emails`, `telegram_url`), §3d-bis (`session_materials`,
+`session_material_notices`, `products.listed`), §3e
+(`session_testimonial_sections`) and §3f (the six `feedback_*` tables). The
+table below is the original four; the columns added later are not repeated.
 
 **`live_sessions`** — one row per session product, keyed by `product_id`.
 
@@ -41,6 +51,7 @@ What only a session has lives in four tables (migrations
 | `product_id` | PK, FK → products **RESTRICT** |
 | `starts_at` | the **first day's** start — a copy the service writes in the same transaction as the days, so listing, ordering and "registration closes at the start" stay one indexed column. **Nullable**: a session with no days yet (`days: []`) has `starts_at = NULL`, the website shows "Date to be announced", and registration stays open because nothing has started. `ORDER BY starts_at NULLS LAST` keeps undated sessions from sorting as if overdue. |
 | `platform_label` | display text ("Live on Zoom · Link sent on mail") |
+| `short_name` | The session's **stable name**, used in every email and the library label instead of the product title. The title is what the booking card shows and is often reworded day to day; this one is not. NULL falls back to the title. Always read through `sessionDisplayName()` (`events/domain/session-display.ts`), so no email can use the other name by mistake. Migration `20261018120000_session_short_name`. |
 | `capacity` | NULL = unlimited; CHECK > 0 |
 | `show_seats` | admin toggle; when `false`, both `seatsRemaining` and `displaySeats` are nulled out of every public response |
 | `display_seats` | **temporary**, external-checkout-phase-only scarcity number (§3c). NULL = no line, 0 = fully booked. Not derived from entitlements. |
@@ -227,10 +238,12 @@ buyer's entitlement — **but only once the refunded amount reaches the full
 payment amount**. A partial refund (its own `refundAmountMinor`, read
 separately from the payment's amount on the webhook payload — Razorpay's
 `refund.processed` event carries both entities) is recorded and left alone;
-access is removed only when everything paid has come back. This is on top of,
-not instead of, the existing admin-initiated refund path (`PaymentService.refund()`,
-documented in `docs/pdf-platform/02-architecture.md` §"Status: built — admin
-order management and refunds") — both ultimately call the same revocation.
+the order is marked partially refunded and access is removed only when
+everything paid has come back. This is on top of, not instead of, the admin
+refunds (through Razorpay, or recorded as paid back by UPI/bank/cash, either
+in full or in part, keeping or removing access), documented in
+`docs/pdf-platform/02-architecture.md` §"Status: built — admin order management
+and refunds" — all of them use the same revocation.
 
 **Go-live hardening (reviewed and tested before launch).** Each of these was
 a way a buyer could pay and not get their seat, or get a wrong email:
@@ -326,7 +339,11 @@ Two details that decide whether it works:
   can instead use **Create account** with that same email: once the code is
   entered, the password is set on the pre-made account (seat included) rather
   than refused as a duplicate — only for an account nobody has ever signed in to
-  (`AccountRecoveryService.isUnclaimed`).
+  (`AccountRecoveryService.isUnclaimed`). **Forgot your password?** on the
+  sign-in page works too, for any account with no password yet: the code sets a
+  first password on the same account. Point a buyer there when they say "I
+  can't log in" and their address is not a Google account (a Gmail `+` address
+  never is).
 
 ---
 
@@ -456,6 +473,73 @@ sweep, still gets no automatic reminder — `startsAt: { gt: now }` excludes it.
 
 ---
 
+## 3d-bis. Day materials: PDFs for each day of a session
+
+Each day of a session can carry one or more PDFs — the notes from Day 1, the
+slides for Day 2. They are ordinary **store PDFs**: upload one in Products as
+usual, then attach it to a day from the session's **Day materials** card. Turn
+off its **Show in store** switch (below) when it is only for seat holders.
+
+**Who gets it.** Attaching a PDF gives it straight away, as an entitlement
+(`EntitlementSource.SESSION_MATERIAL`, `sourceProductId` = the session,
+`sourceOrderId` = the seat's order), to every seat holder due it. It shows in
+their library, labelled *Session material* with the session's name, and
+downloads through the ordinary path. "Due it" follows one setting on the
+session, **Late joiners get earlier days' materials** (`live_sessions.
+late_joiners_get_earlier_materials`, on by default):
+
+| Setting | Paid before the session | Paid after Day 1 ended |
+|---|---|---|
+| On | every day | every day |
+| Off | every day | only the days that had not ended when they paid |
+
+The day in progress when someone pays counts as theirs. "Paid" is when the seat
+was granted — for a buyer added by hand, the payment time entered.
+
+**Kept in line automatically.** `SessionMaterialsService.reconcile` makes the
+grants match the rule — granting what is due, taking back what is not — and
+runs whenever an input changes: a PDF added or removed, the session saved (the
+setting or a day's time), a seat paid for (an `OrderEvents` listener), a buyer
+added by hand (the offline-sale handler, inside its transaction), and on the
+5-minute sweep (`sessionMaterials` in `SweepRegistry`) as a safety net. It only
+ever touches SESSION_MATERIAL grants it made: someone who bought the PDF keeps
+their own copy whatever happens here.
+
+**Taking access back.** Removing a PDF from a day takes it back from everyone
+who had it through this session. A refund of the seat takes it back too, with
+everything else the seat gave (same order). A day with PDFs attached cannot be
+deleted by editing the session's dates — remove its PDFs first.
+
+**Emailing.** Adding a PDF emails nobody. The card's table shows, per seat
+holder, how many PDFs they have and which they have not been told about;
+**Email everyone with new PDFs**, **Email selected** and the per-row **Email**
+send one email per person listing only what is new to them, grouped by day,
+with an *Open my library* button (`liveSessionMaterials`, tag
+`session-materials`). Tracked in `session_material_notices`; a failure keeps
+its reason and is retried by the next send. Pressing twice sends nothing more.
+
+**Show in store** (`products.listed`, default on). Off keeps a product out of
+the store — browse, search, the featured strip and its `/p` page — and stops
+anyone buying or freely claiming it. People who already hold it keep it in
+their library, where it shows without a link. Set it in the product editor's
+Details step; the product list marks such products *Hidden from store*.
+
+API: `GET /admin/sessions/:id/materials`, `POST /admin/sessions/:id/materials`
+(`{ dayId, productId }`), `DELETE /admin/sessions/:id/materials/:materialId`,
+`POST /admin/sessions/:id/materials/send` (optional `userIds`). Log lines:
+`session.material_added`, `session.material_removed`, `session.materials_sent`.
+
+Migration `20261017150000_session_materials`, additive: `products.listed`,
+`live_sessions.late_joiners_get_earlier_materials`, the `SESSION_MATERIAL`
+entitlement source, and the `session_materials` and `session_material_notices`
+tables.
+
+**Not built:** recordings. Deferred on cost (serving video from our own storage
+is roughly ₹900 per 1 GB recording watched by 92 people). The day structure here
+is where they would attach.
+
+---
+
 ## 3e. Testimonials
 
 Screenshots of what past attendees said, shown on the home page (between the
@@ -495,6 +579,163 @@ and is simply left out when unset — an empty "chip" with a dangling border
 reads as broken decoration, not as deliberate restraint. The section itself
 is hidden entirely when a session has no testimonials.
 
+### Feedback sections ("What students said after Day 1")
+
+Beside that original gallery, a session can have any number of **named
+sections** — feedback from Day 1 of the session running now, later Day 2,
+toppers' messages, whatever comes next. They are shown inside the dark
+**booking band** of both pages, under the session details and the Book
+button, where they do the most work (`main-web/src/components/session-feedback.tsx`).
+
+- **Data.** `session_testimonial_sections` holds each section's heading,
+  optional subheading and tag, an optional `day_id` (a day of the session —
+  the page then labels it "Day N feedback"), `is_visible` and `sort_order`.
+  Screenshots are ordinary `session_testimonials` rows with `section_id` set;
+  `section_id` NULL is the original gallery, whose copy stays on
+  `live_sessions`. A new kind of section needs no schema change.
+- **Shown** only when it is switched on *and* has at least one screenshot.
+  Public field: `testimonialSections: [{ id, heading, subheading, tag,
+  dayNumber, urls }]` on the session; `testimonialUrls` still carries only the
+  original gallery, exactly as before.
+- **Admin:** the session page's **Feedback sections** card. *Add section*
+  creates one, hidden, pre-filled for the most recent day that has happened.
+  Each has its own heading/subheading/tag/day, a *Show on website* switch, its
+  own screenshots (upload, reorder, remove) and up/down to order sections.
+  Deleting a section deletes its screenshots and their stored files; hiding it
+  keeps them.
+- **One gallery component.** The row of cards and the lightbox are
+  `testimonial-gallery.tsx`, used by both the original section (light band)
+  and the feedback sections (`tone="dark"`), so they behave identically.
+- **Removing a day** from the dates leaves its section in place, tied to no
+  day (`ON DELETE SET NULL`).
+
+API: `POST /admin/sessions/:id/testimonial-sections`, `PATCH
+…/testimonial-sections/:sectionId`, `DELETE …/testimonial-sections/:sectionId`,
+`PATCH …/testimonial-sections/reorder` (`{ sectionIds }`). Screenshots use the
+existing `POST /admin/sessions/:id/testimonials` with an optional `sectionId`
+form field, and `PATCH …/testimonials/reorder` with an optional `sectionId`.
+
+Migration `20261017190000_testimonial_sections`, additive: one table and a
+nullable `section_id` on `session_testimonials`.
+
+## 3f. Feedback forms (in place of Google Forms)
+
+Step by step: [admin guide, "After each day: collect feedback"](./admin-guide.md#after-each-day-collect-feedback).
+
+Seat holders fill in a feedback form on `jsmf.me/feedback/<form>` after
+each day. Its own backend module, `backend/src/modules/feedback/`, which
+nothing else imports: it joins the 5-minute clock through `SweepRegistry` and
+puts picked replies on the session page through the events module's
+`SessionShowcase` registry. Removing the module leaves sessions as they were.
+
+**Decisions (2026-10-18):**
+- **One form per class**, usually ("Day 1 feedback"); `day_id` null = the
+  whole session, sent after its last day. A new form starts from five standard
+  questions, or as a copy of another form (Day 2 from Day 1).
+- **Question kinds:** star rating (1–5), scale (0–10), short answer,
+  paragraph, one choice, several choices; each optional or required.
+- **Who is asked:** people with an ACTIVE seat that they had by the time the
+  day ended. A Day 1 form does not go to someone who joined on Day 2, and a
+  refund takes away the right to reply.
+- **How they reach it:** a **personal link** emailed to each one. It is signed
+  (`?k=<inviteId>.<HMAC>`) and opens the form without signing in. A **shared
+  link** for the Telegram group asks them to sign in with Google, and the
+  server then checks the seat. One reply per person; opening either link
+  again lets them change their reply until the form closes.
+- **When the email goes:** `AUTO_AFTER_DAY` (default) sends it on the sweep
+  once the day has ended plus `email_delay_minutes`, while the form is OPEN.
+  `MANUAL` sends only from the admin page. Nobody who has replied is ever
+  emailed again. A failed address is retried by the sweep up to 3 times, and
+  after that only by an admin.
+- **Anonymity is the admin's choice per form** (`allow_anonymous`). When it is
+  on, students get a "Hide my name from the JSMF team" tick box. The reply is
+  still tied to the account (for one reply per person and editing), but no
+  admin screen or CSV shows who wrote it. The "who's been asked" table still
+  shows *that* they replied, so with very few replies it can be guessed.
+- **Sending by hand:** *Email attendees now* (top of each open form) emails
+  everyone not yet emailed, at any time. It is for a class that ends early,
+  and works in either email mode. The automatic email later skips them.
+- **Templates:** five ready-made forms in code
+  (`feedback/domain/default-questions.ts`): standard, quick pulse, detailed,
+  end of session, and recommend only. A new form can also import the
+  questions of any earlier form, from any session (`GET
+  /admin/feedback/templates`, `GET /admin/feedback/forms`).
+- **Website (changed 2026-10-18):** the team decides which replies to show.
+  Two per-form switches:
+  - `ask_show_name` (default **off**): when on, the student is asked whether
+    they would like their first name shown. Their answer is guidance only.
+    The admin decides per card ("With their first name" when picking a reply,
+    pre-ticked from the student's answer, or ticked when they were not
+    asked). An anonymous reply is always "A JSMF student".
+  - `ask_consent_to_publish` (default **off**) adds "Can we show this on our
+    website?". Then only replies that said yes can be picked, and withdrawing
+    consent takes the card down.
+
+  Showing replies without asking relies on the privacy policy saying that
+  feedback may be shown on the website.
+
+**Tables** (migration `20261018100000_feedback_forms`, additive only):
+`feedback_forms`, `feedback_questions` (an answered question is archived,
+never deleted, and its kind is fixed), `feedback_invites` (the per-person
+tracking: emailed, reminders, last error, first opened; plus a short-lived
+`claimed_at` so two overlapping sends never email the same person twice),
+`feedback_responses` (unique per form and person), `feedback_answers` (typed
+columns `rating_value` / `text_value` / `choice_values`, with CHECK
+constraints, so averages are plain SQL), and `feedback_highlights` (a picked
+reply: an editable copy of the quote and name, Cascade from both the reply and
+the section).
+
+**Admin:** the session page's **Feedback forms** card, with these tabs:
+- **Questions:** edit them like a Google Form and save together.
+- **Settings:** the day, the note, the thank-you, the email mode and delay, a
+  closing time, the anonymity and consent switches.
+- **Who's been asked:** emailed, opened and replied; email everyone not yet
+  emailed, or remind everyone who has not replied; per-row Email, Remind or
+  Retry.
+- **Replies:** numbers per question; every reply; *Show on website*; CSV
+  download; delete (admins only).
+
+Also on the card: *Copy Telegram link*, *Preview*, and *Open*, *Close* or
+*Reopen*.
+
+A day that has a feedback form cannot be removed from the session's dates
+until the form is moved or deleted.
+
+**Config:** `FEEDBACK_LINK_SECRET` is optional. When it is unset, the signing
+key is derived from `STORAGE_SIGNING_SECRET` under its own label. Rotating
+either one makes links already emailed stop working.
+
+---
+
+## 3g. Admin session page and home page calls to action
+
+**Admin session page** (`pdf-web/src/app/(admin)/admin/sessions/[id]/page.tsx`).
+Only the session itself is fetched up front. Every table below the form is a
+`CollapsibleSection` (`components/admin/collapsible-section.tsx`): closed, its
+content is not mounted, so it makes **no request**; opening it mounts its card,
+which loads its own data. Closing unmounts, so reopening shows fresh data. Open
+or closed is kept per browser in `localStorage` (`admin.section.*`), read
+through `useSyncExternalStore` so the first paint always matches the server.
+Each card puts the collapse chevron in its own header (`CollapseToggle`) and
+shows `SectionLoading` while its first request is in flight. A new card for a
+session: wrap it in a `CollapsibleSection` with a unique `storageKey`.
+
+**Home page** (`main-web/src/components/landing.tsx`):
+
+| State | Top of the page | "Next session coming soon" band |
+| :--- | :--- | :--- |
+| A session is on sale | **Book Your Spot Now**, then **Book a 1:1 session** | not shown |
+| No session | **Book a 1:1 session** only | **Get notified on Telegram** (same animated style) |
+
+The 1:1 button (`mentorship/mentorship-hero-cta.tsx`) appears only once a 1:1
+offering is published, and shares the request the bottom banner makes. Both
+buttons use the `.cta-spot` style in `globals.css`.
+
+**Header** (`site.tsx`): Home, Live Session, About, Reserve a Seat, Book 1:1
+(when published) and **JSMF Resources**, which opens `links.store` in a new
+tab. Desktop labels are text only with `nowrap`; below `xl` (1280px) the ☰ menu
+is used, because seven links do not fit on one line any narrower.
+
 ---
 
 ## 4. API
@@ -509,7 +750,11 @@ is hidden entirely when a session has no testimonials.
 | `/admin/sessions` (CRUD, publish, unpublish, archive, `/:id/registrations`) | ADMIN, EDUCATOR | managed at **resources.jsmf.me/admin/sessions** |
 | `GET /admin/sessions/:id/bundle-deliveries`, `POST …/bundle-deliveries/send` | ADMIN, EDUCATOR | §3c |
 | `GET /admin/sessions/:id/details`, `POST …/details/send` | ADMIN, EDUCATOR | §3d |
+| `GET /admin/sessions/:id/materials`, `POST …/materials`, `DELETE …/materials/:materialId`, `POST …/materials/send` | ADMIN, EDUCATOR | §3d-bis |
 | `POST /admin/sessions/:id/testimonials`, `PATCH …/testimonials/reorder`, `DELETE …/testimonials/:testimonialId` | ADMIN, EDUCATOR | §3e |
+| `POST /admin/sessions/:id/testimonial-sections`, `PATCH …/:sectionId`, `DELETE …/:sectionId`, `PATCH …/reorder` | ADMIN, EDUCATOR | §3e, feedback sections |
+| `GET /feedback/forms/:formId?k=`, `POST /feedback/forms/:formId/response` | public (personal link or signed in) | §3f |
+| `/admin/sessions/:id/feedback-forms` (list, create, `/:formId` get/patch/delete, `/questions` PUT, `/people`, `/send`, `/results`, `/responses/:responseId` DELETE, `/highlights`) | ADMIN, EDUCATOR (deleting a reply: ADMIN) | §3f |
 | `POST /internal/session-reminders` | Cloud Run IAM | reminder sweep (reminders **and** the `AUTO_AFTER_SESSION` bundle sweep, §3c) |
 | `GET /settings` | public | `{ showSpamFolderNote }` — read by both jsmf.me and resources.jsmf.me, §7 |
 | `GET /admin/settings`, `PATCH /admin/settings` | ADMIN | §7 |
@@ -562,6 +807,7 @@ account for the single end-to-end payment after deploying.
 3. A Cloud Scheduler job: `POST /api/internal/session-reminders` every 5
    minutes, same service account as the reconciliation job.
 4. Optionally set `SESSION_REMINDER_LEAD_MINUTES` (default 60).
+5. Optionally set `FEEDBACK_LINK_SECRET` (§3f); without it the key is derived.
 
 Still outstanding: the real-Razorpay go-live runbook above — as of this
 writing, prod is still running on **test** Razorpay keys with
@@ -584,12 +830,24 @@ writing, prod is still running on **test** Razorpay keys with
   was actually granted; announcing dates to a buyer who bought while undated —
   saving the date emails nobody, the button sends once, a repeat press sends
   nothing, and a reschedule makes them sendable again (§3d). Plus the go-live
-  hardening tests in §3a. Full backend suite: **154 passing** across 14 suites.
+  hardening tests in §3a.
+- More integration tests: day materials (`session-materials.integration.spec.ts`),
+  testimonial sections (`session-testimonial-sections.integration.spec.ts`) and
+  feedback forms (`feedback.integration.spec.ts`, plus pure rules in
+  `feedback-rules.spec.ts`): one email per person, never to late joiners or
+  repliers, personal link without sign-in, one editable reply per person, kept
+  answered questions, consent and name rules on the website, a failed email
+  retried, template and cross-session import. Full backend suite at the last
+  run: **295 passing** (run with the local Docker Postgres).
 - Driven in a real browser: home page desktop and mobile (no horizontal
   overflow), signed-out dialog, validation, signed-in form, and the real
   Razorpay test-mode window opening with ₹99. Admin create/edit/publish, the
   registrations table, the bundle-delivery table, and testimonial
   upload/reorder/remove.
+- Driven in a browser against the local stack: the student feedback form (phone
+  and desktop, signed out, replied), and a picked reply on the home page. Not
+  clicked: the admin *Feedback forms* card, and *Day materials*, which are behind
+  login.
 - Not driven: the *Session details sent* card (§3d) — backend covered by the
   integration test above, but the admin UI itself has only been typechecked
   and linted, not clicked; completing a Razorpay payment in the browser

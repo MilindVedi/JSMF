@@ -65,8 +65,10 @@ direct inserts.
    - **Attendee:** can move the call to another open slot until `rescheduleCutoffMinutes` before
      it starts, at most `maxReschedules` times.
    - **Admin:** can move it to any future time; the constraint still applies.
-5. **Refund** (Orders → Refund, or the booking page): the booking becomes `CANCELLED` and the
-   time is freed. Only the refund email goes out.
+5. **Refund** (Orders → Refund, or the booking page), through Razorpay or recorded as paid back
+   by hand, in full or in part. With **Revoke access** on, the booking becomes `CANCELLED` and
+   the time is freed; with it off, the call stays booked. Only the refund email goes out (if
+   ticked).
 6. **Cancel without refund:** admin only, with an optional email.
 7. **After the call:** the admin marks it Completed or No-show.
 

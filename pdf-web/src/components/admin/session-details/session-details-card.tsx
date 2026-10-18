@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
+import { CollapseToggle, SectionLoading } from "@/components/admin/collapsible-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +36,15 @@ const STATUS: Record<DetailStatus, { label: string; className: string }> = {
  * `refreshKey` changes when the session is saved, so a new link shows up as
  * needed straight away.
  */
-export function SessionDetailsCard({ sessionId, refreshKey }: { sessionId: string; refreshKey: number }) {
+export function SessionDetailsCard({
+  sessionId,
+  refreshKey,
+  onCollapse,
+}: {
+  sessionId: string;
+  refreshKey: number;
+  onCollapse?: () => void;
+}) {
   const [overview, setOverview] = useState<SessionDetailsOverview | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
@@ -75,12 +84,15 @@ export function SessionDetailsCard({ sessionId, refreshKey }: { sessionId: strin
     }
   }
 
-  if (!overview) return null;
+  if (!overview) return <SectionLoading title="Session details sent" onCollapse={onCollapse} />;
   if (overview.rows.length === 0) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Session details sent</CardTitle>
+          <CardTitle className="flex items-center">
+            <CollapseToggle onCollapse={onCollapse} />
+            Session details sent
+          </CardTitle>
           <CardDescription>Nobody holds a seat yet.</CardDescription>
         </CardHeader>
       </Card>
@@ -95,7 +107,8 @@ export function SessionDetailsCard({ sessionId, refreshKey }: { sessionId: strin
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div className="space-y-1.5">
-          <CardTitle>
+          <CardTitle className="flex items-center">
+            <CollapseToggle onCollapse={onCollapse} />
             Session details sent · {overview.rows.length - overview.needingAnything} of {overview.rows.length} up to date
           </CardTitle>
           <CardDescription>

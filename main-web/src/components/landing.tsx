@@ -22,7 +22,9 @@ import { FloatingVideo } from "@/components/floating-video";
 import { TelegramFloat } from "@/components/telegram-float";
 import { RegisterDialog } from "@/components/register-dialog";
 import { MentorshipBanner } from "@/components/mentorship/mentorship-banner";
+import { MentorshipHeroCta } from "@/components/mentorship/mentorship-hero-cta";
 import { SiteLayout } from "@/components/site";
+import { SessionFeedback } from "@/components/session-feedback";
 import { TestimonialsSection } from "@/components/testimonials-section";
 import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/social-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -119,23 +121,22 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
                 <button
                   type="button"
                   onClick={reserveFrom("hero")}
-                  className="cta-spot flex w-full max-w-md items-center justify-center gap-2.5 rounded-full py-4 px-8 font-display text-lg font-semibold text-white active:translate-y-0"
+                  className="cta-spot flex w-full max-w-md flex-col items-center justify-center rounded-full px-8 py-3 text-center text-white active:translate-y-0"
                 >
                   <span className="cta-shine" aria-hidden />
-                  Book Your Spot Now <ArrowRight size={20} strokeWidth={2.4} className="cta-arrow transition-transform duration-300" />
+                  <span className="flex items-center gap-2.5 font-display text-lg font-semibold leading-tight">
+                    Book Your Spot Now <ArrowRight size={18} strokeWidth={2.4} className="cta-arrow transition-transform duration-300" />
+                  </span>
+                  <span className="mt-0.5 text-xs font-normal opacity-80">
+                    Reserve your seat for the upcoming live session
+                  </span>
                 </button>
-              ) : (
-                <a
-                  href={links.telegram}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="cta-spot flex w-full max-w-md items-center justify-center gap-2.5 rounded-full py-4 px-8 font-display text-lg font-semibold text-white"
-                >
-                  <Send size={18} /> Get notified on Telegram
-                </a>
-              )}
+              ) : null /* No session: the Telegram invite lives in the "coming soon" band below. */}
 
               {!checkoutUrl && live && session && <SeatsLine session={session} className="mt-4" />}
+
+              {/* The second offer, a one-to-one call. Hidden until one is published. */}
+              <MentorshipHeroCta className={loading || live ? "mt-5" : ""} />
             </div>
           </div>
 
@@ -180,6 +181,10 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
               <div className="lg:col-span-5">
                 <SessionCard session={session} onRegister={reserveFrom("session_card")} external={Boolean(checkoutUrl)} />
               </div>
+
+              {/* This session's own feedback (e.g. after Day 1), beside the
+                  Book button. Nothing renders until the admin shows a section. */}
+              <SessionFeedback session={session} className="mt-6 lg:col-span-12" />
             </div>
           ) : (
             <div>
@@ -197,8 +202,14 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
 
               {!loading && (
                 <div className="mt-10 flex flex-wrap gap-3">
-                  <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ size: "lg" })}>
-                    <Send size={16} /> Join Telegram
+                  <a
+                    href={links.telegram}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="cta-spot flex w-full max-w-md items-center justify-center gap-2.5 rounded-full py-4 px-8 font-display text-lg font-semibold text-white"
+                  >
+                    <span className="cta-shine" aria-hidden />
+                    <Send size={18} /> Get notified on Telegram
                   </a>
                   {data?.previous?.recordingUrl && (
                     <a href={data.previous.recordingUrl} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary", size: "lg" })}>

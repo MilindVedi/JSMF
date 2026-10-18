@@ -77,7 +77,7 @@ In one transaction, all dated at `paidAt`:
 
 | Row | Detail |
 |---|---|
-| user | Created if absent, **unverified** — claimed when they sign up with that email (Google, or setting a password). Their number goes to `contactPhone` (the profile's mobile number) unless they already set one; never to `phone`, the verified sign-in number |
+| user | Created if absent, **unverified** — claimed when they sign up with that email (Google, or setting a password through **Create account** or **Forgot your password?**). Their number goes to `contactPhone` (the profile's mobile number) unless they already set one; never to `phone`, the verified sign-in number |
 | order | `PAID`; subtotal = list price, discount, total = paid. One item |
 | payment | `CAPTURED`. A Payment Page sale is `RAZORPAY` with its `pay_…` id; anything else is `OFFLINE`, with no provider ids |
 | entitlement | `PURCHASE`, plus the included items when the product grants them at payment |
@@ -90,9 +90,11 @@ after a fix without adding anyone twice. The same buyer with the same Razorpay
 payment id counts as a repeat, not a clash.
 
 **Refunds.** A Payment Page sale refunds like any other (in the Razorpay
-dashboard, or from admin once refunds are on). For `OFFLINE` money there is
-nothing to refund through an API: the admin refund refuses it, and the money
-goes back by hand.
+dashboard, or from admin with "Refund through Razorpay"). For `OFFLINE` money
+there is nothing to refund through an API: send it back yourself, then record
+it on **Orders → Refund → I already refunded it myself** (amount, UPI/bank/cash,
+UTR, date), choosing whether they keep access. A partly refunded buyer still
+counts in "Buyers added by hand" and is marked "Partly refunded".
 
 ## Design
 

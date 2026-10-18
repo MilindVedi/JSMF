@@ -246,10 +246,13 @@ export class AccountRecoveryService {
     const email = input.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
 
-    // Nothing to reset, and nothing said about it. An OAuth-only account has
-    // no password either, and is treated the same way: telling someone "that
-    // account uses Google" would confirm the address exists.
-    if (!user || user.status !== UserStatus.ACTIVE || !user.passwordHash) {
+    // Nothing to reset, and nothing said about it.
+    //
+    // An account with no password yet gets a code too, so it can set its first
+    // one: a buyer added by backfill-session-buyers, or someone who has only
+    // used Google. The code reaching the inbox is the same proof any reset
+    // rests on, and the answer is identical either way, so nothing leaks.
+    if (!user || user.status !== UserStatus.ACTIVE) {
       this.logger.log(`Password reset requested for ${email}, which has no resettable account`);
       return { channel, expiresInMinutes: RESET_CODE_TTL_MINUTES };
     }
@@ -269,6 +272,7 @@ export class AccountRecoveryService {
       code,
       destination: email,
       addressKind: 'email',
+      firstPassword: user.passwordHash === null,
       expiresInMinutes: RESET_CODE_TTL_MINUTES,
     });
 
