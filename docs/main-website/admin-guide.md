@@ -75,7 +75,9 @@ See [§3d](./README.md#3d-session-details-dates-joining-link-telegram-group).
 ### Give each day its PDFs
 1. Upload the PDF in **Products** like any store PDF. If it is only for seat
    holders, turn **Show in store** off in the product's Details step.
-2. Open **Day materials**, find the day, click **Add a PDF** and pick it.
+2. Open **Day materials**, find the day, click **Add a PDF** and pick it. A day can
+   have as many PDFs as you like: the search stays open, so pick the next one, then
+   click **Done**. The same PDF cannot be added twice to one day.
 3. Seat holders have it in their library straight away. **No email is sent yet.**
 4. When you want to tell them, press **Email everyone with new PDFs**. Each person
    gets one email listing only what is new to them.

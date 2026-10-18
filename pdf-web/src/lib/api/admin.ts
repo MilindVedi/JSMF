@@ -11,6 +11,7 @@ import type {
   ProductDetail,
   ProductLink,
   ProductListItem,
+  ProductType,
   Taxonomy,
   TaxonomyTerm,
   ManualRefundMethod,
@@ -35,12 +36,14 @@ export interface ProductInput {
 export const adminApi = {
   listProducts(params: {
     status?: string;
+    type?: ProductType;
     q?: string;
     page?: number;
     includeArchived?: boolean;
   } = {}) {
     const query = new URLSearchParams();
     if (params.status) query.set("status", params.status);
+    if (params.type) query.set("type", params.type);
     if (params.q) query.set("q", params.q);
     if (params.page) query.set("page", String(params.page));
     if (params.includeArchived) query.set("includeArchived", "true");

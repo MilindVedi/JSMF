@@ -262,6 +262,35 @@ describe('session day materials', () => {
     expect(await holds(holder.id, session.id)).toBe(false);
   });
 
+  it('takes several PDFs on one day: all reach the library, one email names them all, removing one keeps the rest', async () => {
+    const session = await createSession();
+    const notesA = await createPdf('same-day-a');
+    const notesB = await createPdf('same-day-b');
+    const notesC = await createPdf('same-day-c');
+    const holder = await seat(session.id, 'same-day', hoursAgo(48));
+
+    for (const pdf of [notesA, notesB, notesC]) {
+      await materials.add(session.id, { dayId: session.day1, productId: pdf.id }, admin());
+    }
+    const overview = await materials.overview(session.id);
+    const day1 = overview.days.find((d) => d.id === session.day1)!;
+    expect(day1.materials.map((m) => m.productId)).toEqual([notesA.id, notesB.id, notesC.id]);
+    for (const pdf of [notesA, notesB, notesC]) expect(await holds(holder.id, pdf.id)).toBe(true);
+
+    await expect(
+      materials.add(session.id, { dayId: session.day1, productId: notesB.id }, admin()),
+    ).rejects.toThrow(/already on that day/);
+
+    await materials.send(session.id);
+    expect(sentMail).toHaveLength(1);
+    for (const pdf of [notesA, notesB, notesC]) expect(sentMail[0].text).toContain(pdf.title);
+
+    await materials.remove(session.id, day1.materials[1].id, admin());
+    expect(await holds(holder.id, notesB.id)).toBe(false);
+    expect(await holds(holder.id, notesA.id)).toBe(true);
+    expect(await holds(holder.id, notesC.id)).toBe(true);
+  });
+
   it('emails each person once about what is new, and retries a failure', async () => {
     const session = await createSession();
     const notes1 = await createPdf('mail1');

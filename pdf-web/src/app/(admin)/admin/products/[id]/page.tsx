@@ -434,7 +434,10 @@ export default function ProductEditorPage() {
           <Card>
             <CardHeader>
               <CardTitle>Cover image</CardTitle>
-              <CardDescription>Shown on the storefront listing and product page.</CardDescription>
+              <CardDescription>
+                Shown on the storefront listing and product page. Use 1600 × 1200 px (4:3, landscape). Save as JPEG
+                or WebP, under about 300 KB.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {cover && <CoverPreview asset={cover} url={coverUrl} />}

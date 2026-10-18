@@ -226,19 +226,23 @@ function DayMaterials({
 }) {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ProductListItem[]>([]);
+  // Tagged with the search they answer, so "No PDFs found" never shows for a
+  // search still in flight.
+  const [found, setFound] = useState<{ query: string; items: ProductListItem[] } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
     if (!adding) return;
     const timer = setTimeout(() => {
       adminApi
-        .listProducts({ q: query.trim() || undefined })
-        .then((page) => setResults(page.items.filter((p) => p.type === "PDF")))
-        .catch(() => setResults([]));
+        .listProducts({ type: "PDF", q: query.trim() || undefined })
+        .then((page) => setFound({ query, items: page.items }))
+        .catch(() => setFound({ query, items: [] }));
     }, 250);
     return () => clearTimeout(timer);
   }, [adding, query]);
+
+  const results = found?.query === query ? found.items : null;
 
   const attached = new Set(day.materials.map((m) => m.productId));
 
@@ -249,8 +253,6 @@ function DayMaterials({
       toast.success(`Added "${product.title}" to Day ${day.number}`, {
         description: "It is in seat holders' libraries now. Email them below when you are ready.",
       });
-      setAdding(false);
-      setQuery("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not add it");
     } finally {
@@ -326,7 +328,11 @@ function DayMaterials({
             onChange={(event) => setQuery(event.target.value)}
           />
           <ul className="max-h-56 space-y-1 overflow-y-auto">
-            {results.length === 0 ? (
+            {results === null ? (
+              <li className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" /> Searching…
+              </li>
+            ) : results.length === 0 ? (
               <li className="text-xs text-muted-foreground">
                 No PDFs found. Upload it in <Link href="/admin/products/new" className="underline">Products</Link> first.
               </li>
@@ -352,13 +358,20 @@ function DayMaterials({
               })
             )}
           </ul>
-          <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
-            Cancel
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setAdding(false);
+              setQuery("");
+            }}
+          >
+            {day.materials.length > 0 ? "Done" : "Cancel"}
           </Button>
         </div>
       ) : (
         <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-          <Plus className="size-4" /> Add a PDF
+          <Plus className="size-4" /> {day.materials.length > 0 ? "Add another PDF" : "Add a PDF"}
         </Button>
       )}
     </div>
