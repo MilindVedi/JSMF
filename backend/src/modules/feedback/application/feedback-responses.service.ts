@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { FeedbackFormStatus, FeedbackResponseSource } from '@prisma/client';
 import { activity } from '../../../shared/logging/activity';
@@ -24,6 +25,20 @@ import { FeedbackInvitesService } from './feedback-invites.service';
  */
 export type FeedbackViewState = 'OPEN' | 'PREVIEW' | 'SIGN_IN_REQUIRED' | 'NOT_ELIGIBLE' | 'CLOSED';
 
+/**
+ * How the visitor is replying:
+ *  - PERSONAL: as themselves, through the email's link or their signed-in account.
+ *  - OPEN_LINK: the form's no-sign-in link, with a typed name and no account.
+ * Null while there is nothing to fill in (sign-in needed, not eligible, preview).
+ */
+export type FeedbackReplyMode = 'PERSONAL' | 'OPEN_LINK';
+
+export interface OpenReplyInput extends Omit<ReplyInput, 'token' | 'isAnonymous'> {
+  respondentName: string;
+  /** The browser's random key; only its hash is stored. */
+  editKey: string;
+}
+
 export interface ReplyInput {
   /** The personal link's token, when the page was opened from an email. */
   token?: string;
@@ -38,7 +53,11 @@ interface Visitor {
   /** From the signed-in session, if any. */
   user?: AuthenticatedUser;
   token?: string;
+  /** The open link's browser key, to find this browser's earlier reply. */
+  editKey?: string;
 }
+
+export const RESPONDENT_NAME_MAX = 80;
 
 /**
  * The form as a student meets it on jsmf.me/feedback/<id>, and saving their
@@ -51,6 +70,12 @@ interface Visitor {
  * Either way they must still be someone the form asks (FeedbackAudience), so a
  * refund takes the right to reply with it, and a forwarded link is only ever
  * good for its owner's own reply.
+ *
+ * With the form's `openLink` on, anyone else who opens the shared link may
+ * reply too, under a name they type (OPEN_LINK). A seat holder who is signed
+ * in still replies as themselves. Open replies have no account, so nothing
+ * checks a seat or stops a second reply from another browser; the team sees
+ * them marked as not verified.
  */
 @Injectable()
 export class FeedbackResponsesService {
@@ -73,16 +98,18 @@ export class FeedbackResponsesService {
     const who = await this.identify(form, visitor);
     const base = { form: this.publicForm(form) };
 
-    if (!who) {
-      if (isStaff) return { ...base, state: 'PREVIEW' as FeedbackViewState, respondent: null, response: null };
-      return { ...base, state: 'SIGN_IN_REQUIRED' as FeedbackViewState, respondent: null, response: null };
-    }
-    if (who.via === 'invite') await this.markOpened(who.inviteId);
+    const closedOr = (open: FeedbackViewState) =>
+      (acceptsReplies(form, new Date()) ? open : 'CLOSED') as FeedbackViewState;
+    const nothing = { respondent: null, response: null, mode: null as FeedbackReplyMode | null };
 
-    const eligible = await this.audience.isRespondent(form, who.userId);
-    if (!eligible) {
-      const state: FeedbackViewState = isStaff ? 'PREVIEW' : 'NOT_ELIGIBLE';
-      return { ...base, state, respondent: null, response: null };
+    if (who?.via === 'invite') await this.markOpened(who.inviteId);
+    const eligible = who ? await this.audience.isRespondent(form, who.userId) : false;
+
+    if (!who || !eligible) {
+      // Staff see a preview, never a form to send.
+      if (isStaff) return { ...base, ...nothing, state: 'PREVIEW' as FeedbackViewState };
+      if (form.openLink) return { ...base, ...(await this.openView(form.id, visitor.editKey)), state: closedOr('OPEN') };
+      return { ...base, ...nothing, state: (who ? 'NOT_ELIGIBLE' : 'SIGN_IN_REQUIRED') as FeedbackViewState };
     }
 
     const response = await this.prisma.feedbackResponse.findUnique({
@@ -93,7 +120,8 @@ export class FeedbackResponsesService {
 
     return {
       ...base,
-      state: (acceptsReplies(form, new Date()) ? 'OPEN' : 'CLOSED') as FeedbackViewState,
+      state: closedOr('OPEN'),
+      mode: 'PERSONAL' as FeedbackReplyMode,
       respondent: { firstName: firstName(user?.name ?? '') },
       response: response && {
         isAnonymous: response.isAnonymous,
@@ -184,7 +212,108 @@ export class FeedbackResponsesService {
     return { submittedAt: saved.response.submittedAt, edited: saved.edited };
   }
 
+  /**
+   * Saves a reply on the no-sign-in link, or replaces this browser's earlier
+   * one. Only when the form's `openLink` is on. "Hide my name" does not apply:
+   * the name is whatever they typed, and there is no account to hide.
+   */
+  async submitOpen(formId: string, input: OpenReplyInput) {
+    const form = await this.audience.loadForm(formId);
+    if (!form || form.status === FeedbackFormStatus.DRAFT) {
+      throw new NotFoundException('This feedback form does not exist, or is not open yet.');
+    }
+    if (!form.openLink) {
+      throw new ForbiddenException('Open the link from your email, or sign in, to give feedback.');
+    }
+    if (!acceptsReplies(form, new Date())) {
+      throw new BadRequestException('This feedback form has closed, so replies can no longer be saved or changed.');
+    }
+
+    const respondentName = (input.respondentName ?? '').replace(/\s+/g, ' ').trim();
+    if (!respondentName) throw new BadRequestException('Enter your name before sending.');
+    if (respondentName.length > RESPONDENT_NAME_MAX) {
+      throw new BadRequestException(`Your name can be at most ${RESPONDENT_NAME_MAX} characters.`);
+    }
+
+    const { answers, errors } = cleanAnswers(form.questions, input.answers ?? []);
+    if (errors.length) throw new BadRequestException(errors.join(' '));
+    if (answers.length === 0) throw new BadRequestException('Answer at least one question before sending.');
+
+    const consentToPublish = form.askConsentToPublish && input.consentToPublish === true;
+    const showName = form.askShowName ? input.showName === true : null;
+    const editKeyHash = hashEditKey(input.editKey);
+    const activeIds = form.questions.map((q) => q.id);
+
+    const saved = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.feedbackResponse.findUnique({
+        where: { formId_editKeyHash: { formId, editKeyHash } },
+        select: { id: true, consentToPublish: true },
+      });
+
+      const response = existing
+        ? await tx.feedbackResponse.update({
+            where: { id: existing.id },
+            data: { respondentName, consentToPublish, showName, editedAt: new Date() },
+          })
+        : await tx.feedbackResponse.create({
+            data: {
+              formId,
+              userId: null,
+              source: FeedbackResponseSource.OPEN_LINK,
+              respondentName,
+              editKeyHash,
+              consentToPublish,
+              showName,
+            },
+          });
+
+      await tx.feedbackAnswer.deleteMany({ where: { responseId: response.id, questionId: { in: activeIds } } });
+      await tx.feedbackAnswer.createMany({ data: answers.map((a) => ({ ...a, responseId: response.id })) });
+
+      // Taking consent back takes the reply off the website, as for any reply.
+      if (existing && form.askConsentToPublish && existing.consentToPublish && !consentToPublish) {
+        await tx.feedbackHighlight.deleteMany({ where: { responseId: response.id } });
+      }
+      return { response, edited: existing !== null };
+    });
+
+    activity(this.logger, saved.edited ? 'feedback.reply_edited' : 'feedback.reply_saved', {
+      formId,
+      source: FeedbackResponseSource.OPEN_LINK,
+      answers: answers.length,
+    });
+    return { submittedAt: saved.response.submittedAt, edited: saved.edited };
+  }
+
   // --- internals ----------------------------------------------------------------
+
+  /** The open link's view: this browser's earlier reply, if its key finds one. */
+  private async openView(formId: string, editKey?: string) {
+    const response = editKey
+      ? await this.prisma.feedbackResponse.findUnique({
+          where: { formId_editKeyHash: { formId, editKeyHash: hashEditKey(editKey) } },
+          include: { answers: true },
+        })
+      : null;
+    return {
+      mode: 'OPEN_LINK' as FeedbackReplyMode,
+      respondent: null,
+      response: response && {
+        isAnonymous: false,
+        respondentName: response.respondentName,
+        consentToPublish: response.consentToPublish,
+        showName: response.showName,
+        submittedAt: response.submittedAt,
+        editedAt: response.editedAt,
+        answers: response.answers.map((a) => ({
+          questionId: a.questionId,
+          rating: a.ratingValue,
+          text: a.textValue,
+          choices: a.choiceValues,
+        })),
+      },
+    };
+  }
 
   private async identify(
     form: LoadedForm,
@@ -221,6 +350,7 @@ export class FeedbackResponsesService {
       allowAnonymous: form.allowAnonymous,
       askConsentToPublish: form.askConsentToPublish,
       askShowName: form.askShowName,
+      openLink: form.openLink,
       closesAt: form.closesAt,
       questions: form.questions.map((q) => ({
         id: q.id,
@@ -232,6 +362,10 @@ export class FeedbackResponsesService {
       })),
     };
   }
+}
+
+function hashEditKey(key: string): string {
+  return createHash('sha256').update(key).digest('hex');
 }
 
 function firstName(name: string): string {

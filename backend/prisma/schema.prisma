@@ -2490,6 +2490,9 @@ enum FeedbackResponseSource {
   EMAIL_LINK
   /// The shared (Telegram) link, signed in with Google.
   SIGNED_IN
+  /// The shared link with the form's `openLink` on: no sign-in, a typed name,
+  /// no account. Not verified — anyone holding the link can send one.
+  OPEN_LINK
 
   @@schema("public")
 }
@@ -2524,6 +2527,12 @@ model FeedbackForm {
   /// way the admin decides when picking a reply; the answer is shown to them
   /// as guidance only.
   askShowName         Boolean            @default(false) @map("ask_show_name")
+  /// The shared (Telegram) link takes replies without signing in: the person
+  /// types their name, and the reply has no account. The emailed personal
+  /// links and signed-in seat holders work exactly as before. Such replies
+  /// cannot be checked against seats or limited to one per person, so they
+  /// are marked "not verified" to the team.
+  openLink            Boolean            @default(false) @map("open_link")
   /// After this the form takes no new replies, as if CLOSED. Null = open until closed by hand.
   closesAt            DateTime?          @map("closes_at") @db.Timestamptz(6)
   createdById         String?            @map("created_by_id") @db.Uuid
@@ -2609,8 +2618,15 @@ model FeedbackInvite {
 model FeedbackResponse {
   id               String                 @id @default(uuid(7)) @db.Uuid
   formId           String                 @map("form_id") @db.Uuid
-  userId           String                 @map("user_id") @db.Uuid
+  /// Null only for an OPEN_LINK reply, which has no account.
+  userId           String?                @map("user_id") @db.Uuid
   source           FeedbackResponseSource
+  /// The name typed on the open link. Null for every other reply, whose name
+  /// comes from the account.
+  respondentName   String?                @map("respondent_name") @db.VarChar(80)
+  /// SHA-256 of a random key kept in the browser that sent an OPEN_LINK reply,
+  /// so that browser can change its reply instead of sending a second one.
+  editKeyHash      String?                @map("edit_key_hash") @db.Char(64)
   /// The student asked for their name to be hidden from the team.
   isAnonymous      Boolean                @default(false) @map("is_anonymous")
   /// "Yes, you can show this on your website." Only asked when the form's
@@ -2625,11 +2641,12 @@ model FeedbackResponse {
 
   /// Restrict: a form with replies is closed, never deleted.
   form       FeedbackForm        @relation(fields: [formId], references: [id], onDelete: Restrict)
-  user       User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user       User?               @relation(fields: [userId], references: [id], onDelete: Restrict)
   answers    FeedbackAnswer[]
   highlights FeedbackHighlight[]
 
   @@unique([formId, userId])
+  @@unique([formId, editKeyHash])
   @@index([formId, submittedAt])
   @@map("feedback_responses")
   @@schema("public")

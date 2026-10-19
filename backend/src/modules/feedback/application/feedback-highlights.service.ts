@@ -109,7 +109,8 @@ export class FeedbackHighlightsService implements SectionQuoteSource, OnModuleIn
     const withName = !response.isAnonymous && (input.showName ?? nameMayBeShown(response));
     const attribution = !withName
       ? ANONYMOUS_ATTRIBUTION
-      : (input.attribution?.trim() || (await this.defaultAttribution(sessionId, response.userId, response.user.name)));
+      : input.attribution?.trim() ||
+        (await this.defaultAttribution(sessionId, response.userId, response.user?.name ?? response.respondentName ?? ''));
     const rating =
       input.rating !== undefined
         ? input.rating
@@ -206,9 +207,13 @@ export class FeedbackHighlightsService implements SectionQuoteSource, OnModuleIn
     return highlight;
   }
 
-  /** "Riya · Final year": first name, and their stage from registration when known. */
-  private async defaultAttribution(sessionId: string, userId: string, name: string): Promise<string> {
+  /**
+   * "Riya · Final year": first name, and their stage from registration when
+   * known. An open-link reply has no registration, so it is the typed first name.
+   */
+  private async defaultAttribution(sessionId: string, userId: string | null, name: string): Promise<string> {
     const first = name.trim().split(/\s+/)[0] || ANONYMOUS_ATTRIBUTION;
+    if (!userId) return first;
     const registration = await this.prisma.sessionRegistration.findUnique({
       where: { liveSessionId_userId: { liveSessionId: sessionId, userId } },
       select: { stage: true },

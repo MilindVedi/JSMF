@@ -116,7 +116,9 @@ export class FeedbackInvitesService implements OnModuleInit {
       opened: rows.filter((r) => r.openedAt).length,
       responded: rows.filter((r) => r.responded).length,
       /** Replies from people who no longer hold a seat (refunded), still counted in the results. */
-      otherResponses: responses.filter((r) => !rows.some((row) => row.userId === r.userId)).length,
+      otherResponses: responses.filter((r) => r.userId && !rows.some((row) => row.userId === r.userId)).length,
+      /** Replies on the no-sign-in link: no account, so not in the table above. */
+      openLinkResponses: responses.filter((r) => !r.userId).length,
     };
   }
 

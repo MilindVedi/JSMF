@@ -128,6 +128,24 @@ export interface ProductDetail extends Product {
   assets: ProductAsset[];
   links: ProductLink[];
   taxonomyTerms: ProductTaxonomyTerm[];
+  /**
+   * A bundle's PDFs, on its public page. `slug` only for a PDF that has its
+   * own public page. Null for anything that is not a bundle, and absent on
+   * the admin detail (which reads `/bundle-items` instead).
+   */
+  contents?: BundleContentItem[] | null;
+  /** Admin detail only: the bundles this PDF is in. */
+  inBundles?: Array<{ id: string; title: string }>;
+}
+
+export interface BundleContentItem {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  pageCount: number | null;
+  /** Set only when the PDF is also sold on its own: its page, and its price there. */
+  slug: string | null;
+  priceMinor: string | null;
 }
 
 export interface ProductListItem extends Product {
@@ -139,6 +157,8 @@ export interface ProductListItem extends Product {
    * Absent (not merely empty) on the admin listing, which doesn't ask for it.
    */
   links?: Pick<ProductLink, "id">[];
+  /** How many PDFs a bundle holds (admin listing). */
+  _count?: { bundleItems: number };
 }
 
 export interface Paginated<T> {

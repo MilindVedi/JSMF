@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Download, Library, Loader2 } from "lucide-react";
+import { ChevronDown, Download, FileText, Layers, Library, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -15,6 +15,8 @@ function LibraryContent() {
   const { user, ready } = useSessionStore();
   const [items, setItems] = useState<Entitlement[] | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  /** Bundle cards the reader has opened. */
+  const [open, setOpen] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!ready || !user) return;
@@ -108,16 +110,26 @@ function LibraryContent() {
                     </p>
                   )}
                   <div className="mt-1 flex flex-wrap items-center gap-2">
+                    {entitlement.contents && (
+                      <Badge variant="secondary" className="gap-1 text-xs">
+                        <Layers className="size-3" />
+                        Bundle · {entitlement.contents.length} PDF{entitlement.contents.length === 1 ? "" : "s"}
+                      </Badge>
+                    )}
                     <Badge variant="outline" className="text-xs">
                       {entitlement.source === "FREE_CLAIM"
                         ? "Free"
                         : entitlement.source === "SESSION_MATERIAL"
                           ? "Session material"
-                          : "Purchased"}
+                          : entitlement.source === "BUNDLE" && entitlement.sourceProduct?.type === "LIVE_SESSION"
+                            ? "Included with your seat"
+                            : "Purchased"}
                     </Badge>
-                    {entitlement.source === "SESSION_MATERIAL" && entitlement.sourceProduct && (
-                      <span className="text-xs text-muted-foreground">{entitlement.sourceProduct.title}</span>
-                    )}
+                    {(entitlement.source === "SESSION_MATERIAL" ||
+                      (entitlement.source === "BUNDLE" && entitlement.sourceProduct?.type === "LIVE_SESSION")) &&
+                      entitlement.sourceProduct && (
+                        <span className="text-xs text-muted-foreground">{entitlement.sourceProduct.title}</span>
+                      )}
                     <span className="text-xs text-muted-foreground">
                       {new Date(entitlement.grantedAt).toLocaleDateString("en-IN", {
                         day: "numeric",
@@ -128,16 +140,72 @@ function LibraryContent() {
                   </div>
                 </div>
 
-                <Button
-                  className="shrink-0"
-                  variant="outline"
-                  disabled={downloading === entitlement.productId}
-                  onClick={() => download(entitlement.productId)}
-                >
-                  <Download className="size-4" />
-                  {downloading === entitlement.productId ? "Preparing…" : "Download"}
-                </Button>
+                {entitlement.contents ? (
+                  // A bundle has no file of its own: it opens to its PDFs.
+                  <Button
+                    className="shrink-0"
+                    variant="outline"
+                    aria-expanded={open.has(entitlement.id)}
+                    onClick={() =>
+                      setOpen((current) => {
+                        const next = new Set(current);
+                        if (next.has(entitlement.id)) next.delete(entitlement.id);
+                        else next.add(entitlement.id);
+                        return next;
+                      })
+                    }
+                  >
+                    {open.has(entitlement.id) ? "Hide PDFs" : `Show ${entitlement.contents.length} PDFs`}
+                    <ChevronDown
+                      className={`size-4 transition-transform ${open.has(entitlement.id) ? "rotate-180" : ""}`}
+                    />
+                  </Button>
+                ) : (
+                  <Button
+                    className="shrink-0"
+                    variant="outline"
+                    disabled={downloading === entitlement.productId}
+                    onClick={() => download(entitlement.productId)}
+                  >
+                    <Download className="size-4" />
+                    {downloading === entitlement.productId ? "Preparing…" : "Download"}
+                  </Button>
+                )}
               </CardContent>
+              {entitlement.contents && open.has(entitlement.id) && (
+                <ul className="divide-y border-t">
+                  {entitlement.contents.length === 0 ? (
+                    <li className="px-6 py-3 text-sm text-muted-foreground">No PDFs in this bundle are available yet.</li>
+                  ) : (
+                    entitlement.contents.map((item) => (
+                      <li
+                        key={item.id}
+                        className="flex flex-col gap-2 px-6 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="flex min-w-0 items-start gap-2">
+                          <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{item.title}</p>
+                            {item.subtitle && (
+                              <p className="truncate text-xs text-muted-foreground">{item.subtitle}</p>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          disabled={downloading === item.id}
+                          onClick={() => download(item.id)}
+                        >
+                          <Download className="size-4" />
+                          {downloading === item.id ? "Preparing…" : "Download"}
+                        </Button>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              )}
             </Card>
           ))}
         </div>

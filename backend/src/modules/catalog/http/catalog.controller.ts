@@ -47,8 +47,9 @@ export class CatalogController {
     return {
       ...result,
       items: await Promise.all(
-        result.items.map(async ({ assets, ...product }) => ({
+        result.items.map(async ({ assets, _count, ...product }) => ({
           ...product,
+          bundleSize: bundleSize(product.type, _count),
           coverUrl: await this.coverUrl(assets[0]),
         })),
       ),
@@ -68,8 +69,9 @@ export class CatalogController {
     const items = await this.products.findFeatured();
 
     return Promise.all(
-      items.map(async ({ assets, ...product }) => ({
+      items.map(async ({ assets, _count, ...product }) => ({
         ...product,
+        bundleSize: bundleSize(product.type, _count),
         coverUrl: await this.coverUrl(assets[0]),
       })),
     );
@@ -103,4 +105,9 @@ export class CatalogController {
 
     return this.storage.getSignedDownloadUrl(objectRefOf(cover), { disposition: 'inline' });
   }
+}
+
+/** How many PDFs a bundle holds, for its card. Null for anything that is not a bundle. */
+function bundleSize(type: string, count: { bundleItems: number }): number | null {
+  return type === 'BUNDLE' ? count.bundleItems : null;
 }

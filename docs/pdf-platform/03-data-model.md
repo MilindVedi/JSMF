@@ -282,7 +282,7 @@ These are specified so the tables above do not need reshaping when they arrive. 
 
 **`coupon_redemptions`** — `id`, `coupon_id` FK, `user_id` FK, `order_id` FK, `discount_amount_minor`, `created_at`, `UNIQUE (coupon_id, order_id)`.
 
-**`product_bundle_items`** — `bundle_product_id` FK→products, `child_product_id` FK→products, `sort_order`, PK on both. Buying the bundle grants an entitlement per child, with `source = BUNDLE`.
+**`product_bundle_items`** — `bundle_product_id` FK→products, `child_product_id` FK→products, `sort_order`, PK on both. Used two ways: a session's "included with a seat" items, and the PDFs of a PDF bundle (`products.type = BUNDLE`). Buying either grants an entitlement per child, with `source = BUNDLE` and `source_product_id` the bundle (or session). See `02-architecture.md` "PDF bundles".
 
 **`publisher_profiles`** — `user_id` PK FK→users, `display_name`, `slug` UNIQUE, `bio`, `avatar_storage_provider` + `avatar_object_key` (same pattern as `users`, not a URL), `payout_details` jsonb, `revenue_share_percent`. For the multi-educator marketplace.
 
@@ -312,7 +312,7 @@ These are specified so the tables above do not need reshaping when they arrive. 
 | 18 | `audit_logs` | ✅ | Admin action trail (catalog + taxonomy only, see §6) |
 | 18a | `analytics_events` | ✅ | First-party website activity (page views, booking funnel) — no IP or user agent stored. See [`docs/analytics`](../analytics/README.md) |
 | 19 | `coupons` / `coupon_redemptions` | ⬜ | Designed only |
-| 20 | `product_bundle_items` | ⬜ | Designed only |
+| 20 | `product_bundle_items` | ✅ | Session "included with a seat" items and PDF bundles |
 | 21 | `publisher_profiles` | ⬜ | Designed only |
 
 ## The five decisions worth pushing back on

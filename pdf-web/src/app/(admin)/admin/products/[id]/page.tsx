@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AssetUpload, type AssetUploadHandle } from "@/components/admin/asset-upload";
+import { BundleContentsCard } from "@/components/admin/bundle-contents-card";
 import {
   CoverPreview,
   StorefrontPreview,
@@ -35,10 +36,12 @@ function PreviewCard({
   product,
   coverUrl,
   showLinks = false,
+  bundleSize = null,
 }: {
   product: ProductDetail;
   coverUrl: string | null;
   showLinks?: boolean;
+  bundleSize?: number | null;
 }) {
   return (
     <Card>
@@ -51,7 +54,7 @@ function PreviewCard({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <StorefrontPreview product={product} coverUrl={coverUrl} showLinks={showLinks} />
+        <StorefrontPreview product={product} coverUrl={coverUrl} showLinks={showLinks} bundleSize={bundleSize} />
       </CardContent>
     </Card>
   );
@@ -65,6 +68,8 @@ export default function ProductEditorPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [savingStep, setSavingStep] = useState(false);
+  /** A bundle's PDF count, from its Contents card; null until it has loaded. */
+  const [bundleCount, setBundleCount] = useState<number | null>(null);
 
   const detailsRef = useRef<StepSectionHandle>(null);
   const primaryUploadRef = useRef<AssetUploadHandle>(null);
@@ -246,6 +251,8 @@ export default function ProductEditorPage() {
 
   const primary = currentAsset("PRIMARY_FILE");
   const isArchived = product.status === "ARCHIVED";
+  const isBundle = product.type === "BUNDLE";
+  const filesLabel = isBundle ? "Contents & cover" : "Files";
 
   return (
     <div className="space-y-6">
@@ -263,7 +270,7 @@ export default function ProductEditorPage() {
             <StatusBadge status={product.status} />
           </div>
           <p className="text-sm text-muted-foreground">
-            /p/{product.slug}
+            {isBundle && "Bundle · "}/p/{product.slug}
             {product.publishedAt && " · published"}
           </p>
         </div>
@@ -314,10 +321,16 @@ export default function ProductEditorPage() {
         </div>
       </div>
 
-      {!primary && !isArchived && (
+      {!isBundle && !primary && !isArchived && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
           No PDF uploaded yet. Publishing is blocked until there is one — a published product
           with no file would be a broken link for anyone who clicks it.
+        </div>
+      )}
+      {isBundle && bundleCount === 0 && !isArchived && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          This bundle has no PDFs yet. Add them on the <span className="font-medium">Contents &amp; cover</span> tab;
+          publishing is blocked until there is at least one.
         </div>
       )}
 
@@ -326,7 +339,7 @@ export default function ProductEditorPage() {
       <Tabs value={tab} onValueChange={(value) => void changeTab(value as StepValue)}>
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="files">Files</TabsTrigger>
+          <TabsTrigger value="files">{filesLabel}</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="links">Links</TabsTrigger>
         </TabsList>
@@ -337,6 +350,7 @@ export default function ProductEditorPage() {
               <ProductForm
                 ref={detailsRef}
                 hideSubmit
+                inBundles={product.inBundles}
                 submitLabel="Save changes"
                 onSubmit={saveDetails}
                 defaultValues={{
@@ -351,11 +365,13 @@ export default function ProductEditorPage() {
               />
             </CardContent>
           </Card>
-          <PreviewCard product={product} coverUrl={coverUrl} />
-          <StepNav current="details" onGo={changeTab} onSave={saveStep} saving={savingStep} />
+          <PreviewCard product={product} coverUrl={coverUrl} bundleSize={isBundle ? bundleCount : null} />
+          <StepNav current="details" onGo={changeTab} onSave={saveStep} saving={savingStep} filesLabel={filesLabel} />
         </TabsContent>
 
         <TabsContent value="files" className="mt-4 space-y-4">
+          {isBundle && <BundleContentsCard productId={product.id} onCountChange={setBundleCount} />}
+          {!isBundle && (
           <Card>
             <CardHeader>
               <CardTitle>The PDF</CardTitle>
@@ -430,6 +446,7 @@ export default function ProductEditorPage() {
               )}
             </CardContent>
           </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -451,19 +468,19 @@ export default function ProductEditorPage() {
               />
             </CardContent>
           </Card>
-          <PreviewCard product={product} coverUrl={coverUrl} />
-          <StepNav current="files" onGo={changeTab} onSave={saveStep} saving={savingStep} />
+          <PreviewCard product={product} coverUrl={coverUrl} bundleSize={isBundle ? bundleCount : null} />
+          <StepNav current="files" onGo={changeTab} onSave={saveStep} saving={savingStep} filesLabel={filesLabel} />
         </TabsContent>
 
         <TabsContent value="categories" className="mt-4 space-y-4">
           <ProductTerms ref={termsRef} product={product} />
-          <StepNav current="categories" onGo={changeTab} onSave={saveStep} saving={savingStep} />
+          <StepNav current="categories" onGo={changeTab} onSave={saveStep} saving={savingStep} filesLabel={filesLabel} />
         </TabsContent>
 
         <TabsContent value="links" className="mt-4 space-y-4">
           <ProductLinks ref={linksRef} product={product} />
-          <PreviewCard product={product} coverUrl={coverUrl} showLinks />
-          <StepNav current="links" onGo={changeTab} onSave={saveStep} saving={savingStep} />
+          <PreviewCard product={product} coverUrl={coverUrl} showLinks bundleSize={isBundle ? bundleCount : null} />
+          <StepNav current="links" onGo={changeTab} onSave={saveStep} saving={savingStep} filesLabel={filesLabel} />
         </TabsContent>
       </Tabs>
     </div>
@@ -503,8 +520,11 @@ function StepNav({
   onGo,
   onSave,
   saving,
+  filesLabel = "Files",
 }: {
   current: StepValue;
+  /** A bundle's Files step holds its contents, and is named for them. */
+  filesLabel?: string;
   onGo: (value: StepValue) => void | Promise<void>;
   /**
    * Present only on steps that stage changes locally (Files, Links) rather
@@ -514,9 +534,10 @@ function StepNav({
   onSave?: () => void;
   saving?: boolean;
 }) {
-  const index = STEPS.findIndex((step) => step.value === current);
-  const previous = index > 0 ? STEPS[index - 1] : null;
-  const next = index < STEPS.length - 1 ? STEPS[index + 1] : null;
+  const steps = STEPS.map((step) => (step.value === "files" ? { ...step, label: filesLabel } : step));
+  const index = steps.findIndex((step) => step.value === current);
+  const previous = index > 0 ? steps[index - 1] : null;
+  const next = index < steps.length - 1 ? steps[index + 1] : null;
 
   return (
     <div className="flex items-center justify-between gap-3 border-t pt-4">

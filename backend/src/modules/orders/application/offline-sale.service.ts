@@ -434,7 +434,8 @@ export class OfflineSaleService {
     // at payment (a session may hold its PDF back until it has ended).
     if (await handler.grantsIncludedItemsNow(product.id, tx)) {
       for (const included of bundle) {
-        await this.entitlements.grant(
+        // A PDF bundle brings its PDFs with it.
+        await this.entitlements.grantWithContents(
           {
             userId: user.id,
             productId: included.childProductId,

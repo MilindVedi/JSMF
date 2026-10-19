@@ -59,7 +59,8 @@ export function FeedbackFormsCard({ session, onCollapse }: { session: AdminSessi
         </CardTitle>
         <CardDescription>
           Collect feedback on the website instead of Google Forms. Each attendee gets their own link by email after the
-          day ends, which opens the form without signing in. The shared link (for Telegram) asks them to sign in.
+          day ends, which opens the form without signing in. The shared link (for Telegram) asks them to sign in, unless a
+          form&apos;s settings let it take replies without signing in.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

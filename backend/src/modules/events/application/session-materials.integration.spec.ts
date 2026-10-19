@@ -4,6 +4,7 @@ import {
   AssetKind,
   EntitlementSource,
   EntitlementStatus,
+  ProductType,
   StorageProvider,
   UserStatus,
 } from '@prisma/client';
@@ -164,6 +165,7 @@ afterAll(async () => {
   const userIds = [...new Set([...created.userIds, ...users.map((u) => u.id)])];
   await prisma.sessionMaterialNotice.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.sessionMaterial.deleteMany({ where: { liveSessionId: { in: productIds } } });
+  await prisma.productBundleItem.deleteMany({ where: { bundleProductId: { in: productIds } } });
   await prisma.offlineSale.deleteMany({ where: { productId: { in: productIds } } });
   await prisma.sessionDayReminder.deleteMany({ where: { day: { liveSessionId: { in: productIds } } } });
   await prisma.sessionRegistration.deleteMany({ where: { liveSessionId: { in: productIds } } });
@@ -289,6 +291,40 @@ describe('session day materials', () => {
     expect(await holds(holder.id, notesB.id)).toBe(false);
     expect(await holds(holder.id, notesA.id)).toBe(true);
     expect(await holds(holder.id, notesC.id)).toBe(true);
+  });
+
+  it('gives a bundle on a day with all its PDFs, follows its contents, and takes it all back on removal', async () => {
+    const session = await createSession();
+    const partA = await createPdf('bundle-a', false);
+    const partB = await createPdf('bundle-b', false);
+    const later = await createPdf('bundle-later', false);
+    const bundle = await products.create(
+      { title: `Bundle ${tag}`, type: ProductType.BUNDLE, accessType: AccessType.FREE, priceAmountMinor: '0' },
+      admin(),
+    );
+    created.productIds.push(bundle.id);
+    await prisma.productBundleItem.createMany({
+      data: [
+        { bundleProductId: bundle.id, childProductId: partA.id, sortOrder: 0 },
+        { bundleProductId: bundle.id, childProductId: partB.id, sortOrder: 1 },
+      ],
+    });
+    const holder = await seat(session.id, 'bundle-holder', hoursAgo(48));
+
+    const overview = await materials.add(session.id, { dayId: session.day1, productId: bundle.id }, admin());
+    for (const id of [bundle.id, partA.id, partB.id]) expect(await holds(holder.id, id)).toBe(true);
+    const library = await entitlements.listForUser(holder.id);
+    const card = library.find((e) => e.productId === bundle.id)!;
+    expect(card.contents?.map((c) => c.id)).toEqual([partA.id, partB.id]);
+    expect(library.some((e) => e.productId === partA.id)).toBe(false);
+
+    // A PDF added to the bundle reaches seat holders on the next reconcile.
+    await prisma.productBundleItem.create({ data: { bundleProductId: bundle.id, childProductId: later.id, sortOrder: 2 } });
+    await materials.reconcile(session.id);
+    expect(await holds(holder.id, later.id)).toBe(true);
+
+    await materials.remove(session.id, overview.days[0].materials[0].id, admin());
+    for (const id of [bundle.id, partA.id, partB.id, later.id]) expect(await holds(holder.id, id)).toBe(false);
   });
 
   it('emails each person once about what is new, and retries a failure', async () => {

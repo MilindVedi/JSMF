@@ -512,7 +512,8 @@ export class LiveSessionNotifications implements OrderPaidListener, OnModuleInit
         // Granting is idempotent, so a buyer who already owns the PDF — bought
         // separately, or granted before the mode was changed — keeps the copy
         // they have and this adds nothing.
-        await this.entitlements.grant({
+        // A PDF bundle brings its PDFs with it.
+        await this.entitlements.grantWithContents({
           userId: holder.userId,
           productId: item.id,
           source: EntitlementSource.BUNDLE,

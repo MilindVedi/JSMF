@@ -512,6 +512,21 @@ const schema = z
     /// notices. Read from process.env by the route's @Throttle as well.
     ANALYTICS_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(120),
 
+    /// Replies (new or changed) one network address may send per hour on a
+    /// feedback form's no-sign-in link. Nobody signs in there, so there is no
+    /// account to count against and every reply is keyed on the address — and
+    /// a hostel, college or mobile network puts a whole class behind one. Size
+    /// it well above the largest class that could share an address, never
+    /// against a guess at how much spam is reasonable: a blocked student sees
+    /// an error and gives up silently, while junk replies are one Delete each
+    /// and the switch itself can be turned off. The real defence against a
+    /// flood is turning the form's "without signing in" switch off, not this
+    /// number; it only bounds how much one address can leave behind first.
+    /// `IP_CEILING_THROTTLER` (RATE_LIMIT_IP_CEILING_PER_MINUTE) still applies
+    /// on top, per address, and catches a script far sooner than this does.
+    /// Read from process.env by the route.
+    FEEDBACK_OPEN_LINK_PER_HOUR: z.coerce.number().int().positive().default(300),
+
     SEED_ADMIN_EMAIL: z.string().email().default('admin@jsmf.local'),
     SEED_ADMIN_PASSWORD: z.string().min(8).default('ChangeMe123!'),
     SEED_ADMIN_NAME: z.string().default('JSMF Admin'),

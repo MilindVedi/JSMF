@@ -28,6 +28,7 @@ export interface FormSettingsInput {
   allowAnonymous?: boolean;
   askConsentToPublish?: boolean;
   askShowName?: boolean;
+  openLink?: boolean;
   closesAt?: string | null;
 }
 
@@ -173,6 +174,7 @@ export class FeedbackFormsService {
         allowAnonymous: source?.allowAnonymous,
         askConsentToPublish: source?.askConsentToPublish,
         askShowName: source?.askShowName,
+        openLink: source?.openLink,
         createdById: actor.id,
         questions: {
           create: questions.map((q, sortOrder) => ({
@@ -218,10 +220,11 @@ export class FeedbackFormsService {
       allowAnonymous: form.allowAnonymous,
       askConsentToPublish: form.askConsentToPublish,
       askShowName: form.askShowName,
+      openLink: form.openLink,
       closesAt: form.closesAt,
       endsAt,
       emailDueAt: emailDueAt(endsAt, form.emailDelayMinutes),
-      /** For the Telegram group: asks people to sign in, then checks their seat. */
+      /** For the Telegram group: asks people to sign in and checks their seat, or, with openLink, takes a typed name. */
       shareUrl: this.invites.shareLinkFor(form.id),
       responses,
       questions: form.questions.map((q) => ({
@@ -266,6 +269,7 @@ export class FeedbackFormsService {
         allowAnonymous: input.allowAnonymous,
         askConsentToPublish: input.askConsentToPublish,
         askShowName: input.askShowName,
+        openLink: input.openLink,
         closesAt,
       },
     });
@@ -391,7 +395,10 @@ export class FeedbackFormsService {
         user: { select: { name: true, email: true } },
       },
     });
-    const stages = await this.stagesOf(form.liveSessionId, responses.map((r) => r.userId));
+    const stages = await this.stagesOf(
+      form.liveSessionId,
+      responses.flatMap((r) => (r.userId ? [r.userId] : [])),
+    );
 
     return {
       formId,
@@ -407,10 +414,12 @@ export class FeedbackFormsService {
       responses: responses.map((r) => ({
         id: r.id,
         isAnonymous: r.isAnonymous,
-        name: r.isAnonymous ? null : r.user.name,
-        email: r.isAnonymous ? null : r.user.email,
+        name: r.isAnonymous ? null : (r.user?.name ?? r.respondentName),
+        email: r.isAnonymous ? null : (r.user?.email ?? null),
         /** "Final year", from their registration. Hidden with the name. */
-        stage: r.isAnonymous ? null : (stages.get(r.userId) ?? null),
+        stage: r.isAnonymous || !r.userId ? null : (stages.get(r.userId) ?? null),
+        /** False for an open-link reply: the name was typed, and nothing checked a seat. */
+        verified: r.userId !== null,
         consentToPublish: r.consentToPublish,
         /** Null when the form did not ask. */
         showName: r.isAnonymous ? false : r.showName,

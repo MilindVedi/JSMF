@@ -5,7 +5,7 @@ import type { AuthUser } from "@/lib/api/types";
 import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Download, FileText, Loader2 } from "lucide-react";
+import { CheckCircle2, Download, FileText, Layers, Library, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import { DoctorPortrait } from "@/components/store/doctor-portrait";
 import { LinksSection } from "@/components/store/links-section";
 import { TermGroups } from "@/components/store/term-groups";
 import { ApiError } from "@/lib/api/client";
-import { storeApi } from "@/lib/api/store";
+import { storeApi, type BundleQuote } from "@/lib/api/store";
 import type { ProductDetail } from "@/lib/api/types";
 import { formatBytes, formatMoney } from "@/lib/money";
 import { author } from "@/lib/site-content";
@@ -33,6 +33,8 @@ function ProductPageContent() {
   const [owned, setOwned] = useState(false);
   const [ownershipChecked, setOwnershipChecked] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  /** A bundle's price for this buyer: the PDFs in it they already have come off. */
+  const [quote, setQuote] = useState<BundleQuote | null>(null);
 
   const { buy, busy } = useCheckout({ onSettled: () => setOwned(true) });
 
@@ -48,12 +50,20 @@ function ProductPageContent() {
   useEffect(() => {
     if (!ready || !user || !product) return;
 
-    storeApi
+    const purchases = storeApi
       .purchases()
       .then((entitlements) => setOwned(entitlements.some((e) => e.productId === product.id)))
-      .catch(() => setOwned(false))
-      .finally(() => setOwnershipChecked(true));
-  }, [ready, user, product]);
+      .catch(() => setOwned(false));
+    // Checkout works the price out again; this is only what the page shows.
+    const quoted =
+      product.type === "BUNDLE"
+        ? storeApi
+            .bundleQuote(product.id)
+            .then(setQuote)
+            .catch(() => setQuote(null))
+        : Promise.resolve();
+    void Promise.all([purchases, quoted]).finally(() => setOwnershipChecked(true));
+  }, [ready, user, product, owned]);
 
   // "Sign in to buy" appends `?buy=1` to the product URL it sends the buyer
   // back to after sign-in, so the round trip through /account/login ends with
@@ -65,12 +75,12 @@ function ProductPageContent() {
   useEffect(() => {
     if (autoBuyTriggered.current) return;
     if (searchParams.get("buy") !== "1") return;
-    if (!ready || !user || !product || !ownershipChecked || owned) return;
+    if (!ready || !user || !product || !ownershipChecked || owned || quote?.nothingToBuy) return;
 
     autoBuyTriggered.current = true;
     router.replace(`/p/${product.slug}`);
     void buy(product.id, product.title, buyerOf(user));
-  }, [searchParams, ready, user, product, ownershipChecked, owned, buy, router]);
+  }, [searchParams, ready, user, product, ownershipChecked, owned, quote, buy, router]);
 
   async function download() {
     if (!product) return;
@@ -117,9 +127,18 @@ function ProductPageContent() {
   }
 
   const isFree = product.accessType === "FREE";
+  const isBundle = product.type === "BUNDLE";
   const primary = product.assets.find((asset) => asset.kind === "PRIMARY_FILE");
-  const canDownload = isFree || owned;
+  // A bundle has no file of its own: it is opened from the library.
+  const canDownload = !isBundle && (isFree || owned);
   const hasLinks = product.links.length > 0;
+  const contents = product.contents ?? [];
+  const ownedIds = new Set(quote?.owned.map((o) => o.id));
+  const totalPages = contents.reduce((sum, item) => sum + (item.pageCount ?? 0), 0);
+  // Holding every PDF already, or the bundle itself: nothing left to buy.
+  const hasEverything = isBundle && (owned || Boolean(quote?.nothingToBuy));
+  const partPrice =
+    isBundle && !isFree && quote && !quote.nothingToBuy && quote.payMinor !== quote.priceMinor ? quote : null;
 
   return (
     <div className="grid gap-10 lg:grid-cols-[1fr_320px]">
@@ -138,6 +157,48 @@ function ProductPageContent() {
           <div className="whitespace-pre-wrap text-[15px] leading-relaxed">
             {product.description}
           </div>
+        )}
+
+        {isBundle && contents.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+              <Layers className="size-5 text-primary" />
+              What&apos;s in this bundle · {contents.length} PDF{contents.length === 1 ? "" : "s"}
+            </h2>
+            <ol className="divide-y rounded-xl border">
+              {contents.map((item, index) => (
+                <li key={item.id} className="flex items-start gap-3 px-4 py-3">
+                  <span className="mt-0.5 w-5 shrink-0 text-sm text-muted-foreground">{index + 1}.</span>
+                  <div className="min-w-0 flex-1">
+                    {item.slug ? (
+                      <Link href={`/p/${item.slug}`} className="font-medium hover:underline">
+                        {item.title}
+                      </Link>
+                    ) : (
+                      <p className="font-medium">{item.title}</p>
+                    )}
+                    {item.subtitle && <p className="text-sm text-muted-foreground">{item.subtitle}</p>}
+                    <p className="text-xs text-muted-foreground">
+                      {[
+                        item.pageCount !== null ? `${item.pageCount} pages` : null,
+                        item.slug && item.priceMinor !== null
+                          ? `Also sold on its own${item.priceMinor === "0" ? ", free" : ` for ${formatMoney(item.priceMinor, product.currency)}`}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  {ownedIds.has(item.id) && (
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                      <CheckCircle2 className="size-3.5" />
+                      You have this
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </section>
         )}
 
         {hasLinks && <LinksSection links={product.links} />}
@@ -183,6 +244,13 @@ function ProductPageContent() {
             <div className="flex flex-wrap items-baseline gap-2">
               {isFree ? (
                 <span className="text-2xl font-semibold">Free</span>
+              ) : partPrice ? (
+                <>
+                  <span className="text-2xl font-semibold">{formatMoney(partPrice.payMinor, product.currency)}</span>
+                  <span className="text-muted-foreground line-through">
+                    {formatMoney(partPrice.priceMinor, product.currency)}
+                  </span>
+                </>
               ) : (
                 <>
                   <span className="text-2xl font-semibold">
@@ -197,13 +265,40 @@ function ProductPageContent() {
               )}
             </div>
 
+            {partPrice && (
+              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+                {(() => {
+                  const paidOwned = partPrice.owned.filter((o) => !o.free);
+                  const allPaid = partPrice.paidPdfs === partPrice.totalPdfs;
+                  return (
+                    <>
+                      You already have {partPrice.paidOwned} of {allPaid ? "these" : "the"} {partPrice.paidPdfs}
+                      {allPaid ? "" : " paid"} PDFs
+                      {paidOwned.length <= 3 && ` (${paidOwned.map((o) => o.title).join(", ")})`}, so you pay only for the
+                      other {partPrice.paidPdfs - partPrice.paidOwned}.{!allPaid && " Free PDFs don't change the price."}
+                    </>
+                  );
+                })()}
+              </p>
+            )}
+
             {owned && !isFree && (
               <Badge variant="secondary" className="w-full justify-center py-1">
                 In your library
               </Badge>
             )}
 
-            {canDownload ? (
+            {hasEverything ? (
+              <>
+                {!owned && (
+                  <p className="text-sm text-muted-foreground">You already have every PDF in this bundle.</p>
+                )}
+                <Link href="/library" className={buttonVariants({ className: "w-full" })}>
+                  <Library className="size-4" />
+                  Open my library
+                </Link>
+              </>
+            ) : canDownload ? (
               <Button className="w-full" onClick={download} disabled={downloading}>
                 <Download className="size-4" />
                 {downloading ? "Preparing…" : "Download PDF"}
@@ -215,10 +310,16 @@ function ProductPageContent() {
             ) : user ? (
               <Button
                 className="w-full"
-                disabled={busy}
+                disabled={busy || (isBundle && !ownershipChecked)}
                 onClick={() => buy(product.id, product.title, buyerOf(user))}
               >
-                {busy ? "Opening checkout…" : "Buy now"}
+                {busy
+                  ? isFree
+                    ? "Adding…"
+                    : "Opening checkout…"
+                  : isBundle && isFree
+                    ? "Add to my library"
+                    : "Buy now"}
               </Button>
             ) : (
               <>
@@ -230,7 +331,7 @@ function ProductPageContent() {
                     )
                   }
                 >
-                  Sign in to buy
+                  {isBundle && isFree ? "Sign in to get it free" : "Sign in to buy"}
                 </Button>
                 {/* Someone who already bought this and came back on another
                     device would otherwise see only "Buy now" and reasonably
@@ -241,7 +342,15 @@ function ProductPageContent() {
               </>
             )}
 
-            {primary && (
+            {isBundle && contents.length > 0 && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Layers className="size-4" />
+                Bundle · {contents.length} PDF{contents.length === 1 ? "" : "s"}
+                {totalPages > 0 && ` · ${totalPages} pages`}
+              </div>
+            )}
+
+            {!isBundle && primary && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <FileText className="size-4" />
                 PDF
@@ -250,7 +359,14 @@ function ProductPageContent() {
               </div>
             )}
 
-            {!canDownload && (
+            {isBundle && !hasEverything && (
+              <p className="text-xs text-muted-foreground">
+                Every PDF in the bundle goes straight into your library{isFree ? "" : " after payment"}, as one bundle you can
+                open and download from any time.
+              </p>
+            )}
+
+            {!isBundle && !canDownload && (
               <p className="text-xs text-muted-foreground">
                 Instant download after payment. Yours to keep — it is added straight to your library, so you can come back and re-download it any time without digging through email receipts.
               </p>

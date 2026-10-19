@@ -133,10 +133,11 @@ interface RequestOptions {
   /** Skips the bearer header — for login/register. */
   anonymous?: boolean;
   signal?: AbortSignal;
+  headers?: Record<string, string>;
 }
 
 async function send<T>(path: string, options: RequestOptions, isRetry = false): Promise<T> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...options.headers };
 
   if (!options.anonymous && accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
@@ -212,7 +213,7 @@ function extractMessage(body: unknown, status: number): string {
 }
 
 export const api = {
-  get: <T>(path: string, signal?: AbortSignal) => send<T>(path, { signal }),
+  get: <T>(path: string, signal?: AbortSignal, headers?: Record<string, string>) => send<T>(path, { signal, headers }),
   post: <T>(path: string, body?: unknown) => send<T>(path, { method: "POST", body }),
   patch: <T>(path: string, body?: unknown) => send<T>(path, { method: "PATCH", body }),
   put: <T>(path: string, body?: unknown) => send<T>(path, { method: "PUT", body }),

@@ -59,11 +59,13 @@ export interface FeedbackFormDetail {
   /** Off: the team picks any reply for the website. On: only ones that said yes. */
   askConsentToPublish: boolean;
   askShowName: boolean;
+  /** The Telegram link takes replies without signing in, with a typed name. */
+  openLink: boolean;
   closesAt: string | null;
   /** When the day (or the session) it asks about ends. */
   endsAt: string | null;
   emailDueAt: string | null;
-  /** For the Telegram group. Asks people to sign in. */
+  /** For the Telegram group. Asks people to sign in, or with `openLink`, for their name. */
   shareUrl: string;
   responses: number;
   questions: Array<FeedbackQuestion & { id: string; answered: boolean }>;
@@ -82,6 +84,7 @@ export interface FeedbackFormSettings {
   allowAnonymous?: boolean;
   askConsentToPublish?: boolean;
   askShowName?: boolean;
+  openLink?: boolean;
   closesAt?: string | null;
 }
 
@@ -105,6 +108,8 @@ export interface FeedbackPeople {
   opened: number;
   responded: number;
   otherResponses: number;
+  /** Replies on the no-sign-in Telegram link: no account, so not in the table. */
+  openLinkResponses: number;
 }
 
 export interface FeedbackSendResult {
@@ -148,7 +153,9 @@ export interface FeedbackReply {
   consentToPublish: boolean;
   /** "Show my first name on the website": null when the form did not ask. */
   showName: boolean | null;
-  source: "EMAIL_LINK" | "SIGNED_IN";
+  source: "EMAIL_LINK" | "SIGNED_IN" | "OPEN_LINK";
+  /** False for a no-sign-in reply: the name was typed and no seat was checked. */
+  verified: boolean;
   submittedAt: string;
   editedAt: string | null;
   answers: Array<{ questionId: string; rating: number | null; text: string | null; choices: string[] }>;

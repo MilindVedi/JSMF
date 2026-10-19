@@ -106,6 +106,8 @@ export class SessionMaterialsService implements OrderPaidListener, OnModuleInit 
           title: m.product.title,
           listed: m.product.listed,
           status: m.product.status,
+          /** A PDF bundle's PDF count; null for a single PDF. */
+          bundleSize: m.product.type === ProductType.BUNDLE ? m.product._count.bundleItems : null,
           addedAt: m.createdAt,
         })),
     }));
@@ -139,7 +141,12 @@ export class SessionMaterialsService implements OrderPaidListener, OnModuleInit 
     };
   }
 
-  /** Attaches a store PDF to one day, and gives it to everyone due it. */
+  /**
+   * Attaches a store PDF, or a PDF bundle, to one day, and gives it to everyone
+   * due it. A bundle gives its PDFs too, always its current ones: adding a PDF
+   * to the bundle later reaches seat holders on the next reconcile, and
+   * removing one takes it back, exactly as for the day's own PDFs.
+   */
   async add(
     sessionId: string,
     input: { dayId: string; productId: string },
@@ -157,12 +164,18 @@ export class SessionMaterialsService implements OrderPaidListener, OnModuleInit 
         type: true,
         title: true,
         assets: { where: { kind: AssetKind.PRIMARY_FILE, isCurrent: true }, select: { id: true } },
+        _count: { select: { bundleItems: { where: { child: { deletedAt: null } } } } },
       },
     });
     if (!product) throw new NotFoundException('That PDF was not found, or it is archived.');
-    if (product.type !== ProductType.PDF) throw new BadRequestException('Only PDFs from the store can be attached.');
-    if (product.assets.length === 0) {
+    if (product.type !== ProductType.PDF && product.type !== ProductType.BUNDLE) {
+      throw new BadRequestException('Only PDFs and PDF bundles from the store can be attached.');
+    }
+    if (product.type === ProductType.PDF && product.assets.length === 0) {
       throw new BadRequestException(`"${product.title}" has no PDF uploaded yet. Upload its file in the store first.`);
+    }
+    if (product.type === ProductType.BUNDLE && product._count.bundleItems === 0) {
+      throw new BadRequestException(`The bundle "${product.title}" has no PDFs in it yet. Add them in the store first.`);
     }
 
     const position = await this.prisma.sessionMaterial.count({ where: { dayId: input.dayId } });
@@ -316,16 +329,34 @@ export class SessionMaterialsService implements OrderPaidListener, OnModuleInit 
         lateJoinersGetEarlierMaterials: true,
         materials: {
           where: { product: { deletedAt: null } },
-          select: { productId: true, day: { select: { startsAt: true, durationMinutes: true } } },
+          select: {
+            productId: true,
+            day: { select: { startsAt: true, durationMinutes: true } },
+            product: {
+              select: {
+                type: true,
+                bundleItems: { where: { child: { deletedAt: null } }, select: { childProductId: true } },
+              },
+            },
+          },
         },
       },
     });
     if (!session) return { granted: 0, revoked: 0 };
 
+    // A bundle on a day stands for itself and each PDF in it, on that day.
+    // Unpacked here, everything below treats them as the day's own PDFs.
+    const materials = session.materials.flatMap((m) => [
+      { productId: m.productId, day: m.day },
+      ...(m.product.type === ProductType.BUNDLE
+        ? m.product.bundleItems.map((item) => ({ productId: item.childProductId, day: m.day }))
+        : []),
+    ]);
+
     const holders = await this.seatHolders(db, sessionId);
     const desired = desiredAccess(
       holders.map((h) => ({ userId: h.userId, joinedAt: h.grantedAt, sourceOrderId: h.sourceOrderId })),
-      session.materials,
+      materials,
       session.lateJoinersGetEarlierMaterials,
     );
 
@@ -344,7 +375,7 @@ export class SessionMaterialsService implements OrderPaidListener, OnModuleInit 
       revoked += 1;
     }
 
-    const productIds = [...new Set(session.materials.map((m) => m.productId))];
+    const productIds = [...new Set(materials.map((m) => m.productId))];
     if (productIds.length === 0 || holders.length === 0) return { granted: 0, revoked };
 
     const held = await db.entitlement.findMany({
@@ -427,7 +458,15 @@ export class SessionMaterialsService implements OrderPaidListener, OnModuleInit 
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
           include: {
             day: { select: { startsAt: true, durationMinutes: true } },
-            product: { select: { title: true, listed: true, status: true } },
+            product: {
+              select: {
+                title: true,
+                listed: true,
+                status: true,
+                type: true,
+                _count: { select: { bundleItems: { where: { child: { deletedAt: null } } } } },
+              },
+            },
           },
         },
       },

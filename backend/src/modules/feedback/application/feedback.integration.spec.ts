@@ -382,6 +382,130 @@ describe('feedback forms', () => {
     expect(after.attribution).toMatch(/^Asha/);
   });
 
+  describe('no-sign-in Telegram link (openLink)', () => {
+    const key = (n: number) => `browser-key-${tag}-${n}`.padEnd(40, 'x');
+
+    async function openForm(settings: Record<string, unknown> = {}) {
+      const session = await createSession();
+      const holder = await seat(session.id, `open-holder-${randomUUID().slice(0, 4)}`, hoursAgo(48));
+      const form = await forms.create(session.id, { dayId: session.day1, templateKey: 'quick-pulse' }, admin());
+      await forms.update(
+        session.id,
+        form.id,
+        { status: FeedbackFormStatus.OPEN, emailMode: FeedbackEmailMode.MANUAL, ...settings },
+        admin(),
+      );
+      const [rating, line] = form.questions;
+      const answers = (text: string) => [
+        { questionId: rating.id, rating: 5 },
+        { questionId: line.id, text },
+      ];
+      return { session, holder, form, answers };
+    }
+
+    it('is off by default: signed out still has to sign in, and an open reply is refused', async () => {
+      const { form, answers } = await openForm();
+      expect(form.openLink).toBe(false);
+      const view = await responses.view(form.id, {});
+      expect(view).toMatchObject({ state: 'SIGN_IN_REQUIRED', mode: null });
+      await expect(
+        responses.submitOpen(form.id, { respondentName: 'Riya', editKey: key(0), answers: answers('Hi') }),
+      ).rejects.toThrow(/sign in/i);
+    });
+
+    it('takes a named reply without signing in; the same browser edits it, another browser adds one', async () => {
+      const { session, holder, form, answers } = await openForm({ openLink: true, askShowName: true });
+
+      const signedOut = await responses.view(form.id, {});
+      expect(signedOut).toMatchObject({ state: 'OPEN', mode: 'OPEN_LINK', response: null });
+      expect(signedOut.form.openLink).toBe(true);
+
+      // Name is required, and only spaces does not count.
+      await expect(
+        responses.submitOpen(form.id, { respondentName: '   ', editKey: key(1), answers: answers('x') }),
+      ).rejects.toThrow(/Enter your name/);
+
+      const first = await responses.submitOpen(form.id, {
+        respondentName: '  Riya   Sharma ',
+        editKey: key(1),
+        answers: answers('First go'),
+        showName: true,
+      });
+      expect(first.edited).toBe(false);
+
+      // Same browser: its reply comes back, and sending again changes it.
+      const again = await responses.view(form.id, { editKey: key(1) });
+      expect(again.response).toMatchObject({ respondentName: 'Riya Sharma', showName: true });
+      const edited = await responses.submitOpen(form.id, {
+        respondentName: 'Riya Sharma',
+        editKey: key(1),
+        answers: answers('Changed my mind'),
+      });
+      expect(edited.edited).toBe(true);
+
+      // Another browser is another reply.
+      await responses.submitOpen(form.id, { respondentName: 'Kabir', editKey: key(2), answers: answers('Second') });
+
+      // A seat holder who is signed in still replies as themselves.
+      const asHolder = await responses.view(form.id, { user: { id: holder.id, roles: [] } as never });
+      expect(asHolder).toMatchObject({ state: 'OPEN', mode: 'PERSONAL' });
+
+      const results = await forms.results(session.id, form.id);
+      expect(results.total).toBe(2);
+      const riya = results.responses.find((r) => r.name === 'Riya Sharma')!;
+      expect(riya).toMatchObject({ source: 'OPEN_LINK', verified: false, email: null, stage: null, showName: false });
+      expect(riya.answers.find((a) => a.text)?.text).toBe('Changed my mind');
+
+      // Not in the "who's been asked" table, but counted.
+      const people = await invites.people(session.id, form.id);
+      expect(people.responded).toBe(0);
+      expect(people.openLinkResponses).toBe(2);
+      expect(people.otherResponses).toBe(0);
+
+      // A website card uses the typed first name.
+      const section = await sections.create(session.id, { heading: 'Open link quotes', dayId: session.day1 }, admin());
+      const card = await highlights.create(
+        session.id,
+        form.id,
+        { responseId: riya.id, sectionId: section.id, showName: true },
+        admin(),
+      );
+      expect(card.attribution).toBe('Riya');
+    });
+
+    it('still asks for consent where the form does, and never hides the typed name', async () => {
+      const { session, form, answers } = await openForm({
+        openLink: true,
+        askConsentToPublish: true,
+        allowAnonymous: true,
+      });
+      await responses.submitOpen(form.id, {
+        respondentName: 'Meera',
+        editKey: key(3),
+        answers: answers('Loved it'),
+        consentToPublish: false,
+        // Not part of the open reply; must be ignored if a client sends it.
+        ...({ isAnonymous: true } as object),
+      } as never);
+
+      const [reply] = (await forms.results(session.id, form.id)).responses;
+      expect(reply).toMatchObject({ name: 'Meera', isAnonymous: false, consentToPublish: false });
+      const section = await sections.create(session.id, { heading: 'Consent quotes', dayId: session.day1 }, admin());
+      await expect(
+        highlights.create(session.id, form.id, { responseId: reply.id, sectionId: section.id }, admin()),
+      ).rejects.toThrow(/did not agree/);
+    });
+
+    it('refuses open replies once the form has closed', async () => {
+      const { session, form, answers } = await openForm({ openLink: true });
+      await forms.update(session.id, form.id, { status: FeedbackFormStatus.CLOSED }, admin());
+      expect((await responses.view(form.id, {})).state).toBe('CLOSED');
+      await expect(
+        responses.submitOpen(form.id, { respondentName: 'Late', editKey: key(4), answers: answers('Late') }),
+      ).rejects.toThrow(/closed/);
+    });
+  });
+
   it('imports questions from a form on another session', async () => {
     const first = await createSession();
     const second = await createSession();

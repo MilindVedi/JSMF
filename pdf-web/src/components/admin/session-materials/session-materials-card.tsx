@@ -234,9 +234,10 @@ function DayMaterials({
   useEffect(() => {
     if (!adding) return;
     const timer = setTimeout(() => {
-      adminApi
-        .listProducts({ type: "PDF", q: query.trim() || undefined })
-        .then((page) => setFound({ query, items: page.items }))
+      const q = query.trim() || undefined;
+      // PDFs and PDF bundles: a bundle on a day gives seat holders all its PDFs.
+      Promise.all([adminApi.listProducts({ type: "PDF", q }), adminApi.listProducts({ type: "BUNDLE", q })])
+        .then(([pdfs, bundles]) => setFound({ query, items: [...bundles.items, ...pdfs.items] }))
         .catch(() => setFound({ query, items: [] }));
     }, 250);
     return () => clearTimeout(timer);
@@ -295,6 +296,11 @@ function DayMaterials({
                   <span className="truncate">{material.title}</span>
                 </Link>
                 <div className="mt-1 flex flex-wrap gap-1.5">
+                  {material.bundleSize !== null && (
+                    <Badge variant="secondary" className="text-xs">
+                      Bundle · {material.bundleSize} PDF{material.bundleSize === 1 ? "" : "s"}
+                    </Badge>
+                  )}
                   <Badge variant="outline" className="text-xs">
                     {material.listed ? "Also in store" : "Hidden from store"}
                   </Badge>
@@ -323,7 +329,7 @@ function DayMaterials({
         <div className="space-y-2">
           <Input
             autoFocus
-            placeholder="Search PDFs in the store"
+            placeholder="Search PDFs and bundles in the store"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -338,7 +344,9 @@ function DayMaterials({
               </li>
             ) : (
               results.map((product) => {
-                const hasFile = product.assets.some((asset) => asset.kind === "PRIMARY_FILE");
+                const isBundle = product.type === "BUNDLE";
+                const bundleSize = product._count?.bundleItems ?? 0;
+                const hasFile = isBundle ? bundleSize > 0 : product.assets.some((asset) => asset.kind === "PRIMARY_FILE");
                 const already = attached.has(product.id);
                 return (
                   <li key={product.id}>
@@ -350,7 +358,17 @@ function DayMaterials({
                     >
                       {product.title}
                       <span className="ml-2 text-xs text-muted-foreground">
-                        {already ? "already on this day" : !hasFile ? "no file uploaded" : product.listed ? "in store" : "hidden"}
+                        {already
+                          ? "already on this day"
+                          : isBundle && !hasFile
+                            ? "empty bundle"
+                            : !hasFile
+                              ? "no file uploaded"
+                              : isBundle
+                                ? `bundle · ${bundleSize} PDF${bundleSize === 1 ? "" : "s"}`
+                                : product.listed
+                                  ? "in store"
+                                  : "hidden"}
                       </span>
                     </button>
                   </li>

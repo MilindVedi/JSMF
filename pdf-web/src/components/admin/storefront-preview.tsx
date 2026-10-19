@@ -118,9 +118,12 @@ export function StorefrontPreview({
   product,
   coverUrl,
   showLinks = false,
+  bundleSize = null,
 }: {
   product: ProductDetail;
   coverUrl: string | null;
+  /** A bundle's PDF count, for the card's badge. */
+  bundleSize?: number | null;
   /**
    * Also renders the YouTube / related-links block exactly as it appears on
    * the product page — the Links step is the only place an admin is looking
@@ -131,7 +134,7 @@ export function StorefrontPreview({
 }) {
   // ProductDetail carries every field a storefront card reads; only the signed
   // cover URL, which the public API resolves server-side, has to be supplied.
-  const asStorefront = { ...product, coverUrl } as unknown as StorefrontProduct;
+  const asStorefront = { ...product, coverUrl, bundleSize } as unknown as StorefrontProduct;
 
   return (
     <div className="space-y-4">

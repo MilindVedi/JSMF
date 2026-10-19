@@ -9,7 +9,10 @@ import {
   UserStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import { AuditService } from '../../../shared/audit/audit.service';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
+import { BundleContentsService } from '../../catalog/application/bundle-contents.service';
+import { ProductService } from '../../catalog/application/product.service';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import { StubPaymentAdapter } from '../../payments/infrastructure/stub-payment.adapter';
 import { OrderEvents } from './order-events';
@@ -96,6 +99,9 @@ const provider = new StubPaymentAdapter(config);
 const entitlements = new EntitlementService(prisma);
 const orders = new OrderService(prisma, provider, entitlements);
 const payments = new PaymentService(prisma, provider, entitlements, mail, whatsapp, config, new OrderEvents());
+const audit = new AuditService(prisma);
+const catalog = new ProductService(prisma, audit);
+const bundles = new BundleContentsService(prisma, entitlements, audit);
 
 /** Everything created here, so teardown deletes exactly this and nothing else. */
 const created = { userIds: [] as string[], productIds: [] as string[] };
@@ -148,6 +154,10 @@ afterAll(async () => {
     await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
     await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   }
+  // A PDF inside a bundle cannot be deleted while the bundle lists it.
+  await prisma.productBundleItem.deleteMany({ where: { bundleProductId: { in: created.productIds } } });
+  await prisma.productAsset.deleteMany({ where: { productId: { in: created.productIds } } });
+  await prisma.auditLog.deleteMany({ where: { actorUserId: { in: created.userIds } } });
   await prisma.product.deleteMany({ where: { id: { in: created.productIds } } });
   await prisma.user.deleteMany({ where: { id: { in: created.userIds } } });
 
@@ -1059,3 +1069,222 @@ describe('refunds made in the Razorpay dashboard', () => {
     expect(await entitlements.findActive(userId, productId)).toBeNull();
   });
 });
+
+describe('PDF bundles', () => {
+  const BUNDLE_PRICE = 30000n;
+
+  async function buyer(label: string) {
+    const user = await prisma.user.create({
+      data: { email: `bundle-${label}-${randomUUID()}@jsmf.test`, name: `Bundle ${label}`, status: UserStatus.ACTIVE },
+    });
+    created.userIds.push(user.id);
+    return user;
+  }
+
+  async function pdf(label: string) {
+    const product = await prisma.product.create({
+      data: {
+        slug: `bundle-pdf-${label}-${randomUUID()}`,
+        title: `Bundle PDF ${label}`,
+        type: ProductType.PDF,
+        accessType: AccessType.PAID,
+        status: ProductStatus.PUBLISHED,
+        publishedAt: new Date(),
+        priceAmountMinor: 9900n,
+        currency: 'INR',
+      },
+    });
+    created.productIds.push(product.id);
+    await prisma.productAsset.create({
+      data: {
+        productId: product.id,
+        kind: 'PRIMARY_FILE',
+        storageProvider: 'LOCAL',
+        bucket: 'private',
+        objectKey: `spec/${product.id}.pdf`,
+        originalFilename: `${label}.pdf`,
+      },
+    });
+    return product;
+  }
+
+  /** A published bundle of three PDFs, ₹300. */
+  async function bundleOfThree(actorId: string) {
+    const parts = [await pdf('a'), await pdf('b'), await pdf('c')];
+    const bundle = await prisma.product.create({
+      data: {
+        slug: `bundle-${randomUUID()}`,
+        title: 'Revision bundle',
+        type: ProductType.BUNDLE,
+        accessType: AccessType.PAID,
+        status: ProductStatus.DRAFT,
+        priceAmountMinor: BUNDLE_PRICE,
+        currency: 'INR',
+      },
+    });
+    created.productIds.push(bundle.id);
+
+    // Empty, it cannot go on sale.
+    await expect(catalog.publish(bundle.id, { id: actorId })).rejects.toThrow(/no PDFs in it/);
+    for (const part of parts) await bundles.add(bundle.id, { productId: part.id }, { id: actorId });
+    await catalog.publish(bundle.id, { id: actorId });
+    return { bundle, parts };
+  }
+
+  async function payFor(user: { id: string }, productId: string, amountMinor: bigint) {
+    const result = await orders.checkout({ userId: user.id, productId, customerEmail: 'bundle@jsmf.test' });
+    if (result.kind !== 'PAYMENT_REQUIRED') throw new Error('expected a paid checkout');
+    expect(result.amountMinor).toBe(amountMinor);
+    await deliver({
+      providerOrderId: result.providerOrderId,
+      amountMinor,
+      providerPaymentId: `pay_stub_${randomUUID().replace(/-/g, '').slice(0, 14)}`,
+    });
+    return result;
+  }
+
+  const active = (uid: string) =>
+    prisma.entitlement.findMany({ where: { userId: uid, status: EntitlementStatus.ACTIVE } });
+
+  it('sells its PDFs as one card in the library, and a refund takes them all back', async () => {
+    const student = await buyer('full');
+    const { bundle, parts } = await bundleOfThree(student.id);
+
+    // Only PDFs, each once, never the bundle itself.
+    await expect(bundles.add(bundle.id, { productId: bundle.id }, { id: student.id })).rejects.toThrow(
+      /cannot contain itself/,
+    );
+    await expect(bundles.add(bundle.id, { productId: parts[0].id }, { id: student.id })).rejects.toThrow(
+      /already in this bundle/,
+    );
+
+    const checkout = await payFor(student, bundle.id, BUNDLE_PRICE);
+
+    const rows = await active(student.id);
+    expect(rows.map((r) => r.productId).sort()).toEqual([bundle.id, ...parts.map((p) => p.id)].sort());
+    for (const part of parts) {
+      expect(rows.find((r) => r.productId === part.id)).toMatchObject({
+        source: 'BUNDLE',
+        sourceProductId: bundle.id,
+        sourceOrderId: checkout.orderId,
+      });
+    }
+
+    const library = await entitlements.listForUser(student.id);
+    expect(library.map((r) => r.productId)).toEqual([bundle.id]);
+    expect(library[0].contents?.map((c) => c.id)).toEqual(parts.map((p) => p.id));
+
+    await payments.refund(checkout.orderId, student.id, 'spec');
+    expect(await active(student.id)).toHaveLength(0);
+  });
+
+  it('charges a part-owner only for the PDFs they lack, and refuses one who has them all', async () => {
+    const owner = await buyer('part');
+    const { bundle, parts } = await bundleOfThree(owner.id);
+    await entitlements.grant({ userId: owner.id, productId: parts[0].id, source: 'FREE_CLAIM' });
+
+    const quote = await orders.bundleQuote(owner.id, bundle.id);
+    expect(quote).toMatchObject({ priceMinor: '30000', payMinor: '20000', totalPdfs: 3, nothingToBuy: false });
+    expect(quote.owned.map((o) => o.id)).toEqual([parts[0].id]);
+
+    const checkout = await payFor(owner, bundle.id, 20000n);
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: checkout.orderId } });
+    expect(order).toMatchObject({ subtotalAmountMinor: 30000n, discountAmountMinor: 10000n, totalAmountMinor: 20000n });
+    // The PDF they had stays theirs as it was.
+    const kept = (await active(owner.id)).find((r) => r.productId === parts[0].id);
+    expect(kept?.source).toBe('FREE_CLAIM');
+
+    const collector = await buyer('all');
+    for (const part of parts) await entitlements.grant({ userId: collector.id, productId: part.id, source: 'FREE_CLAIM' });
+    expect((await orders.bundleQuote(collector.id, bundle.id)).nothingToBuy).toBe(true);
+    await expect(orders.checkout({ userId: collector.id, productId: bundle.id, customerEmail: null })).rejects.toThrow(
+      /every PDF in this bundle/,
+    );
+  });
+
+  it('lets the admin choose, per PDF, whether it is also sold on its own', async () => {
+    const admin = await buyer('lister');
+    const { bundle } = await bundleOfThree(admin.id);
+    const shopper = await buyer('shopper');
+
+    // Left alone, a store PDF stays in the store, and can still be bought singly.
+    const both = await pdf('both');
+    await bundles.add(bundle.id, { productId: both.id }, { id: admin.id });
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: both.id } })).listed).toBe(true);
+    const single = await orders.checkout({ userId: shopper.id, productId: both.id, customerEmail: null });
+    expect(single.kind).toBe('PAYMENT_REQUIRED');
+
+    // Chosen bundle-only: out of the store, so it can't be bought by itself.
+    const only = await pdf('only');
+    await bundles.add(bundle.id, { productId: only.id, sellOnItsOwn: false }, { id: admin.id });
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: only.id } })).listed).toBe(false);
+    await expect(orders.checkout({ userId: shopper.id, productId: only.id, customerEmail: null })).rejects.toThrow(
+      /not found/i,
+    );
+
+    // And it can be put back on sale while still in the bundle.
+    await catalog.update(only.id, { listed: true }, { id: admin.id });
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: only.id } })).listed).toBe(true);
+  });
+
+  it('does not let a free PDF in the bundle take money off', async () => {
+    const student = await buyer('free-claim');
+    const { bundle, parts } = await bundleOfThree(student.id);
+    const freebie = await pdf('free');
+    await prisma.product.update({ where: { id: freebie.id }, data: { accessType: AccessType.FREE, priceAmountMinor: 0n } });
+    await bundles.add(bundle.id, { productId: freebie.id }, { id: student.id });
+
+    await entitlements.grant({ userId: student.id, productId: freebie.id, source: 'FREE_CLAIM' });
+    expect(await orders.bundleQuote(student.id, bundle.id)).toMatchObject({
+      payMinor: '30000',
+      totalPdfs: 4,
+      paidPdfs: 3,
+      paidOwned: 0,
+    });
+
+    // A paid one does, at a third of the price.
+    await entitlements.grant({ userId: student.id, productId: parts[0].id, source: 'FREE_CLAIM' });
+    const quote = await orders.bundleQuote(student.id, bundle.id);
+    expect(quote).toMatchObject({ payMinor: '20000', paidOwned: 1 });
+    expect(quote.owned.map((o) => o.id)).toEqual([parts[0].id, freebie.id]);
+  });
+
+  it('keeps every holder on the current contents: added PDFs reach them, removed ones are taken back', async () => {
+    const student = await buyer('later');
+    const { bundle } = await bundleOfThree(student.id);
+    const checkout = await payFor(student, bundle.id, BUNDLE_PRICE);
+
+    // Someone who bought the PDF on its own before it was bundled.
+    const loyal = await buyer('loyal');
+    const added = await pdf('added');
+    await entitlements.grant({ userId: loyal.id, productId: added.id, source: 'FREE_CLAIM' });
+
+    const result = await bundles.add(bundle.id, { productId: added.id }, { id: student.id });
+    expect(result).toMatchObject({ given: 1, holders: 1 });
+    const grant = (await active(student.id)).find((r) => r.productId === added.id);
+    expect(grant).toMatchObject({ source: 'BUNDLE', sourceProductId: bundle.id, sourceOrderId: checkout.orderId });
+
+    const removed = await bundles.remove(bundle.id, added.id, { id: student.id });
+    expect(removed.revoked).toBe(1);
+    expect((await active(student.id)).map((r) => r.productId)).not.toContain(added.id);
+    // Their own copy is not the bundle's to take.
+    expect((await active(loyal.id)).map((r) => r.productId)).toContain(added.id);
+  });
+
+  it('does not take a PDF away while another of their bundles still has it', async () => {
+    const student = await buyer('two-bundles');
+    const { bundle: first } = await bundleOfThree(student.id);
+    const { bundle: second } = await bundleOfThree(student.id);
+    await payFor(student, first.id, BUNDLE_PRICE);
+    await payFor(student, second.id, BUNDLE_PRICE);
+
+    const shared = await pdf('shared');
+    await bundles.add(first.id, { productId: shared.id }, { id: student.id });
+    await bundles.add(second.id, { productId: shared.id }, { id: student.id });
+
+    await bundles.remove(first.id, shared.id, { id: student.id });
+    const row = (await active(student.id)).find((r) => r.productId === shared.id);
+    expect(row).toMatchObject({ source: 'BUNDLE', sourceProductId: second.id });
+  });
+});
+

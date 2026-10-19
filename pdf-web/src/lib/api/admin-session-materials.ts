@@ -13,6 +13,8 @@ export interface SessionMaterialItem {
   /** "Show in store". False = only seat holders (and buyers) can get it. */
   listed: boolean;
   status: string;
+  /** A PDF bundle's PDF count; null for a single PDF. */
+  bundleSize: number | null;
   addedAt: string;
 }
 

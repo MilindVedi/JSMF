@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { EntitlementsModule } from '../entitlements/entitlements.module';
+import { BundleContentsService } from './application/bundle-contents.service';
 import { PrismaModule } from '../../shared/prisma/prisma.module';
 import { StorageModule } from '../storage/storage.module';
 import { ProductAssetService } from './application/product-asset.service';
@@ -19,14 +21,14 @@ import { CatalogController } from './http/catalog.controller';
  * from "who may have it".
  */
 @Module({
-  imports: [PrismaModule, StorageModule],
+  imports: [PrismaModule, StorageModule, EntitlementsModule],
   controllers: [
     AdminFeaturedController,
     AdminProductController,
     AdminTaxonomyController,
     CatalogController,
   ],
-  providers: [ProductService, ProductAssetService, TaxonomyService],
+  providers: [ProductService, ProductAssetService, TaxonomyService, BundleContentsService],
   exports: [ProductService, ProductAssetService, TaxonomyService],
 })
 export class CatalogModule {}

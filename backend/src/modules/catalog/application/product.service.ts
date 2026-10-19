@@ -254,8 +254,19 @@ export class ProductService {
     // A live session or a one-to-one call is sold, not downloaded: there is no
     // file to require. Their own details are written in the same transaction
     // as the product, so neither can exist without them.
+    // A bundle has no file of its own: what it must have is PDFs in it.
+    if (before.type === ProductType.BUNDLE) {
+      const contents = await this.prisma.productBundleItem.count({
+        where: { bundleProductId: id, child: ACTIVE },
+      });
+      if (contents === 0) {
+        throw new ConflictException('This bundle has no PDFs in it yet. Add them on the Contents tab before publishing.');
+      }
+    }
     const primaryFile =
-      before.type === ProductType.LIVE_SESSION || before.type === ProductType.MENTORSHIP
+      before.type === ProductType.LIVE_SESSION ||
+      before.type === ProductType.MENTORSHIP ||
+      before.type === ProductType.BUNDLE
         ? true
         : await this.prisma.productAsset.findFirst({
             where: { productId: id, kind: AssetKind.PRIMARY_FILE, isCurrent: true },
@@ -459,6 +470,7 @@ export class ProductService {
         include: {
           assets: { where: { isCurrent: true }, select: { id: true, kind: true } },
           taxonomyTerms: { include: { term: { include: { taxonomy: true } } } },
+          _count: { select: { bundleItems: { where: { child: ACTIVE } } } },
         },
       }),
       this.prisma.product.count({ where }),
@@ -514,6 +526,8 @@ export class ProductService {
             select: { id: true },
             take: 1,
           },
+          // "Bundle · 5 PDFs" on the card.
+          _count: { select: { bundleItems: { where: { child: ACTIVE } } } },
         },
       }),
       this.prisma.product.count({ where }),
@@ -555,6 +569,7 @@ export class ProductService {
           select: { id: true },
           take: 1,
         },
+        _count: { select: { bundleItems: { where: { child: ACTIVE } } } },
       },
     });
   }
@@ -685,6 +700,30 @@ export class ProductService {
           include: { term: { include: { taxonomy: true } } },
         },
         author: { select: { id: true, name: true } },
+        // A bundle's PDFs, for its page. Titles and page counts only; a PDF
+        // hidden from the store is named but not linked.
+        bundleItems: {
+          where: { child: ACTIVE },
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            child: {
+              select: {
+                id: true,
+                slug: true,
+                title: true,
+                subtitle: true,
+                listed: true,
+                status: true,
+                accessType: true,
+                priceAmountMinor: true,
+                assets: {
+                  where: { kind: AssetKind.PRIMARY_FILE, isCurrent: true },
+                  select: { pageCount: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -700,7 +739,26 @@ export class ProductService {
       select: { storageProvider: true, bucket: true, objectKey: true, kind: true },
     });
 
-    return { ...product, cover };
+    const { bundleItems, ...rest } = product;
+    const contents =
+      product.type === ProductType.BUNDLE
+        ? bundleItems.map(({ child }) => ({
+            id: child.id,
+            title: child.title,
+            subtitle: child.subtitle,
+            pageCount: child.assets[0]?.pageCount ?? null,
+            // Only a page that exists publicly is linked, and only then is
+            // its own price shown: it can be bought alone from there.
+            ...(child.listed && child.status === ProductStatus.PUBLISHED
+              ? {
+                  slug: child.slug,
+                  priceMinor: child.accessType === AccessType.FREE ? '0' : child.priceAmountMinor.toString(),
+                }
+              : { slug: null, priceMinor: null }),
+          }))
+        : null;
+
+    return { ...rest, cover, contents };
   }
 
   async findAdminDetail(id: string) {
@@ -710,11 +768,17 @@ export class ProductService {
         assets: { orderBy: [{ kind: 'asc' }, { version: 'desc' }] },
         links: { orderBy: { sortOrder: 'asc' } },
         taxonomyTerms: { include: { term: { include: { taxonomy: true } } } },
+        // The bundles this PDF is in, shown beside its "Show in store" switch.
+        inBundles: {
+          where: { bundle: { type: ProductType.BUNDLE, ...ACTIVE } },
+          select: { bundle: { select: { id: true, title: true } } },
+        },
       },
     });
 
     if (!product) throw new NotFoundException('Product not found');
-    return product;
+    const { inBundles, ...rest } = product;
+    return { ...rest, inBundles: inBundles.map((item) => item.bundle) };
   }
 
   // --- rules --------------------------------------------------------------

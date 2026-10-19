@@ -11,6 +11,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -105,6 +106,13 @@ export class UpdateFeedbackFormDto {
   @IsOptional()
   @IsBoolean()
   askShowName?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'The shared (Telegram) link takes replies without signing in, with a typed name. Not verified.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  openLink?: boolean;
 
   @ApiPropertyOptional({ nullable: true, description: 'Stop taking replies after this time (ISO 8601). Null = never on its own.' })
   @IsOptional()
@@ -282,4 +290,21 @@ export class SubmitFeedbackDto {
   @IsOptional()
   @IsBoolean()
   showName?: boolean;
+}
+
+/** A reply on the no-sign-in link: everything above, plus who they say they are. */
+export class SubmitOpenFeedbackDto extends SubmitFeedbackDto {
+  @ApiProperty({ maxLength: 80, description: 'The name the person typed.' })
+  @IsString()
+  @MaxLength(80)
+  respondentName!: string;
+
+  @ApiProperty({
+    minLength: 32,
+    maxLength: 128,
+    description: "A random key the browser keeps, so the same browser changes its reply instead of sending another.",
+  })
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{32,128}$/)
+  editKey!: string;
 }

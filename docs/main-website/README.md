@@ -647,6 +647,23 @@ puts picked replies on the session page through the events module's
   `MANUAL` sends only from the admin page. Nobody who has replied is ever
   emailed again. A failed address is retried by the sweep up to 3 times, and
   after that only by an admin.
+- **No-sign-in Telegram link (added 2026-10-18), per form** (`open_link`,
+  default off). On, the shared link takes replies from anyone who types their
+  name: `source = OPEN_LINK`, `user_id` null, `respondent_name` set. Seat
+  holders on the emailed link, or signed in, still reply as themselves. The
+  browser keeps a random key (`localStorage`, `jsmf-feedback-key:<form>`) and
+  only its SHA-256 is stored (`edit_key_hash`, unique per form), so the same
+  browser edits its reply. Replies go to `POST /feedback/forms/:id/open-response`,
+  limited per network address to `FEEDBACK_OPEN_LINK_PER_HOUR` (default 300).
+  **Why both browser keys and an IP rate limit exist:**
+  - *Browser `editKey`:* Identifies individual human respondents so that multiple students sharing the same hostel/campus Wi-Fi get separate, independent replies in the database (they never overwrite each other).
+  - *IP Rate Limit (`FEEDBACK_OPEN_LINK_PER_HOUR`):* Because browser keys are generated client-side, an automated script could forge thousands of random keys in seconds. The network IP rate limiter is the necessary server-side flood gate that stops DDoS/spam scripts.
+  - *Sizing & Scaling Rule:* Sized above the largest cohort that could share a single public IP (e.g. campus Wi-Fi or cellular NAT) times expected edits: `(Cohort size) * 3`. The default of 300 comfortably covers batches of up to ~100 students on one network. For larger sessions (e.g., 300–500+ attendees on a shared campus network), raise `FEEDBACK_OPEN_LINK_PER_HOUR` on Cloud Run (e.g. to `1000` or `1500`) without code changes or rebuilds. A blocked student silently gives up, while spam is easily deleted in admin or blocked by flipping the sign-in switch. `RATE_LIMIT_IP_CEILING_PER_MINUTE` (default 3000) acts as an absolute backstop.
+  The key is sent as the `x-feedback-edit-key` header on the view, never in the
+  URL. "Hide my name" does not apply there; the two website questions do. Admin
+  shows them as **Telegram link · not verified**, counts them separately on
+  *Who's been asked*, and the CSV has a *Verified* column. What it gives up, by
+  decision: no seat check, and no stop on one person replying from two phones.
 - **Anonymity is the admin's choice per form** (`allow_anonymous`). When it is
   on, students get a "Hide my name from the JSMF team" tick box. The reply is
   still tied to the account (for one reply per person and editing), but no
@@ -679,7 +696,8 @@ puts picked replies on the session page through the events module's
 never deleted, and its kind is fixed), `feedback_invites` (the per-person
 tracking: emailed, reminders, last error, first opened; plus a short-lived
 `claimed_at` so two overlapping sends never email the same person twice),
-`feedback_responses` (unique per form and person), `feedback_answers` (typed
+`feedback_responses` (unique per form and person; and per form and edit key for
+open-link replies, migration `20261018160000_feedback_open_link`), `feedback_answers` (typed
 columns `rating_value` / `text_value` / `choice_values`, with CHECK
 constraints, so averages are plain SQL), and `feedback_highlights` (a picked
 reply: an editable copy of the quote and name, Cascade from both the reply and

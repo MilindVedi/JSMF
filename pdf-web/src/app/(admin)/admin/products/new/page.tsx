@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileText, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { rupeesToMinor } from "@/lib/money";
 
 export default function NewProductPage() {
   const router = useRouter();
+  const [type, setType] = useState<"PDF" | "BUNDLE">("PDF");
 
   async function onSubmit(values: ProductFormValues) {
     try {
@@ -21,6 +23,7 @@ export default function NewProductPage() {
         description: values.description || undefined,
         accessType: values.accessType,
         listed: values.listed,
+        type,
         priceAmountMinor:
           values.accessType === "PAID" ? rupeesToMinor(values.price ?? "0") : undefined,
         compareAtAmountMinor:
@@ -29,8 +32,11 @@ export default function NewProductPage() {
             : undefined,
       });
 
-      toast.success("Product created", {
-        description: "Now upload its PDF, then publish it.",
+      toast.success(type === "BUNDLE" ? "Bundle created" : "Product created", {
+        description:
+          type === "BUNDLE"
+            ? "Now add its PDFs on the Contents tab, then publish it."
+            : "Now upload its PDF, then publish it.",
       });
       router.replace(`/admin/products/${product.id}`);
     } catch (error) {
@@ -55,6 +61,43 @@ export default function NewProductPage() {
           is ready.
         </p>
       </div>
+
+      <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="What are you adding?">
+        {(
+          [
+            { value: "PDF", icon: FileText, title: "A single PDF", hint: "One file, sold or given on its own." },
+            {
+              value: "BUNDLE",
+              icon: Layers,
+              title: "A bundle of PDFs",
+              hint: "Several PDFs from the store, sold together at one price.",
+            },
+          ] as const
+        ).map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={type === option.value}
+            onClick={() => setType(option.value)}
+            className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-colors ${
+              type === option.value ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted/50"
+            }`}
+          >
+            <option.icon className="mt-0.5 size-5 shrink-0 text-primary" />
+            <span>
+              <span className="block text-sm font-medium">{option.title}</span>
+              <span className="block text-xs text-muted-foreground">{option.hint}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+      {type === "BUNDLE" && (
+        <p className="text-xs text-muted-foreground">
+          Set the bundle&apos;s own price below. Someone who already has some of its PDFs pays only for the rest, worked
+          out pro rata. You can&apos;t change a product between single PDF and bundle later.
+        </p>
+      )}
 
       <Card>
         <CardHeader>

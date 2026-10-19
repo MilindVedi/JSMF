@@ -209,6 +209,15 @@ function ReplyCard({
         <span className="font-medium">{reply.isAnonymous ? "Anonymous" : reply.name}</span>
         {reply.stage && <span className="text-xs text-muted-foreground">{reply.stage}</span>}
         {reply.email && <span className="text-xs text-muted-foreground">{reply.email}</span>}
+        {!reply.verified && (
+          <Badge
+            variant="outline"
+            className="border-amber-300 text-xs text-amber-800 dark:border-amber-800 dark:text-amber-300"
+            title="Sent without signing in. The name was typed, and no seat was checked."
+          >
+            Telegram link · not verified
+          </Badge>
+        )}
         {askConsent && reply.consentToPublish && (
           <Badge variant="outline" className="text-xs">
             OK to show on website
@@ -321,10 +330,22 @@ function ReplyCard({
 /** One row per reply, one column per question. Anonymous replies have no name or email. */
 function downloadCsv(title: string, results: FeedbackResults) {
   const cell = (value: string | number | null | undefined) => {
-    const text = value === null || value === undefined ? "" : String(value);
+    let text = value === null || value === undefined ? "" : String(value);
+    // Typed text that starts like a formula would run as one in a spreadsheet.
+    if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
-  const header = ["Submitted", "Name", "Email", "Stage", "Anonymous", "OK to show", "Happy to be named", ...results.questions.map((q) => q.label)];
+  const header = [
+    "Submitted",
+    "Name",
+    "Email",
+    "Stage",
+    "Anonymous",
+    "Verified",
+    "OK to show",
+    "Happy to be named",
+    ...results.questions.map((q) => q.label),
+  ];
   const lines = results.responses.map((reply) => {
     const byQuestion = new Map(reply.answers.map((a) => [a.questionId, a]));
     return [
@@ -333,6 +354,7 @@ function downloadCsv(title: string, results: FeedbackResults) {
       reply.email,
       reply.stage,
       reply.isAnonymous ? "yes" : "no",
+      reply.verified ? "yes" : "no (Telegram link)",
       reply.consentToPublish ? "yes" : "no",
       reply.showName === null ? "not asked" : reply.showName ? "yes" : "no",
       ...results.questions.map((q) => {

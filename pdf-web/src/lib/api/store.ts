@@ -10,6 +10,21 @@ import type {
 
 export interface StorefrontProduct extends ProductListItem {
   coverUrl: string | null;
+  /** How many PDFs a bundle holds. Null for anything that is not a bundle. */
+  bundleSize?: number | null;
+}
+
+/** What the signed-in buyer would pay for a bundle. Checkout works it out again. */
+export interface BundleQuote {
+  productId: string;
+  priceMinor: string;
+  payMinor: string;
+  totalPdfs: number;
+  owned: Array<{ id: string; title: string; free: boolean }>;
+  /** The price is shared across the paid PDFs only; free ones take nothing off. */
+  paidPdfs: number;
+  paidOwned: number;
+  nothingToBuy: boolean;
 }
 
 export interface CheckoutFree {
@@ -50,6 +65,8 @@ export interface Entitlement {
   };
   /** For a session handout: the session it came with. */
   sourceProduct: { id: string; title: string; type: string } | null;
+  /** For a bundle: the PDFs in it this person can download. Null otherwise. */
+  contents: Array<{ id: string; title: string; subtitle: string | null }> | null;
 }
 
 export const storeApi = {
@@ -76,6 +93,8 @@ export const storeApi = {
   product: (slug: string) => api.get<ProductDetail>(`/catalog/products/${slug}`),
 
   checkout: (productId: string) => api.post<CheckoutResult>("/orders", { productId }),
+
+  bundleQuote: (productId: string) => api.get<BundleQuote>(`/orders/quote/${productId}`),
 
   verifyPayment: (payload: {
     razorpayOrderId: string;

@@ -31,6 +31,26 @@ export interface ProductInput {
   language?: string;
   /** "Show in store". Omitted on create = shown. */
   listed?: boolean;
+  /** Set once, on create. Omitted = a single PDF. */
+  type?: "PDF" | "BUNDLE";
+}
+
+export interface BundleItem {
+  productId: string;
+  title: string;
+  status: string;
+  listed: boolean;
+  pageCount: number | null;
+}
+
+export interface BundleContents {
+  items: BundleItem[];
+  /** People who have the bundle (outside sessions), who get every PDF added. */
+  holders: number;
+  /** After an add: how many of them were given it. */
+  given?: number;
+  /** After a removal: how many lost it. */
+  revoked?: number;
 }
 
 export const adminApi = {
@@ -53,6 +73,14 @@ export const adminApi = {
   },
 
   getProduct: (id: string) => api.get<ProductDetail>(`/admin/products/${id}`),
+
+  bundleItems: (id: string) => api.get<BundleContents>(`/admin/products/${id}/bundle-items`),
+  addBundleItem: (id: string, productId: string, sellOnItsOwn: boolean) =>
+    api.post<BundleContents>(`/admin/products/${id}/bundle-items`, { productId, sellOnItsOwn }),
+  removeBundleItem: (id: string, productId: string) =>
+    api.delete<BundleContents>(`/admin/products/${id}/bundle-items/${productId}`),
+  reorderBundle: (id: string, productIds: string[]) =>
+    api.put<BundleContents>(`/admin/products/${id}/bundle-items/order`, { productIds }),
 
   createProduct: (input: ProductInput) => api.post<Product>("/admin/products", input),
 

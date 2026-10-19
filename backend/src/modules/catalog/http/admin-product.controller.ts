@@ -21,14 +21,17 @@ import type { Request } from 'express';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../identity/application/auth.service';
+import { BundleContentsService } from '../application/bundle-contents.service';
 import { ProductAssetService } from '../application/product-asset.service';
 import { ProductService } from '../application/product.service';
 import { TaxonomyService } from '../application/taxonomy.service';
 import { actorFrom } from './actor';
 import {
+  AddBundleItemDto,
   AdminProductQueryDto,
   CreateProductDto,
   ProductLinkDto,
+  ReorderBundleDto,
   UpdateProductDto,
   UploadAssetDto,
 } from './dto/product.dto';
@@ -50,7 +53,55 @@ export class AdminProductController {
     private readonly products: ProductService,
     private readonly assets: ProductAssetService,
     private readonly taxonomy: TaxonomyService,
+    private readonly bundles: BundleContentsService,
   ) {}
+
+  @Get(':id/bundle-items')
+  @ApiOperation({ summary: "A bundle's PDFs, and how many people already have the bundle" })
+  bundleItems(@Param('id', ParseUUIDPipe) id: string) {
+    return this.bundles.list(id);
+  }
+
+  @Post(':id/bundle-items')
+  @ApiOperation({
+    summary: 'Add a PDF to a bundle',
+    description:
+      'Everyone who has the bundle gets it at once. `sellOnItsOwn` sets whether the PDF is also sold on its own; ' +
+      'left out, its current setting is kept.',
+  })
+  addBundleItem(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddBundleItemDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.bundles.add(id, dto, actorFrom(user, request));
+  }
+
+  @Put(':id/bundle-items/order')
+  @ApiOperation({ summary: "Reorder a bundle's PDFs" })
+  reorderBundle(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReorderBundleDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.bundles.reorder(id, dto.productIds, actorFrom(user, request));
+  }
+
+  @Delete(':id/bundle-items/:productId')
+  @ApiOperation({
+    summary: 'Remove a PDF from a bundle',
+    description: 'Taken back from everyone who had it only through this bundle. It stays hidden from the store.',
+  })
+  removeBundleItem(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('productId', ParseUUIDPipe) productId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.bundles.remove(id, productId, actorFrom(user, request));
+  }
 
   @Get()
   @ApiOperation({ summary: 'List products, including drafts' })

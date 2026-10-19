@@ -71,6 +71,12 @@ export function FeedbackPeopleTab({ sessionId, form }: { sessionId: string; form
           seat (refunded). They still count in the results.
         </p>
       )}
+      {people.openLinkResponses > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Plus {people.openLinkResponses} repl{people.openLinkResponses === 1 ? "y" : "ies"} on the Telegram link
+          without signing in. They have no account, so they are not in this table; see Replies.
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Button size="sm" disabled={!open || sending || notEmailed === 0} onClick={() => void send({})}>

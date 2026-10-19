@@ -20,6 +20,7 @@ import { activity } from '../../../shared/logging/activity';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import { PaymentProvider } from '../../payments/domain/payment-provider.port';
+import { bundlePayableMinor } from '../domain/bundle-price';
 import { nextOrderNumber } from '../domain/order-number';
 
 export interface CheckoutRequest {
@@ -62,6 +63,25 @@ export type CheckoutResult =
       checkoutKeyId: string;
     };
 
+/** What one person would pay for a bundle, and why. */
+export interface BundleQuote {
+  productId: string;
+  priceMinor: string;
+  payMinor: string;
+  totalPdfs: number;
+  /** The bundle's PDFs this person already holds, in bundle order. */
+  owned: Array<{ id: string; title: string; free: boolean }>;
+  /**
+   * The price is shared across the bundle's paid PDFs only, and only those
+   * already held take money off: a free PDF anyone can claim must not be a
+   * way to a cheaper bundle.
+   */
+  paidPdfs: number;
+  paidOwned: number;
+  /** True when they hold the bundle itself, or every PDF in it: nothing to buy. */
+  nothingToBuy: boolean;
+}
+
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
@@ -102,9 +122,76 @@ export class OrderService {
       throw new ConflictException('You already own this product.');
     }
 
+    if (product.type === ProductType.BUNDLE) {
+      const quote = await this.bundleQuote(request.userId, product.id);
+      if (quote.totalPdfs === 0) throw new ConflictException('This bundle has no PDFs in it yet.');
+      if (quote.nothingToBuy) throw new ConflictException('You already have every PDF in this bundle.');
+      const pay = BigInt(quote.payMinor);
+      // Free, or every remaining PDF rounds to nothing: no payment to take.
+      if (product.accessType === AccessType.FREE || pay === 0n) {
+        return this.claimFree(request, product, product.accessType === AccessType.FREE ? 0n : product.priceAmountMinor);
+      }
+      return this.startPaidCheckout(request, product, pay);
+    }
+
     return product.accessType === AccessType.FREE
       ? this.claimFree(request, product)
       : this.startPaidCheckout(request, product);
+  }
+
+  /**
+   * The price of a bundle for one person: the paid PDFs in it they already
+   * hold are taken off, pro rata by count (see bundlePayableMinor). Free PDFs
+   * neither count nor take anything off. Read again at checkout, so a quote
+   * shown on the page is never what is charged.
+   */
+  async bundleQuote(userId: string | null, productId: string): Promise<BundleQuote> {
+    const bundle = await this.prisma.product.findFirst({
+      where: { id: productId, type: ProductType.BUNDLE, deletedAt: null },
+      select: {
+        id: true,
+        priceAmountMinor: true,
+        accessType: true,
+        bundleItems: {
+          where: { child: { deletedAt: null } },
+          orderBy: { sortOrder: 'asc' },
+          select: { child: { select: { id: true, title: true, accessType: true } } },
+        },
+      },
+    });
+    if (!bundle) throw new NotFoundException('Product not found');
+
+    const children = bundle.bundleItems.map((item) => item.child);
+    const price = bundle.accessType === AccessType.FREE ? 0n : bundle.priceAmountMinor;
+    const heldIds = userId
+      ? new Set(
+          (
+            await this.prisma.entitlement.findMany({
+              where: {
+                userId,
+                status: EntitlementStatus.ACTIVE,
+                OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+                productId: { in: [bundle.id, ...children.map((c) => c.id)] },
+              },
+              select: { productId: true },
+            })
+          ).map((e) => e.productId),
+        )
+      : new Set<string>();
+    const owned = children.filter((c) => heldIds.has(c.id));
+    const paid = children.filter((c) => c.accessType !== AccessType.FREE);
+    const paidOwned = paid.filter((c) => heldIds.has(c.id)).length;
+
+    return {
+      productId: bundle.id,
+      priceMinor: price.toString(),
+      payMinor: bundlePayableMinor(price, paid.length, paidOwned).toString(),
+      totalPdfs: children.length,
+      owned: owned.map(({ id, title, accessType }) => ({ id, title, free: accessType === AccessType.FREE })),
+      paidPdfs: paid.length,
+      paidOwned,
+      nothingToBuy: heldIds.has(bundle.id) || (children.length > 0 && owned.length === children.length),
+    };
   }
 
   /**
@@ -118,6 +205,9 @@ export class OrderService {
   private async claimFree(
     request: CheckoutRequest,
     product: { id: string; title: string; type: never | string; currency: string },
+    // A bundle whose remaining PDFs round to ₹0: the order still says what
+    // the bundle costs, all of it as discount.
+    listPriceMinor = 0n,
   ): Promise<CheckoutResult> {
     const result = await this.prisma.$transaction(async (tx) => {
       const orderNumber = await nextOrderNumber(tx);
@@ -130,8 +220,8 @@ export class OrderService {
           // orders_total_is_consistent: total = subtotal - discount + tax.
           // 0 = 0 - 0 + 0 holds, so a free order satisfies the same arithmetic
           // constraint as a paid one rather than needing an exemption.
-          subtotalAmountMinor: 0n,
-          discountAmountMinor: 0n,
+          subtotalAmountMinor: listPriceMinor,
+          discountAmountMinor: listPriceMinor,
           taxAmountMinor: 0n,
           totalAmountMinor: 0n,
           currency: product.currency,
@@ -143,15 +233,16 @@ export class OrderService {
               productId: product.id,
               productTitleSnapshot: product.title,
               productTypeSnapshot: product.type as never,
-              unitPriceAmountMinor: 0n,
+              unitPriceAmountMinor: listPriceMinor,
               quantity: 1,
-              totalAmountMinor: 0n,
+              totalAmountMinor: listPriceMinor,
             },
           },
         },
       });
 
-      await this.entitlements.grant(
+      // A bundle brings its PDFs with it.
+      await this.entitlements.grantWithContents(
         {
           userId: request.userId,
           productId: product.id,
@@ -181,8 +272,12 @@ export class OrderService {
       currency: string;
       priceAmountMinor: bigint;
     },
+    // A bundle the buyer partly holds: less than the list price. The order
+    // keeps the list price as its subtotal and the difference as a discount.
+    payableMinor?: bigint,
   ): Promise<CheckoutResult> {
     const price = product.priceAmountMinor;
+    const total = payableMinor ?? price;
 
     // The order row is created before the provider is contacted, so that a
     // provider order can never exist without a local record of what it was for.
@@ -195,9 +290,9 @@ export class OrderService {
           userId: request.userId,
           status: OrderStatus.CREATED,
           subtotalAmountMinor: price,
-          discountAmountMinor: 0n,
+          discountAmountMinor: price - total,
           taxAmountMinor: 0n,
-          totalAmountMinor: price,
+          totalAmountMinor: total,
           currency: product.currency,
           customerEmail: request.customerEmail,
           customerPhone: request.customerPhone ?? null,

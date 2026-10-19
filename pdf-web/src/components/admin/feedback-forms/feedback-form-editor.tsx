@@ -132,7 +132,13 @@ export function FeedbackFormEditor({
             onClick={() =>
               void navigator.clipboard
                 .writeText(form.shareUrl)
-                .then(() => toast.success("Link copied", { description: "Paste it in the Telegram group. It asks people to sign in." }))
+                .then(() =>
+                  toast.success("Link copied", {
+                    description: form.openLink
+                      ? "Paste it in the Telegram group. People reply with their name, without signing in."
+                      : "Paste it in the Telegram group. It asks people to sign in.",
+                  }),
+                )
             }
           >
             <Copy className="size-4" /> Copy Telegram link
@@ -342,8 +348,42 @@ function SettingsTab({
 
       <div className="space-y-4 rounded-lg border p-4">
         <SwitchRow
+          label="Take feedback on the Telegram link without signing in"
+          hint="Off (default): the Telegram link asks people to sign in, and only seat holders can reply. On: anyone with the link can reply by typing their name. The emailed links work as before either way."
+          checked={form.openLink}
+          disabled={busy}
+          onChange={(openLink) =>
+            void save(
+              { openLink },
+              openLink ? "The Telegram link now works without signing in" : "The Telegram link asks people to sign in again",
+            )
+          }
+        />
+        {form.openLink && (
+          <div className="space-y-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            <p>
+              <span className="font-semibold">One extra question:</span> the form on the Telegram link starts with
+              {" "}&ldquo;Your name&rdquo;, which must be filled in. People who come from the emailed link, or who are
+              signed in with a seat, are not asked it.
+            </p>
+            <p>
+              <span className="font-semibold">Not verified:</span> nobody signs in, so anyone with the link can reply,
+              and the same person could reply again from another phone. These replies are marked &ldquo;Telegram link
+              · not verified&rdquo; under Replies.
+            </p>
+            <p>
+              <span className="font-semibold">The switches below:</span> &ldquo;Hide my name&rdquo; applies only to
+              emailed and signed-in replies, because on the Telegram link people type their own name. The two
+              website questions apply to everyone.
+            </p>
+          </div>
+        )}
+        <SwitchRow
           label="Let students hide their name"
-          hint="Adds a “Hide my name from the JSMF team” tick box. Their reply still counts once, but no screen or export here shows who wrote it."
+          hint={
+            "Adds a “Hide my name from the JSMF team” tick box. Their reply still counts once, but no screen or export here shows who wrote it." +
+            (form.openLink ? " Not shown on the no-sign-in Telegram link." : "")
+          }
           checked={form.allowAnonymous}
           disabled={busy}
           onChange={(allowAnonymous) =>

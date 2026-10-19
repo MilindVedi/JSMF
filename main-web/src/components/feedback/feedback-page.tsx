@@ -19,13 +19,49 @@ import { supportEmail } from "@/lib/site-content";
 import { useSessionStore } from "@/store/session-store";
 
 /** What a save sends back up, to show the thank-you and prefill an edit. */
-type SavedChoices = { answers: FeedbackAnswer[]; isAnonymous: boolean; consentToPublish: boolean; showName: boolean | null };
+type SavedChoices = {
+  answers: FeedbackAnswer[];
+  isAnonymous: boolean;
+  consentToPublish: boolean;
+  showName: boolean | null;
+  respondentName?: string | null;
+};
 
 /** What the student has entered, by question id. */
 type Draft = Record<string, { rating?: number | null; text?: string; choices?: string[] }>;
 
 const SHORT_MAX = 300;
 const LONG_MAX = 5000;
+const NAME_MAX = 80;
+
+/**
+ * The open link's key for this browser, kept so the same browser changes its
+ * reply rather than sending a second one. Created on the first send. Storage
+ * may be blocked (private mode): then each visit is a fresh reply, which is
+ * the best that can be done without an account.
+ */
+const editKeyStorage = (formId: string) => `jsmf-feedback-key:${formId}`;
+
+function storedEditKey(formId: string): string | null {
+  try {
+    return window.localStorage.getItem(editKeyStorage(formId));
+  } catch {
+    return null;
+  }
+}
+
+function editKeyFor(formId: string): string {
+  const existing = storedEditKey(formId);
+  if (existing) return existing;
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const key = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  try {
+    window.localStorage.setItem(editKeyStorage(formId), key);
+  } catch {
+    // See storedEditKey: without storage the reply cannot be found again.
+  }
+  return key;
+}
 
 /**
  * jsmf.me/feedback/<form>: the feedback form a seat holder fills in after a
@@ -35,6 +71,10 @@ const LONG_MAX = 5000;
  * without signing in. Opened from the shared (Telegram) link it asks the
  * person to sign in with Google, and the server checks they hold a seat. They
  * can come back with either link and change their answers until it closes.
+ *
+ * When the form's `openLink` is on, the shared link needs no sign-in: the
+ * person types their name instead (mode OPEN_LINK), and this browser keeps a
+ * key so it can change that reply later.
  */
 export function FeedbackPage({ formId }: { formId: string }) {
   const token = useSearchParams().get("k");
@@ -52,7 +92,7 @@ export function FeedbackPage({ formId }: { formId: string }) {
   useEffect(() => {
     if (!ready) return;
     feedbackApi
-      .view(formId, token)
+      .view(formId, token, token ? null : storedEditKey(formId))
       .then(setView)
       .catch((error: unknown) =>
         setFailure(
@@ -87,6 +127,7 @@ export function FeedbackPage({ formId }: { formId: string }) {
                 setView((current) => current && {
                   ...current,
                   response: {
+                    respondentName: answers.respondentName ?? null,
                     isAnonymous: answers.isAnonymous,
                     consentToPublish: answers.consentToPublish,
                     showName: answers.showName,
@@ -119,6 +160,11 @@ function Header({ view }: { view: FeedbackView }) {
         <p className="mt-2 text-sm text-muted-foreground">
           Hi {view.respondent.firstName}
           {view.response ? ". You have already replied; change anything below and save again." : "."}
+        </p>
+      )}
+      {view.mode === "OPEN_LINK" && view.state === "OPEN" && view.response && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          You have already replied from this browser. Change anything below and save again.
         </p>
       )}
       {form.intro && <p className="mt-4 whitespace-pre-line text-base leading-relaxed text-foreground/80">{form.intro}</p>}
@@ -204,6 +250,11 @@ function QuestionForm({
 }) {
   const { form } = view;
   const preview = view.state === "PREVIEW";
+  const open = view.mode === "OPEN_LINK";
+  // "Hide my name" is for an account's name; on the open link the name is typed.
+  const offerAnonymous = form.allowAnonymous && !open;
+  // Staff previewing a form with the open link see its extra question too.
+  const askName = open || (preview && form.openLink);
   const initial = useMemo<Draft>(() => {
     const draft: Draft = {};
     for (const answer of view.response?.answers ?? []) {
@@ -220,6 +271,9 @@ function QuestionForm({
   const [isAnonymous, setAnonymous] = useState(view.response?.isAnonymous ?? false);
   const [consent, setConsent] = useState(view.response?.consentToPublish ?? false);
   const [showName, setShowName] = useState(view.response?.showName ?? false);
+  const [respondentName, setRespondentName] = useState(view.response?.respondentName ?? "");
+  const [nameMissing, setNameMissing] = useState(false);
+  const nameRef = useRef<HTMLInputElement | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -251,9 +305,13 @@ function QuestionForm({
 
     const answers = form.questions.map(answerOf).filter((a): a is FeedbackAnswer => a !== null);
     const unanswered = form.questions.filter((q) => q.required && !answers.some((a) => a.questionId === q.id));
-    if (unanswered.length) {
+    const name = respondentName.replace(/\s+/g, " ").trim();
+    const needsName = open && !name;
+    setNameMissing(needsName);
+    if (unanswered.length || needsName) {
       setMissing(unanswered.map((q) => q.id));
-      refs.current[unanswered[0].id]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (needsName) nameRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      else refs.current[unanswered[0].id]?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     if (answers.length === 0) {
@@ -264,18 +322,24 @@ function QuestionForm({
     setSaving(true);
     setError(null);
     try {
-      const result = await feedbackApi.submit(form.id, {
-        token: token ?? undefined,
+      const choices = {
         answers,
-        isAnonymous: form.allowAnonymous ? isAnonymous : undefined,
         consentToPublish: form.askConsentToPublish ? consent : undefined,
         showName: form.askShowName ? showName : undefined,
-      });
+      };
+      const result = open
+        ? await feedbackApi.submitOpen(form.id, { ...choices, respondentName: name, editKey: editKeyFor(form.id) })
+        : await feedbackApi.submit(form.id, {
+            ...choices,
+            token: token ?? undefined,
+            isAnonymous: form.allowAnonymous ? isAnonymous : undefined,
+          });
       onSaved(result.submittedAt, {
         answers,
-        isAnonymous,
+        isAnonymous: open ? false : isAnonymous,
         consentToPublish: consent,
         showName: form.askShowName ? showName : null,
+        respondentName: open ? name : null,
       });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not save your reply. Please try again.");
@@ -290,6 +354,37 @@ function QuestionForm({
         <p className="flex items-center gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <Eye size={16} className="shrink-0" /> Preview: this is what students see. Nothing you enter here is saved.
         </p>
+      )}
+
+      {askName && (
+        <div
+          className={`rounded-3xl border bg-card p-5 sm:p-6 ${
+            nameMissing ? "border-destructive/60 ring-2 ring-destructive/15" : "border-border"
+          }`}
+        >
+          <label htmlFor="feedback-name" className="font-medium leading-snug">
+            Your name
+            {preview && !open && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">(asked only on the Telegram link)</span>
+            )}
+            <span className="text-destructive" aria-label="required">
+              {"⁠ *"}
+            </span>
+          </label>
+          <input
+            id="feedback-name"
+            ref={nameRef}
+            className="field mt-4"
+            autoComplete="name"
+            maxLength={NAME_MAX}
+            value={respondentName}
+            onChange={(event) => {
+              setRespondentName(event.target.value);
+              setNameMissing(false);
+            }}
+          />
+          {nameMissing && <p className="mt-3 text-sm text-destructive">Please enter your name.</p>}
+        </div>
       )}
 
       {form.questions.map((question, index) => (
@@ -321,9 +416,9 @@ function QuestionForm({
         </fieldset>
       ))}
 
-      {(form.allowAnonymous || form.askConsentToPublish || (form.askShowName && !isAnonymous)) && (
+      {(offerAnonymous || form.askConsentToPublish || (form.askShowName && !isAnonymous)) && (
         <div className="space-y-3 rounded-3xl border border-border bg-accent/30 p-5 sm:p-6">
-          {form.allowAnonymous && (
+          {offerAnonymous && (
             <Check checked={isAnonymous} onChange={setAnonymous}>
               <span className="font-medium">Hide my name from the JSMF team</span>
               <span className="block text-xs text-muted-foreground">
@@ -357,6 +452,7 @@ function QuestionForm({
           {missing.length === 1 ? "One question needs" : `${missing.length} questions need`} an answer (marked above).
         </p>
       )}
+      {nameMissing && missing.length === 0 && <p className="text-sm text-destructive">Enter your name (at the top).</p>}
 
       <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={saving || preview}>
         {saving && <Loader2 className="size-4 animate-spin" />}

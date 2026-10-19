@@ -90,6 +90,11 @@ bought it keeps it). A refund of a seat takes its PDFs back too. A day that has
 PDFs cannot be deleted from the dates until they are removed.
 See [§3d-bis](./README.md#3d-bis-day-materials-pdfs-for-each-day-of-a-session).
 
+### Give a day a bundle of PDFs
+A PDF bundle (see "PDF bundles" below) can be picked in **Day materials** like a
+single PDF. Seat holders get every PDF in it, always its current ones: adding one
+to the bundle reaches them within 5 minutes, and removing one takes it back.
+
 ### Hold the "included with a seat" PDF back
 If the PDF is not ready when seats go on sale, set the session's delivery mode to
 send it after the session instead of at payment. The **Included material** card
@@ -127,7 +132,8 @@ On the **Settings** tab:
 | Emails | **Automatic** sends each attendee their link when the class ends. **Only when I send them** waits for you |
 | Minutes after the class ends | Delay for the automatic email. 0 sends as the class ends. The clock runs every 5 minutes |
 | Stop taking replies at | Optional closing time |
-| Let students hide their name | Adds "Hide my name from the JSMF team". Their reply still counts once, but nothing in admin shows who wrote it |
+| Take feedback on the Telegram link without signing in | Off by default. On: the Telegram link needs no sign-in. The form there gets one extra question, **Your name** (required). Anyone with the link can reply, and nothing stops one person replying twice from two phones, so these replies are marked **Telegram link · not verified**. Emailed links and signed-in seat holders work as before |
+| Let students hide their name | Adds "Hide my name from the JSMF team". Their reply still counts once, but nothing in admin shows who wrote it. Not offered on the no-sign-in Telegram link, where people type their own name |
 | Ask whether to show their name | Off by default. On: asks "Show my first name if JSMF shares my feedback on its website". Their answer is shown to you as guidance; you decide |
 | Ask "Can we show this on our website?" | Off by default. On: only replies whose author said yes can be put on the website |
 
@@ -147,6 +153,19 @@ Click **Copy Telegram link** and paste it in the group. People who open it sign 
 with Google; the system checks they hold a seat. The emailed personal link needs
 no sign-in. A student can open either link again to change their reply until the
 form closes.
+
+With **Take feedback on the Telegram link without signing in** on, people on the
+Telegram link type their name instead of signing in. Coming back on the same phone
+and browser, they change their reply rather than sending a new one. On another
+phone it is a new reply. These replies are not in the **Who's been asked** table
+(they have no account); it shows how many there are, and they appear under
+**Replies**.
+
+> **Hostel/Campus Wi-Fi & Scaling the 300 Limit:**
+> - **Replies are NOT grouped by IP address:** Each student's phone browser generates a unique local key (`editKey`) and asks for their name. Even if 50 students submit from the exact same hostel Wi-Fi, each student receives their own separate reply in the admin panel and they will not overwrite one another.
+> - **The 300/hour IP rate limit (`FEEDBACK_OPEN_LINK_PER_HOUR`):** This limit acts purely as a spam/DDoS barrier to prevent automated scripts from flooding the database. It defaults to 300 submissions per hour per IP.
+> - **Scaling for larger classes:** If you scale to 300+ or 500+ students where many attendees share a single campus/hostel network, raise `FEEDBACK_OPEN_LINK_PER_HOUR` in Cloud Run's backend environment variables (e.g. set it to `1000` or `1500`). Sizing rule: `(Expected students on shared Wi-Fi) * 3`. No code rebuild is required.
+> - **If spam occurs:** You can turn off "Take feedback on the Telegram link without signing in" at any time to require Google sign-in, or delete unwanted replies with one click.
 
 ### 6. Chase replies
 Open **Who's been asked**. For each attendee it shows when they were emailed,
@@ -186,6 +205,47 @@ A form with replies cannot be deleted; one without can (Settings tab).
 See [§3f](./README.md#3f-feedback-forms-in-place-of-google-forms).
 
 ---
+
+## PDF bundles
+
+Several store PDFs sold together at one price.
+
+1. Upload each PDF in **Products** first, as usual.
+2. **Products → New product → A bundle of PDFs.** Give it a title and the bundle's
+   price (the struck-through price works as usual).
+3. Open the **Contents & cover** tab, click **Add a PDF**, pick each one, and choose
+   **Also sell it on its own** (on or off) before **Add to bundle**. Use the arrows
+   to set the order. Changes here save at once.
+4. Add a cover, then **Publish**. A bundle with no PDFs cannot be published.
+
+**Each PDF is still its own product.** For each one you choose:
+
+- **Also sell it on its own: on.** It stays in the store at its own price, and the
+  bundle's page links to it ("Also sold on its own for ₹99"), so a student can buy
+  just that one.
+- **Off (only in bundles).** It is hidden from the store and can be had only
+  through a bundle it is in. Put it in one bundle or several, as you like.
+
+The switch starts at the PDF's current **Show in store** setting, and you can
+change it later on the PDF's Details. The contents list shows each one as **Also
+sold on its own** or **Only in bundles**. Anyone who already bought a PDF keeps it
+either way.
+
+**Someone who already has some of the PDFs** (bought alone, from another bundle,
+or from a session) sees "You have this" beside them on the bundle's page and "You
+already have 1 of these 3 PDFs, so you pay only for the other 2". They pay the
+bundle price × paid PDFs they lack ÷ all paid PDFs, rounded to the rupee. **Free
+PDFs don't count**: having one takes nothing off, so claiming a free PDF is not a
+way to a cheaper bundle. Someone with all of them is told so and sent to their
+library instead of paying.
+
+**Everyone who has the bundle always has its current PDFs.** Add a PDF and they
+all get it at once. Remove one and everyone who got it through the bundle loses
+it from their library (copies already downloaded stay on their device); anyone
+who bought it on its own keeps it.
+
+In a buyer's library the bundle is one card; **Show N PDFs** opens it to download
+each one. A refund of the bundle takes all its PDFs back.
 
 ## Refunds (admin only)
 
@@ -248,6 +308,8 @@ it; deleting one deletes its images. See [§3e](./README.md#3e-testimonials).
 | A PDF is not in someone's library | Open **Day materials**: the late-joiner setting may exclude earlier days for them |
 | "Refund through Razorpay" is greyed out | The payment did not go through Razorpay, or `REFUNDS_ENABLED` is off. Refund it yourself and record it with **I already refunded it myself** |
 | A refunded buyer still has the PDF or seat | The refund was recorded with Revoke access off. Use **Revoke access** on the order |
+| A bundled PDF can't be found in the store | It was added with **Also sell it on its own** off. Turn **Show in store** on in its Details |
+| A bundle shows a lower price to one student | They already have some of its PDFs; they pay only for the rest |
 
 ---
 

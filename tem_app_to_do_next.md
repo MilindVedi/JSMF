@@ -106,6 +106,15 @@ Status as of 11 October 2026. Nothing below is committed yet.
   - Review migration `20261018140000_manual_refunds` before committing. Additive: one enum, two nullable columns on `refunds`, two CHECK constraints. Existing rows read as "through the provider".
   - Deploy the backend before pdf-web: the new Orders page reads fields the old backend does not send.
   - Razorpay partial refunds from the panel have only been tested against the stub; try one small partial refund in Razorpay test mode before relying on it.
+- **Feedback without signing in on the Telegram link** (built, not deployed): a per-form switch in Settings; the Telegram form then asks for **Your name** (required). Details: [docs/main-website/README.md](docs/main-website/README.md) §3f.
+  - Review migration `20261018160000_feedback_open_link` before committing. Additive: one enum value, one column defaulting to off, `feedback_responses.user_id` made nullable, two nullable columns, one unique index, two CHECKs. Every existing reply satisfies them.
+  - Deploy the backend before pdf-web and main-web. Optional env: `FEEDBACK_OPEN_LINK_PER_HOUR` (default 300 — one hostel or college shares one address, so it is sized above a whole class).
+  - It needs the feedback forms migration (`20261018100000_feedback_forms`) deployed first, as it changes those tables.
+- **PDF bundles** (built, not deployed): several PDFs sold as one product, each PDF also sold on its own or only in bundles (admin's choice per PDF); holders always have the current contents; part-owners pay pro rata over the paid PDFs (free ones take nothing off); a bundle can be a day material. Details: [docs/pdf-platform/02-architecture.md](docs/pdf-platform/02-architecture.md) "PDF bundles"; steps in [docs/main-website/admin-guide.md](docs/main-website/admin-guide.md) "PDF bundles".
+  - **No migration.** It uses the existing `product_bundle_items` table and `BUNDLE` product type.
+  - Deploy the backend before pdf-web: the store and library read new fields (`contents`, `bundleSize`, the quote endpoint).
+  - Not tested against Razorpay: a paid bundle checkout was tested with the stub (full price and part-owner price). Try one small paid bundle in Razorpay test mode before selling one.
+- **Day materials: several PDFs per day** (built, not deployed; pdf-web only): the PDF search now asks for PDFs only and says "Searching…" while it loads; it stays open after adding one.
 - **Direct-to-storage uploads (not built; the upload path does not scale).** Downloads already
   do this correctly — the backend mints a short-lived signed GCS URL and the browser fetches the
   file straight from Google, so no file bytes cross Cloud Run. **Uploads do the opposite:** the

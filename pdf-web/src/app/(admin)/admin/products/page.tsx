@@ -169,7 +169,15 @@ export default function AdminProductsPage() {
                         )}
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        {hasPrimary ? (
+                        {product.type === "BUNDLE" ? (
+                          (product._count?.bundleItems ?? 0) > 0 ? (
+                            <span className="text-sm text-muted-foreground">
+                              Bundle · {product._count?.bundleItems} PDF{product._count?.bundleItems === 1 ? "" : "s"}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-amber-600 dark:text-amber-500">Bundle · empty</span>
+                          )
+                        ) : hasPrimary ? (
                           <span className="text-sm text-muted-foreground">Uploaded</span>
                         ) : (
                           <span className="text-sm text-amber-600 dark:text-amber-500">

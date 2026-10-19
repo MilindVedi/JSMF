@@ -118,6 +118,17 @@ export class OrderController {
     return { success: true as const, ...settled };
   }
 
+  @Get('orders/quote/:productId')
+  @ApiOperation({
+    summary: 'What this user would pay for a bundle',
+    description:
+      'The PDFs in the bundle they already hold are taken off, pro rata. Shown on the store page; ' +
+      'checkout works the price out again, so this is never what is charged.',
+  })
+  quote(@Param('productId', ParseUUIDPipe) productId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.orders.bundleQuote(user.id, productId);
+  }
+
   @Get('orders')
   @ApiOperation({ summary: 'This user’s order history' })
   list(@CurrentUser() user: AuthenticatedUser) {

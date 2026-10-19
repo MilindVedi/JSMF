@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, useImperativeHandle } from "react";
+import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -65,10 +66,12 @@ interface Props {
    * The standalone "new product" page keeps its own button.
    */
   hideSubmit?: boolean;
+  /** Bundles this PDF is in, named beside "Show in store". */
+  inBundles?: Array<{ id: string; title: string }>;
 }
 
 export const ProductForm = forwardRef<StepSectionHandle, Props>(function ProductForm(
-  { defaultValues, onSubmit, submitLabel, hideSubmit },
+  { defaultValues, onSubmit, submitLabel, hideSubmit, inBundles = [] },
   ref,
 ) {
   const {
@@ -184,10 +187,28 @@ export const ProductForm = forwardRef<StepSectionHandle, Props>(function Product
             Show in store
           </Label>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Off hides it from the store: it cannot be found, bought or claimed there. Use this for material handed out
-          to a live session&apos;s seat holders. Anyone who already has it keeps it in their library.
-        </p>
+        {inBundles.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            In the bundle{inBundles.length === 1 ? "" : "s"}{" "}
+            {inBundles.map((bundle, index) => (
+              <span key={bundle.id}>
+                {index > 0 && ", "}
+                <Link href={`/admin/products/${bundle.id}`} className="font-medium underline underline-offset-2">
+                  {bundle.title}
+                </Link>
+              </span>
+            ))}
+            .{" "}
+            {listed
+              ? "On: it is sold on its own as well as in the bundle."
+              : "Off: it can be had only through the bundle, not bought on its own."}
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Off hides it from the store: it cannot be found, bought or claimed there. Use this for material handed out
+            to a live session&apos;s seat holders. Anyone who already has it keeps it in their library.
+          </p>
+        )}
       </div>
 
       {!hideSubmit && (

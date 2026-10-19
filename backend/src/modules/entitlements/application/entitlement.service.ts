@@ -103,6 +103,39 @@ export class EntitlementService {
     return entitlement;
   }
 
+  /**
+   * Grants a product and, when it is a bundle, every PDF in it.
+   *
+   * The PDFs are granted as BUNDLE, carrying the same order (so refunding the
+   * bundle takes them back with it) and the bundle as their source (so the
+   * library shows them inside the bundle's card). Bundles hold PDFs only,
+   * never other bundles, so one level is the whole tree. Anything the person
+   * already holds another way is left as it is: `grant` is idempotent.
+   */
+  async grantWithContents(input: GrantInput, tx?: Prisma.TransactionClient): Promise<Entitlement> {
+    const db = tx ?? this.prisma;
+    const entitlement = await this.grant(input, tx);
+    const contents = await db.productBundleItem.findMany({
+      where: { bundleProductId: input.productId, bundle: { type: ProductType.BUNDLE }, child: { deletedAt: null } },
+      orderBy: { sortOrder: 'asc' },
+      select: { childProductId: true },
+    });
+    for (const item of contents) {
+      await this.grant(
+        {
+          userId: input.userId,
+          productId: item.childProductId,
+          source: EntitlementSource.BUNDLE,
+          sourceOrderId: input.sourceOrderId ?? null,
+          sourceProductId: input.productId,
+          grantedAt: input.grantedAt,
+        },
+        tx,
+      );
+    }
+    return entitlement;
+  }
+
   /** The single access check. Null means no live entitlement. */
   async findActive(userId: string, productId: string): Promise<Entitlement | null> {
     const entitlement = await this.prisma.entitlement.findFirst({
@@ -209,16 +242,41 @@ export class EntitlementService {
       },
     });
 
+    // A bundle is one card listing the PDFs this person holds from it. Those
+    // PDFs are then shown only inside the card, however they were acquired:
+    // the bundle is how the person thinks of them.
+    const bundleIds = rows.filter((r) => r.product.type === ProductType.BUNDLE).map((r) => r.productId);
+    const items = bundleIds.length
+      ? await this.prisma.productBundleItem.findMany({
+          where: { bundleProductId: { in: bundleIds }, child: { deletedAt: null } },
+          orderBy: { sortOrder: 'asc' },
+          select: { bundleProductId: true, child: { select: { id: true, title: true, subtitle: true } } },
+        })
+      : [];
+    const held = new Set(rows.map((r) => r.productId));
+    const contentsOf = new Map<string, Array<{ id: string; title: string; subtitle: string | null }>>();
+    for (const item of items) {
+      if (!held.has(item.child.id)) continue;
+      const list = contentsOf.get(item.bundleProductId) ?? [];
+      list.push(item.child);
+      contentsOf.set(item.bundleProductId, list);
+    }
+    const insideABundle = new Set([...contentsOf.values()].flat().map((c) => c.id));
+
     // The label names a session by its short name when it has one — the
     // stable name, not the booking card's title, which admins reword daily.
     // Same rule as the emails (events/domain/session-display.ts).
-    return rows.map(({ sourceProduct, ...row }) => ({
-      ...row,
-      sourceProduct: sourceProduct && {
-        id: sourceProduct.id,
-        type: sourceProduct.type,
-        title: sourceProduct.liveSession?.shortName?.trim() || sourceProduct.title,
-      },
-    }));
+    return rows
+      .filter((row) => !insideABundle.has(row.productId))
+      .map(({ sourceProduct, ...row }) => ({
+        ...row,
+        sourceProduct: sourceProduct && {
+          id: sourceProduct.id,
+          type: sourceProduct.type,
+          title: sourceProduct.liveSession?.shortName?.trim() || sourceProduct.title,
+        },
+        /** For a bundle: the PDFs in it that this person can download. Null otherwise. */
+        contents: row.product.type === ProductType.BUNDLE ? (contentsOf.get(row.productId) ?? []) : null,
+      }));
   }
 }

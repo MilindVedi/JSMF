@@ -604,8 +604,11 @@ export class PaymentService {
         // back along with the session (revokeForOrder), and granting is
         // idempotent, so a buyer who already owns the planner keeps the copy
         // they bought and this adds nothing.
+        // For a PDF bundle bought on its own, these are its PDFs. For a
+        // session, an included item can itself be a bundle, which brings its
+        // PDFs with it.
         for (const included of item.product.bundleItems) {
-          await this.entitlements.grant(
+          await this.entitlements.grantWithContents(
             {
               userId: payment.order.userId,
               productId: included.childProductId,

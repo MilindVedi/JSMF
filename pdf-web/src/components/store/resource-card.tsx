@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, FileText, Play } from "lucide-react";
+import { ArrowRight, FileText, Layers, Play } from "lucide-react";
 import type { StorefrontProduct } from "@/lib/api/store";
 import { formatMoney } from "@/lib/money";
 
@@ -21,6 +21,8 @@ export function ResourceCard({
   // non-empty when a YOUTUBE link exists — never the buyer-only case of
   // "an OTHER link but no video", which the card correctly says nothing about.
   const hasVideo = (product.links?.length ?? 0) > 0;
+  const bundleLabel =
+    product.type === "BUNDLE" && product.bundleSize ? `${product.bundleSize} PDF${product.bundleSize === 1 ? "" : "s"}` : null;
 
   // The design shows a fixed "NEET-PG • Anatomy" pair above the title. Here
   // that comes from whatever taxonomies the product actually carries, in the
@@ -52,6 +54,12 @@ export function ResourceCard({
             <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-overlay px-1.5 py-0.5 text-[8px] font-bold text-overlay-foreground sm:px-2 sm:py-1 sm:text-[10px]">
               <Play className="size-2 sm:size-2.5" fill="currentColor" />
               Video
+            </span>
+          )}
+          {bundleLabel && (
+            <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-full bg-overlay px-1.5 py-0.5 text-[8px] font-bold text-overlay-foreground sm:px-2 sm:py-1 sm:text-[10px]">
+              <Layers className="size-2 sm:size-2.5" />
+              {bundleLabel}
             </span>
           )}
         </div>
@@ -138,6 +146,12 @@ export function ResourceCard({
           <span className="absolute left-4 top-4 inline-flex items-center gap-1 rounded-full bg-overlay px-2.5 py-1 text-[10px] font-bold text-overlay-foreground">
             <Play className="size-2.5" fill="currentColor" />
             Video
+          </span>
+        )}
+        {bundleLabel && (
+          <span className="absolute bottom-4 left-4 inline-flex items-center gap-1 rounded-full bg-overlay px-2.5 py-1 text-[10px] font-bold text-overlay-foreground">
+            <Layers className="size-2.5" />
+            Bundle · {bundleLabel}
           </span>
         )}
       </div>

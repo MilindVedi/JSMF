@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -192,6 +193,28 @@ export class PublicProductQueryDto {
   @Min(1)
   @Max(100)
   pageSize?: number;
+}
+
+export class AddBundleItemDto {
+  @ApiProperty({ description: 'The PDF to add.' })
+  @IsUUID()
+  productId!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether the PDF is also sold on its own (its "Show in store"). Left out, it keeps its current setting.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  sellOnItsOwn?: boolean;
+}
+
+export class ReorderBundleDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  productIds!: string[];
 }
 
 export class UploadAssetDto {
