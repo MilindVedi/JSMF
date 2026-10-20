@@ -174,7 +174,8 @@ export class FeedbackFormsService {
         allowAnonymous: source?.allowAnonymous,
         askConsentToPublish: source?.askConsentToPublish,
         askShowName: source?.askShowName,
-        openLink: source?.openLink,
+        // On for a new form; a copy keeps whatever the form it was copied from has.
+        openLink: source ? source.openLink : true,
         createdById: actor.id,
         questions: {
           create: questions.map((q, sortOrder) => ({

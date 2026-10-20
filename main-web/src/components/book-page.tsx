@@ -9,11 +9,11 @@ import { TelegramFloat } from "@/components/telegram-float";
 import { RegisterDialog } from "@/components/register-dialog";
 import { DoctorPortrait, SessionCard } from "@/components/landing";
 import { SessionFeedback } from "@/components/session-feedback";
-import { TestimonialsSection } from "@/components/testimonials-section";
+import { NoSessionTestimonialsSection, TestimonialsSection } from "@/components/testimonials-section";
 import { buttonVariants } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
 import { sessionsApi } from "@/lib/api/sessions";
-import type { LiveSession } from "@/lib/api/types";
+import type { LiveSession, NoSessionTestimonials } from "@/lib/api/types";
 import { links } from "@/lib/site-content";
 
 /**
@@ -24,6 +24,7 @@ import { links } from "@/lib/site-content";
  */
 export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
   const [session, setSession] = useState<LiveSession | null>(null);
+  const [fallbackTestimonials, setFallbackTestimonials] = useState<NoSessionTestimonials | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const params = useSearchParams();
@@ -38,6 +39,7 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
       .landing()
       .then((result) => {
         setSession(result.upcoming);
+        setFallbackTestimonials(result.noSessionTestimonials ?? null);
         if (!checkoutUrl && resume && result.upcoming?.registrationOpen) {
           setOpen(true);
           router.replace("/prep-kit", { scroll: false });
@@ -182,7 +184,11 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
         </section>
       )}
 
-      {session && <TestimonialsSection session={session} />}
+      {session ? (
+        <TestimonialsSection session={session} />
+      ) : (
+        fallbackTestimonials && <NoSessionTestimonialsSection testimonials={fallbackTestimonials} />
+      )}
 
       <FloatingVideo />
       <TelegramFloat />

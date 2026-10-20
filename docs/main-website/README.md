@@ -548,7 +548,23 @@ strategy behind the preparation"). Rendered through one shared component
 (`main-web/src/components/testimonials-section.tsx`) used by both pages —
 one implementation, one place to style, one visual contract. The section
 renders nothing at all when the upcoming session has no testimonials, so
-the import is safe to leave in regardless. A horizontally-scrolling row of
+the import is safe to leave in regardless.
+
+**With no session upcoming (added 2026-10-19).** The band used to disappear.
+Now `GET /sessions` also returns `noSessionTestimonials: { heading, subheading,
+urls } | null` (null while a session is upcoming, when the setting is off, or
+when there is nothing to show), and both pages render it through
+`NoSessionTestimonialsSection`. Configured on the admin **Sessions** page
+(`GET/PUT /admin/sessions/no-session-testimonials`,
+`NoSessionTestimonialsService`) and stored on the `platform_settings` row
+(migration `20261019120000_no_session_testimonials`, additive):
+`no_session_testimonials_enabled` (default true), `…_session_id` (FK→live
+sessions, SET NULL; null = automatic, the most recent published session that
+has begun and has screenshots in its original gallery, never the payment test
+session), `…_heading` (null = "What students said after the last session.", the
+first of two preset headings the admin picks from and may then edit) and
+`…_subheading` (null = "From a previous revision session. A few moments
+students shared afterward."). A horizontally-scrolling row of
 cards (a quote-mark icon framing each screenshot; the first card accented).
 Each card is itself the preview trigger — hover shows an eye icon with a
 "Preview" label — and opens the lightbox at that image. A dashed "View all"
@@ -648,7 +664,7 @@ puts picked replies on the session page through the events module's
   emailed again. A failed address is retried by the sweep up to 3 times, and
   after that only by an admin.
 - **No-sign-in Telegram link (added 2026-10-18), per form** (`open_link`,
-  default off). On, the shared link takes replies from anyone who types their
+  column default off, but a new form is created with it **on** by `FeedbackFormsService.create`, so no migration; a copy keeps its source's value). On, the shared link takes replies from anyone who types their
   name: `source = OPEN_LINK`, `user_id` null, `respondent_name` set. Seat
   holders on the emailed link, or signed in, still reply as themselves. The
   browser keeps a random key (`localStorage`, `jsmf-feedback-key:<form>`) and

@@ -132,7 +132,7 @@ On the **Settings** tab:
 | Emails | **Automatic** sends each attendee their link when the class ends. **Only when I send them** waits for you |
 | Minutes after the class ends | Delay for the automatic email. 0 sends as the class ends. The clock runs every 5 minutes |
 | Stop taking replies at | Optional closing time |
-| Take feedback on the Telegram link without signing in | Off by default. On: the Telegram link needs no sign-in. The form there gets one extra question, **Your name** (required). Anyone with the link can reply, and nothing stops one person replying twice from two phones, so these replies are marked **Telegram link · not verified**. Emailed links and signed-in seat holders work as before |
+| Take feedback on the Telegram link without signing in | On by default for new forms (a copied form keeps its source's setting; forms made before this keep what they had). On: the Telegram link needs no sign-in. Off: it asks people to sign in with Google and checks their seat. The form there gets one extra question, **Your name** (required). Anyone with the link can reply, and nothing stops one person replying twice from two phones, so these replies are marked **Telegram link · not verified**. Emailed links and signed-in seat holders work as before |
 | Let students hide their name | Adds "Hide my name from the JSMF team". Their reply still counts once, but nothing in admin shows who wrote it. Not offered on the no-sign-in Telegram link, where people type their own name |
 | Ask whether to show their name | Off by default. On: asks "Show my first name if JSMF shares my feedback on its website". Their answer is shown to you as guidance; you decide |
 | Ask "Can we show this on our website?" | Off by default. On: only replies whose author said yes can be put on the website |
@@ -290,6 +290,17 @@ it; deleting one deletes its images. See [§3e](./README.md#3e-testimonials).
   it, **Book a 1:1 session** (only once a 1:1 offering is published). With no
   session open, only the 1:1 button shows, and the dark "Next session coming
   soon" band shows **Get notified on Telegram**.
+- **Testimonials when no session is upcoming:** set on **Sessions**, in the card
+  **When no session is upcoming**, below the list. On by default.
+  - **Whose testimonials:** **Automatic** (the latest past session that has
+    screenshots) or one session you pick. Its Testimonials screenshots are shown,
+    in their order.
+  - **Heading:** pick **What students said after the last session.** or
+    **Feedbacks from previous sessions.**, then edit the text if you like.
+  - **Text under the heading:** editable. Left empty it reads "From a previous
+    revision session. A few moments students shared afterward."
+  - While a session is upcoming, its own testimonials show instead and this card
+    has no effect. Off hides the band between sessions, as before.
 - **Header:** Home, Live Session, About, Reserve a Seat, Book 1:1 and **JSMF
   Resources**, which opens resources.jsmf.me in a new tab. Below 1280px wide the
   header becomes the ☰ menu.

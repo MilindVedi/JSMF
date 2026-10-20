@@ -5,6 +5,7 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
 import type { AuthenticatedUser } from '../../identity/application/auth.service';
 import { LiveSessionService } from '../application/live-session.service';
+import { NoSessionTestimonialsService } from '../application/no-session-testimonials.service';
 import { EXAM_OPTIONS, STAGE_OPTIONS } from '../domain/session-display';
 import { RegisterForSessionDto } from './dto/live-session.dto';
 
@@ -17,13 +18,22 @@ import { RegisterForSessionDto } from './dto/live-session.dto';
 @ApiTags('sessions')
 @Controller('sessions')
 export class LiveSessionController {
-  constructor(private readonly sessions: LiveSessionService) {}
+  constructor(
+    private readonly sessions: LiveSessionService,
+    private readonly noSession: NoSessionTestimonialsService,
+  ) {}
 
   @Public()
   @Get()
-  @ApiOperation({ summary: 'The next session, and the most recent past one' })
-  landing() {
-    return this.sessions.landing();
+  @ApiOperation({ summary: 'The next session, the most recent past one, and testimonials for when none is upcoming' })
+  async landing() {
+    const landing = await this.sessions.landing();
+    return {
+      ...landing,
+      // Only while nothing is upcoming: otherwise the upcoming session's own
+      // testimonials are the band.
+      noSessionTestimonials: landing.upcoming ? null : await this.noSession.forWebsite(),
+    };
   }
 
   @Public()

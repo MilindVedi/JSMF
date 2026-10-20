@@ -199,7 +199,7 @@ describe('feedback forms', () => {
     const session = await createSession();
     const student = await seat(session.id, 'student', hoursAgo(48));
     const form = await forms.create(session.id, { dayId: session.day1 }, admin());
-    await forms.update(session.id, form.id, { status: FeedbackFormStatus.OPEN, emailMode: FeedbackEmailMode.MANUAL }, admin());
+    await forms.update(session.id, form.id, { status: FeedbackFormStatus.OPEN, emailMode: FeedbackEmailMode.MANUAL, openLink: false }, admin());
     expect((await invites.sendDue()).sent).toBe(0); // manual: nothing on its own
 
     await invites.send(session.id, form.id);
@@ -253,7 +253,7 @@ describe('feedback forms', () => {
     });
     created.emails.push(stranger.email!);
     const form = await forms.create(session.id, { dayId: session.day1 }, admin());
-    await forms.update(session.id, form.id, { status: FeedbackFormStatus.OPEN, emailMode: FeedbackEmailMode.MANUAL }, admin());
+    await forms.update(session.id, form.id, { status: FeedbackFormStatus.OPEN, emailMode: FeedbackEmailMode.MANUAL, openLink: false }, admin());
 
     const asUser = (id: string) => ({ user: { id, email: null, name: '', roles: [] } as never });
     expect((await responses.view(form.id, asUser(holder.id))).state).toBe('OPEN');
@@ -403,9 +403,16 @@ describe('feedback forms', () => {
       return { session, holder, form, answers };
     }
 
-    it('is off by default: signed out still has to sign in, and an open reply is refused', async () => {
-      const { form, answers } = await openForm();
-      expect(form.openLink).toBe(false);
+    it('is on for a new form, and a copy keeps the source form\'s setting', async () => {
+      const { session, form } = await openForm();
+      expect(form.openLink).toBe(true);
+      await forms.update(session.id, form.id, { openLink: false }, admin());
+      const copy = await forms.create(session.id, { dayId: session.day1, copyFromFormId: form.id }, admin());
+      expect(copy.openLink).toBe(false);
+    });
+
+    it('when turned off: signed out still has to sign in, and an open reply is refused', async () => {
+      const { form, answers } = await openForm({ openLink: false });
       const view = await responses.view(form.id, {});
       expect(view).toMatchObject({ state: 'SIGN_IN_REQUIRED', mode: null });
       await expect(

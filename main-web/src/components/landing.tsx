@@ -25,7 +25,7 @@ import { MentorshipBanner } from "@/components/mentorship/mentorship-banner";
 import { MentorshipHeroCta } from "@/components/mentorship/mentorship-hero-cta";
 import { SiteLayout } from "@/components/site";
 import { SessionFeedback } from "@/components/session-feedback";
-import { TestimonialsSection } from "@/components/testimonials-section";
+import { NoSessionTestimonialsSection, TestimonialsSection } from "@/components/testimonials-section";
 import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/social-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
@@ -224,8 +224,13 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
       </section>
 
       {/* Shared with /prep-kit — renders nothing when the upcoming session has
-          no testimonials yet, so this is safe to leave in regardless. */}
-      {session && <TestimonialsSection session={session} />}
+          no testimonials yet, so this is safe to leave in regardless. With
+          nothing upcoming, the testimonials the admin chose for that case. */}
+      {session ? (
+        <TestimonialsSection session={session} />
+      ) : (
+        data?.noSessionTestimonials && <NoSessionTestimonialsSection testimonials={data.noSessionTestimonials} />
+      )}
 
       {/* About Dr. Angad + recent interview */}
       <section id="about" className="border-b border-border bg-background py-20">

@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Req,
   UploadedFile,
   UseInterceptors,
@@ -22,6 +23,7 @@ import { actorFrom } from '../../catalog/http/actor';
 import type { AuthenticatedUser } from '../../identity/application/auth.service';
 import { LiveSessionNotifications } from '../application/live-session-notifications.service';
 import { LiveSessionService } from '../application/live-session.service';
+import { NoSessionTestimonialsService } from '../application/no-session-testimonials.service';
 import { SessionDetailsService } from '../application/session-details.service';
 import { SessionMaterialsService } from '../application/session-materials.service';
 import { SessionTestimonialSectionsService } from '../application/session-testimonial-sections.service';
@@ -35,6 +37,7 @@ import {
   SendSessionDetailsDto,
   SendSessionMaterialsDto,
   UpdateLiveSessionDto,
+  UpdateNoSessionTestimonialsDto,
   UpdateTestimonialSectionDto,
 } from './dto/live-session.dto';
 
@@ -53,12 +56,30 @@ export class AdminLiveSessionController {
     private readonly details: SessionDetailsService,
     private readonly materials: SessionMaterialsService,
     private readonly sections: SessionTestimonialSectionsService,
+    private readonly noSession: NoSessionTestimonialsService,
   ) {}
 
   @Get()
   @ApiOperation({ summary: 'Every session, newest first, with seats taken' })
   list() {
     return this.sessions.listForAdmin();
+  }
+
+  // Declared before ':id', which would otherwise take this path as an id.
+  @Get('no-session-testimonials')
+  @ApiOperation({ summary: 'The home page testimonials shown while no session is upcoming' })
+  noSessionTestimonials() {
+    return this.noSession.forAdmin();
+  }
+
+  @Put('no-session-testimonials')
+  @ApiOperation({ summary: 'Change the testimonials shown while no session is upcoming' })
+  updateNoSessionTestimonials(
+    @Body() dto: UpdateNoSessionTestimonialsDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.noSession.update(dto, actorFrom(user, request));
   }
 
   @Get(':id')

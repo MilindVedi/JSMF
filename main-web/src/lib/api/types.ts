@@ -77,6 +77,14 @@ export interface LiveSession {
 export interface SessionLanding {
   upcoming: LiveSession | null;
   previous: LiveSession | null;
+  /** Set only while nothing is upcoming: the testimonials the admin chose for that case. */
+  noSessionTestimonials?: NoSessionTestimonials | null;
+}
+
+export interface NoSessionTestimonials {
+  heading: string;
+  subheading: string;
+  urls: string[];
 }
 
 export interface RegistrationAnswers {

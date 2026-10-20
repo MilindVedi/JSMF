@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { NoSessionTestimonialsCard } from "@/components/admin/no-session-testimonials-card";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -95,6 +96,8 @@ export default function AdminSessionsPage() {
           </Table>
         </Card>
       )}
+
+      <NoSessionTestimonialsCard />
     </div>
   );
 }

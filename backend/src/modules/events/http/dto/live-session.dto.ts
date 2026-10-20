@@ -434,3 +434,34 @@ export class ReorderTestimonialSectionsDto {
   @IsUUID(undefined, { each: true })
   sectionIds!: string[];
 }
+
+/** The home page's testimonials while no session is upcoming. Every field optional; a blank text means the default. */
+export class UpdateNoSessionTestimonialsDto {
+  @ApiPropertyOptional({ description: 'Off hides the band while no session is upcoming.' })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Whose testimonials (that session's original gallery). Null = the most recent past session that has any.",
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  sessionId?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, maxLength: 150 })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(150)
+  heading?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, maxLength: 300 })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(300)
+  subheading?: string | null;
+}

@@ -383,8 +383,32 @@ export interface SessionRegistrationRow {
 }
 
 /** Live sessions sold on the main website (jsmf.me). */
+/** The home page's testimonials while no session is upcoming. */
+export interface NoSessionTestimonials {
+  enabled: boolean;
+  /** Null = automatic: the most recent past session that has testimonials. */
+  sessionId: string | null;
+  /** Null = the first of `headingOptions`. */
+  heading: string | null;
+  /** Null = `defaultSubheading`. */
+  subheading: string | null;
+  headingOptions: string[];
+  defaultSubheading: string;
+  /** Which session "automatic" picks right now, or null when none has any. */
+  automaticSessionId: string | null;
+  /** Sessions with testimonials, newest first. */
+  sessions: Array<{ id: string; title: string; startsAt: string | null; status: string; testimonialCount: number }>;
+}
+
 export const adminSessionApi = {
   list: () => api.get<AdminSession[]>("/admin/sessions"),
+  noSessionTestimonials: () => api.get<NoSessionTestimonials>("/admin/sessions/no-session-testimonials"),
+  updateNoSessionTestimonials: (input: {
+    enabled?: boolean;
+    sessionId?: string | null;
+    heading?: string | null;
+    subheading?: string | null;
+  }) => api.put<NoSessionTestimonials>("/admin/sessions/no-session-testimonials", input),
   get: (id: string) => api.get<AdminSession>(`/admin/sessions/${id}`),
   create: (input: SessionInput) => api.post<AdminSession>("/admin/sessions", input),
   update: (id: string, input: SessionInput) => api.patch<AdminSession>(`/admin/sessions/${id}`, input),

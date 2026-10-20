@@ -349,7 +349,7 @@ function SettingsTab({
       <div className="space-y-4 rounded-lg border p-4">
         <SwitchRow
           label="Take feedback on the Telegram link without signing in"
-          hint="Off (default): the Telegram link asks people to sign in, and only seat holders can reply. On: anyone with the link can reply by typing their name. The emailed links work as before either way."
+          hint="On (default for new forms): anyone with the link can reply by typing their name. Off: the Telegram link asks people to sign in, and only seat holders can reply. The emailed links work as before either way."
           checked={form.openLink}
           disabled={busy}
           onChange={(openLink) =>

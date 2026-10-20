@@ -1259,6 +1259,9 @@ model LiveSession {
   testimonialSections SessionTestimonialSection[]
   materials           SessionMaterial[]
   feedbackForms       FeedbackForm[]
+  /// The site settings that pick this session's testimonials for the home
+  /// page while no session is upcoming (at most the one singleton row).
+  noSessionTestimonialsFor PlatformSettings[]
 
   @@index([startsAt])
   @@map("live_sessions")
@@ -1520,6 +1523,19 @@ model PlatformSettings {
   /// Google sign-in is offered, across both the main website and the PDF
   /// store. Off hides it everywhere at once.
   showSpamFolderNote Boolean @default(true) @map("show_spam_folder_note")
+
+  /// The testimonials band on the home page and /prep-kit while no session
+  /// is upcoming (until now that band simply disappeared). Off hides it.
+  noSessionTestimonialsEnabled   Boolean @default(true) @map("no_session_testimonials_enabled")
+  /// Whose testimonials (the session's original gallery). Null = the most
+  /// recent past session that has any. SetNull: deleting that session falls
+  /// back to automatic rather than failing.
+  noSessionTestimonialsSessionId String? @map("no_session_testimonials_session_id") @db.Uuid
+  /// The band's copy. Null falls back to the defaults in LiveSessionService.
+  noSessionTestimonialsHeading    String? @map("no_session_testimonials_heading") @db.VarChar(150)
+  noSessionTestimonialsSubheading String? @map("no_session_testimonials_subheading") @db.VarChar(300)
+
+  noSessionTestimonialsSession LiveSession? @relation(fields: [noSessionTestimonialsSessionId], references: [productId], onDelete: SetNull)
 
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

@@ -2,7 +2,7 @@
 
 import { Quote } from "lucide-react";
 import { TestimonialGallery } from "@/components/testimonial-gallery";
-import type { LiveSession } from "@/lib/api/types";
+import type { LiveSession, NoSessionTestimonials } from "@/lib/api/types";
 
 /**
  * What past attendees said, on its own light band. The heading and
@@ -15,7 +15,38 @@ import type { LiveSession } from "@/lib/api/types";
  * Shared by the home page (`landing.tsx`) and `/prep-kit` (`book-page.tsx`).
  */
 export function TestimonialsSection({ session }: { session: LiveSession }) {
-  const urls = session.testimonialUrls;
+  return (
+    <TestimonialsBand
+      urls={session.testimonialUrls}
+      heading={session.testimonialsHeading || "What students said after the last session."}
+      subheading={
+        session.testimonialsSubheading ||
+        "From a previous revision session held before the FMGE exam. A few moments students shared afterward."
+      }
+      tag={session.testimonialsTag}
+    />
+  );
+}
+
+/**
+ * The same band while no session is upcoming: the screenshots and copy the
+ * admin chose for that case (Sessions → "When no session is upcoming").
+ */
+export function NoSessionTestimonialsSection({ testimonials }: { testimonials: NoSessionTestimonials }) {
+  return <TestimonialsBand urls={testimonials.urls} heading={testimonials.heading} subheading={testimonials.subheading} />;
+}
+
+function TestimonialsBand({
+  urls,
+  heading,
+  subheading,
+  tag = null,
+}: {
+  urls: string[];
+  heading: string;
+  subheading: string;
+  tag?: string | null;
+}) {
   if (urls.length === 0) return null;
 
   return (
@@ -28,18 +59,15 @@ export function TestimonialsSection({ session }: { session: LiveSession }) {
         <div className="mt-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
           <div>
             <h2 className="max-w-2xl font-display text-3xl font-semibold leading-tight text-brand-deep md:text-4xl">
-              {session.testimonialsHeading || "What students said after the last session."}
+              {heading}
             </h2>
-            <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">
-              {session.testimonialsSubheading ||
-                "From a previous revision session held before the FMGE exam. A few moments students shared afterward."}
-            </p>
+            <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">{subheading}</p>
           </div>
           {/* Optional, so it is left out entirely when unset — an empty tag
               with a dangling border reads as broken, not minimal. */}
-          {session.testimonialsTag && (
+          {tag && (
             <span className="flex items-center gap-2 border-l-2 border-primary pl-3 text-[11px] font-bold uppercase tracking-wide text-primary">
-              {session.testimonialsTag}
+              {tag}
             </span>
           )}
         </div>
