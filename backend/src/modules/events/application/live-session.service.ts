@@ -25,6 +25,7 @@ import { StorageService } from '../../storage/application/storage.service';
 import { objectRefOf } from '../../storage/domain/storage-provider.port';
 import { normaliseContactPhone } from '../../../shared/sms/domain/contact-phone';
 import { SessionShowcase, type SectionQuote } from './session-showcase';
+import { insertTestimonial, TESTIMONIAL_MIME_TYPES, testimonialKeyPrefix } from './session-testimonial-uploads';
 
 export interface LiveSessionInput {
   title?: string;
@@ -812,7 +813,7 @@ export class LiveSessionService {
     await this.getRowOrThrow(sessionId);
     if (sectionId) await this.sectionOrThrow(sessionId, sectionId);
 
-    if (!/^image\/(png|jpeg|webp)$/.test(file.mimetype)) {
+    if (!(TESTIMONIAL_MIME_TYPES as readonly string[]).includes(file.mimetype)) {
       throw new BadRequestException('A testimonial must be a PNG, JPEG or WebP image.');
     }
 
@@ -821,27 +822,16 @@ export class LiveSessionService {
       originalFilename: file.originalname,
       mimeType: file.mimetype,
       visibility: 'PUBLIC',
-      keyPrefix: `sessions/${sessionId}/testimonials`,
+      keyPrefix: testimonialKeyPrefix(sessionId),
     });
 
-    const last = await this.prisma.sessionTestimonial.findFirst({
-      where: { liveSessionId: sessionId, sectionId },
-      orderBy: { sortOrder: 'desc' },
-      select: { sortOrder: true },
-    });
-
-    const row = await this.prisma.sessionTestimonial.create({
-      data: {
-        liveSessionId: sessionId,
-        storageProvider: stored.provider,
-        bucket: stored.bucket,
-        objectKey: stored.objectKey,
-        mimeType: stored.mimeType,
-        sizeBytes: BigInt(stored.sizeBytes),
-        sortOrder: (last?.sortOrder ?? -1) + 1,
-        uploadedById: actor.id,
-        sectionId,
-      },
+    const row = await insertTestimonial(this.prisma, {
+      sessionId,
+      sectionId,
+      ref: stored,
+      mimeType: stored.mimeType,
+      sizeBytes: stored.sizeBytes,
+      uploadedById: actor.id,
     });
 
     return {

@@ -85,6 +85,8 @@ export interface NoSessionTestimonials {
   heading: string;
   subheading: string;
   urls: string[];
+  /** Replies picked for the band. Absent from an older API. */
+  quotes?: SectionQuote[];
 }
 
 export interface RegistrationAnswers {

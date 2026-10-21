@@ -3,6 +3,7 @@ import { EntitlementsModule } from '../entitlements/entitlements.module';
 import { BundleContentsService } from './application/bundle-contents.service';
 import { PrismaModule } from '../../shared/prisma/prisma.module';
 import { StorageModule } from '../storage/storage.module';
+import { ProductUploadPurposes } from './application/product-upload-purposes';
 import { ProductAssetService } from './application/product-asset.service';
 import { ProductService } from './application/product.service';
 import { TaxonomyService } from './application/taxonomy.service';
@@ -28,7 +29,7 @@ import { CatalogController } from './http/catalog.controller';
     AdminTaxonomyController,
     CatalogController,
   ],
-  providers: [ProductService, ProductAssetService, TaxonomyService, BundleContentsService],
+  providers: [ProductService, ProductAssetService, ProductUploadPurposes, TaxonomyService, BundleContentsService],
   exports: [ProductService, ProductAssetService, TaxonomyService],
 })
 export class CatalogModule {}

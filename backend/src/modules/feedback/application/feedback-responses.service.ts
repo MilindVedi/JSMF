@@ -190,11 +190,16 @@ export class FeedbackResponsesService {
         // off the website: it was picked under the old answer.
         if (form.askConsentToPublish && existing.consentToPublish && !consentToPublish) {
           await tx.feedbackHighlight.deleteMany({ where: { responseId: response.id } });
+          await tx.noSessionQuote.deleteMany({ where: { responseId: response.id } });
         }
         // Hiding their name from the team: the card stays, without the name.
         // (A changed "show my name" answer is only guidance; the admin decides.)
         if (!existing.isAnonymous && isAnonymous) {
           await tx.feedbackHighlight.updateMany({
+            where: { responseId: response.id },
+            data: { attribution: ANONYMOUS_ATTRIBUTION },
+          });
+          await tx.noSessionQuote.updateMany({
             where: { responseId: response.id },
             data: { attribution: ANONYMOUS_ATTRIBUTION },
           });
@@ -273,6 +278,7 @@ export class FeedbackResponsesService {
       // Taking consent back takes the reply off the website, as for any reply.
       if (existing && form.askConsentToPublish && existing.consentToPublish && !consentToPublish) {
         await tx.feedbackHighlight.deleteMany({ where: { responseId: response.id } });
+        await tx.noSessionQuote.deleteMany({ where: { responseId: response.id } });
       }
       return { response, edited: existing !== null };
     });

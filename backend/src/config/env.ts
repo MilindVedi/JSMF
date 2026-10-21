@@ -76,6 +76,25 @@ const schema = z
     /// moving PRIMARY_FILE storage elsewhere).
     MAX_UPLOAD_SIZE_MB: z.coerce.number().int().positive().max(512).default(10),
 
+    /// Upper bound on a file the admin's browser sends straight to storage
+    /// (UploadService). No byte of it passes through this app, so neither
+    /// Cloud Run's 32 MiB request cap nor instance memory applies; the storage
+    /// session is locked to the declared size, so this is enforced by the
+    /// provider as well as here. GCS itself allows 5 TB per object.
+    MAX_DIRECT_UPLOAD_SIZE_MB: z.coerce.number().int().positive().max(51_200).default(500),
+    /// Size of each piece the browser sends. A multiple of 256 KiB, as GCS
+    /// requires; 8 MiB is Google's recommended minimum. Larger means fewer
+    /// requests, smaller means less to resend after a dropped connection.
+    DIRECT_UPLOAD_CHUNK_MB: z.coerce.number().int().min(1).max(256).default(8),
+    /// Upper bound on an image uploaded straight to storage: covers and
+    /// session screenshots. A cover is served to every visitor as uploaded,
+    /// so this is about page weight as much as storage; 8 matches what
+    /// testimonial screenshots were already allowed.
+    MAX_IMAGE_UPLOAD_SIZE_MB: z.coerce.number().int().positive().max(100).default(8),
+    /// How long an admin has to finish an upload once started. Long enough for
+    /// a large file on a slow connection; the sweep removes anything left after.
+    DIRECT_UPLOAD_EXPIRY_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+
     STORAGE_DRIVER: z.enum(['local', 'cloudinary', 'gcs']).default('local'),
     STORAGE_LOCAL_ROOT: z.string().default('.storage'),
     STORAGE_SIGNING_SECRET: z.string().min(16),

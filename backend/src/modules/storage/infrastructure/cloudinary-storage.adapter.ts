@@ -106,6 +106,7 @@ export class CloudinaryStorageAdapter extends StorageProvider {
       objectKey: result.public_id,
       sizeBytes: result.bytes ?? request.content.length,
       checksumSha256: createHash('sha256').update(request.content).digest('hex'),
+      checksumMd5: createHash('md5').update(request.content).digest('hex'),
       mimeType: request.mimeType,
       originalFilename: request.originalFilename,
     };

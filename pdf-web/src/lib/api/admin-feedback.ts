@@ -160,6 +160,8 @@ export interface FeedbackReply {
   editedAt: string | null;
   answers: Array<{ questionId: string; rating: number | null; text: string | null; choices: string[] }>;
   highlights: FeedbackHighlight[];
+  /** Set when the reply is in the home page band shown while no session is upcoming. */
+  noSessionQuoteId: string | null;
 }
 
 export interface FeedbackResults {
@@ -185,6 +187,31 @@ export interface ImportableForm {
   questions: number;
   createdAt: string;
 }
+
+/** A reply picked for the home page band shown while no session is upcoming. */
+export interface NoSessionQuote {
+  id: string;
+  responseId: string;
+  quote: string;
+  attribution: string;
+  formId: string;
+  formTitle: string;
+  sessionId: string;
+  sessionTitle: string;
+  /** Kept, but not on the website: its session was deleted. */
+  sessionDeleted: boolean;
+}
+
+export const noSessionQuotesApi = {
+  list: () => api.get<NoSessionQuote[]>("/admin/feedback/no-session-quotes"),
+  add: (input: { sessionId: string; formId: string; responseId: string; showName?: boolean }) =>
+    api.post<NoSessionQuote>("/admin/feedback/no-session-quotes", input),
+  update: (id: string, input: { quote?: string; attribution?: string }) =>
+    api.patch<NoSessionQuote>(`/admin/feedback/no-session-quotes/${id}`, input),
+  remove: (id: string) => api.delete<void>(`/admin/feedback/no-session-quotes/${id}`),
+  /** Every picked quote id, once each, in the new order. */
+  reorder: (ids: string[]) => api.put<void>("/admin/feedback/no-session-quotes/order", { ids }),
+};
 
 const base = (sessionId: string) => `/admin/sessions/${sessionId}/feedback-forms`;
 

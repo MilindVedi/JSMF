@@ -79,43 +79,12 @@ export class FeedbackHighlightsService implements SectionQuoteSource, OnModuleIn
   }
 
   async create(sessionId: string, formId: string, input: HighlightInput, actor: Actor) {
-    const form = await this.audience.loadFormOf(sessionId, formId);
-    const response = await this.prisma.feedbackResponse.findFirst({
-      where: { id: input.responseId, formId },
-      include: {
-        answers: { include: { question: { select: { kind: true, sortOrder: true } } } },
-        user: { select: { name: true } },
-      },
-    });
-    if (!response) throw new NotFoundException('That reply is not on this form.');
-    if (form.askConsentToPublish && !response.consentToPublish) {
-      throw new BadRequestException('This student did not agree to their reply being shown on the website.');
-    }
+    const { response, quote, attribution, rating } = await this.draft(sessionId, formId, input);
     const section = await this.prisma.sessionTestimonialSection.findFirst({
       where: { id: input.sectionId, liveSessionId: sessionId },
       select: { id: true },
     });
     if (!section) throw new BadRequestException('That feedback section is not on this session.');
-
-    const answers = [...response.answers].sort((a, b) => a.question.sortOrder - b.question.sortOrder);
-    const written = answers
-      .map((a) => a.textValue)
-      .filter((t): t is string => Boolean(t))
-      .sort((a, b) => b.length - a.length);
-    const quote = (input.quote ?? written[0] ?? '').trim();
-    if (!quote) throw new BadRequestException('This reply has no written answer to quote. Type the quote to show.');
-    if (quote.length > QUOTE_MAX) throw new BadRequestException(`A quote can be at most ${QUOTE_MAX} characters.`);
-
-    const withName = !response.isAnonymous && (input.showName ?? nameMayBeShown(response));
-    const attribution = !withName
-      ? ANONYMOUS_ATTRIBUTION
-      : input.attribution?.trim() ||
-        (await this.defaultAttribution(sessionId, response.userId, response.user?.name ?? response.respondentName ?? ''));
-    const rating =
-      input.rating !== undefined
-        ? input.rating
-        : (answers.find((a) => a.question.kind === FeedbackQuestionKind.RATING)?.ratingValue ?? null);
-    this.checkRating(rating);
 
     const last = await this.prisma.feedbackHighlight.findFirst({
       where: { sectionId: section.id },
@@ -128,7 +97,7 @@ export class FeedbackHighlightsService implements SectionQuoteSource, OnModuleIn
           responseId: response.id,
           sectionId: section.id,
           quote,
-          attribution: attribution.slice(0, ATTRIBUTION_MAX),
+          attribution,
           rating,
           sortOrder: (last?.sortOrder ?? -1) + 1,
           createdById: actor.id,
@@ -149,6 +118,47 @@ export class FeedbackHighlightsService implements SectionQuoteSource, OnModuleIn
       }
       throw error;
     }
+  }
+
+  /**
+   * The card a reply makes: its quote, name and stars, from what the admin
+   * typed or the reply's own defaults. The consent rule is checked here, so
+   * every place a reply can be shown goes through it.
+   */
+  private async draft(sessionId: string, formId: string, input: Omit<HighlightInput, 'sectionId'>) {
+    const form = await this.audience.loadFormOf(sessionId, formId);
+    const response = await this.prisma.feedbackResponse.findFirst({
+      where: { id: input.responseId, formId },
+      include: {
+        answers: { include: { question: { select: { kind: true, sortOrder: true } } } },
+        user: { select: { name: true } },
+      },
+    });
+    if (!response) throw new NotFoundException('That reply is not on this form.');
+    if (form.askConsentToPublish && !response.consentToPublish) {
+      throw new BadRequestException('This student did not agree to their reply being shown on the website.');
+    }
+
+    const answers = [...response.answers].sort((a, b) => a.question.sortOrder - b.question.sortOrder);
+    const written = answers
+      .map((a) => a.textValue)
+      .filter((t): t is string => Boolean(t))
+      .sort((a, b) => b.length - a.length);
+    const quote = (input.quote ?? written[0] ?? '').trim();
+    if (!quote) throw new BadRequestException('This reply has no written answer to quote. Type the quote to show.');
+    if (quote.length > QUOTE_MAX) throw new BadRequestException(`A quote can be at most ${QUOTE_MAX} characters.`);
+
+    const withName = !response.isAnonymous && (input.showName ?? nameMayBeShown(response));
+    const attribution = !withName
+      ? ANONYMOUS_ATTRIBUTION
+      : input.attribution?.trim() ||
+        (await this.defaultAttribution(sessionId, response.userId, response.user?.name ?? response.respondentName ?? ''));
+    const rating =
+      input.rating !== undefined
+        ? input.rating
+        : (answers.find((a) => a.question.kind === FeedbackQuestionKind.RATING)?.ratingValue ?? null);
+    this.checkRating(rating);
+    return { response, quote, attribution: attribution.slice(0, ATTRIBUTION_MAX), rating };
   }
 
   /** Tidies a card's text, name or stars. An anonymous reply's name stays hidden. */
@@ -195,7 +205,160 @@ export class FeedbackHighlightsService implements SectionQuoteSource, OnModuleIn
     });
   }
 
+  // --- the band shown while no session is upcoming -----------------------------------
+
+  async noSessionQuotes(): Promise<SectionQuote[]> {
+    const rows = await this.prisma.noSessionQuote.findMany({
+      // The same consent rule at read time as quotesFor, and nothing from a
+      // deleted session.
+      where: {
+        response: {
+          OR: [{ consentToPublish: true }, { form: { askConsentToPublish: false } }],
+          form: { liveSession: { product: { deletedAt: null } } },
+        },
+      },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, quote: true, attribution: true },
+    });
+    return rows.map((row) => ({ ...row, rating: null }));
+  }
+
+  /** Every reply picked for the band, in display order, with where it came from. */
+  async listNoSessionQuotes() {
+    const rows = await this.prisma.noSessionQuote.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      include: {
+        response: {
+          select: {
+            id: true,
+            form: {
+              select: {
+                id: true,
+                title: true,
+                liveSessionId: true,
+                liveSession: { select: { shortName: true, product: { select: { title: true, deletedAt: true } } } },
+              },
+            },
+          },
+        },
+      },
+    });
+    return rows.map((row) => {
+      const form = row.response.form;
+      return {
+        id: row.id,
+        responseId: row.response.id,
+        quote: row.quote,
+        attribution: row.attribution,
+        formId: form.id,
+        formTitle: form.title,
+        sessionId: form.liveSessionId,
+        sessionTitle: form.liveSession.shortName?.trim() || form.liveSession.product.title,
+        /** Left out of the website: its session was deleted. */
+        sessionDeleted: form.liveSession.product.deletedAt !== null,
+      };
+    });
+  }
+
+  async createNoSessionQuote(
+    sessionId: string,
+    formId: string,
+    input: Omit<HighlightInput, 'sectionId' | 'rating'>,
+    actor: Actor,
+  ) {
+    const { response, quote, attribution } = await this.draft(sessionId, formId, { ...input, rating: null });
+    const last = await this.prisma.noSessionQuote.findFirst({ orderBy: { sortOrder: 'desc' }, select: { sortOrder: true } });
+    try {
+      const row = await this.prisma.noSessionQuote.create({
+        data: {
+          responseId: response.id,
+          quote,
+          attribution,
+          sortOrder: (last?.sortOrder ?? -1) + 1,
+          createdById: actor.id,
+        },
+      });
+      await this.audit.record({
+        actorUserId: actor.id,
+        action: 'no_session_quote.created',
+        entityType: 'no_session_quote',
+        entityId: row.id,
+        after: row,
+        ip: actor.ip,
+      });
+      return row;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('This reply is already in the band.');
+      }
+      throw error;
+    }
+  }
+
+  /** Tidies a card's text or name. An anonymous reply's name stays hidden. */
+  async updateNoSessionQuote(id: string, input: { quote?: string; attribution?: string }, actor: Actor) {
+    const before = await this.noSessionQuoteOrThrow(id);
+    const quote = input.quote?.trim();
+    if (quote !== undefined && !quote) throw new BadRequestException('A quote cannot be empty.');
+    if (quote && quote.length > QUOTE_MAX) throw new BadRequestException(`A quote can be at most ${QUOTE_MAX} characters.`);
+    const attribution = before.response.isAnonymous ? undefined : input.attribution?.trim().slice(0, ATTRIBUTION_MAX) || undefined;
+
+    const row = await this.prisma.noSessionQuote.update({ where: { id }, data: { quote, attribution } });
+    await this.audit.record({
+      actorUserId: actor.id,
+      action: 'no_session_quote.updated',
+      entityType: 'no_session_quote',
+      entityId: id,
+      before,
+      after: row,
+      ip: actor.ip,
+    });
+    return row;
+  }
+
+  async removeNoSessionQuote(id: string, actor: Actor) {
+    const before = await this.noSessionQuoteOrThrow(id);
+    await this.prisma.noSessionQuote.delete({ where: { id } });
+    await this.audit.record({
+      actorUserId: actor.id,
+      action: 'no_session_quote.deleted',
+      entityType: 'no_session_quote',
+      entityId: id,
+      before,
+      ip: actor.ip,
+    });
+  }
+
+  /** Every picked quote's id, once each, in the new display order. */
+  async reorderNoSessionQuotes(ids: string[], actor: Actor) {
+    const current = await this.prisma.noSessionQuote.findMany({ select: { id: true } });
+    const known = new Set(current.map((row) => row.id));
+    if (ids.length !== known.size || new Set(ids).size !== ids.length || ids.some((id) => !known.has(id))) {
+      throw new BadRequestException('Send every picked quote once, in the new order. Reload and try again.');
+    }
+    await this.prisma.$transaction(
+      ids.map((id, sortOrder) => this.prisma.noSessionQuote.update({ where: { id }, data: { sortOrder } })),
+    );
+    await this.audit.record({
+      actorUserId: actor.id,
+      action: 'no_session_quote.reordered',
+      entityType: 'no_session_quote',
+      entityId: null,
+      after: { ids },
+      ip: actor.ip,
+    });
+  }
+
   // --- internals ----------------------------------------------------------------
+
+  private async noSessionQuoteOrThrow(id: string) {
+    const row = await this.prisma.noSessionQuote.findUnique({
+      where: { id },
+      include: { response: { select: { isAnonymous: true } } },
+    });
+    if (!row) throw new NotFoundException('That quote is not in the band.');
+    return row;
+  }
 
   private async highlightOrThrow(sessionId: string, formId: string, highlightId: string) {
     await this.audience.loadFormOf(sessionId, formId);

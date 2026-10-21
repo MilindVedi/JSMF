@@ -115,49 +115,16 @@ Status as of 11 October 2026. Nothing below is committed yet.
   - Deploy the backend before pdf-web: the store and library read new fields (`contents`, `bundleSize`, the quote endpoint).
   - Not tested against Razorpay: a paid bundle checkout was tested with the stub (full price and part-owner price). Try one small paid bundle in Razorpay test mode before selling one.
 - **Day materials: several PDFs per day** (built, not deployed; pdf-web only): the PDF search now asks for PDFs only and says "Searching…" while it loads; it stays open after adding one.
-- **Direct-to-storage uploads (not built; the upload path does not scale).** Downloads already
-  do this correctly — the backend mints a short-lived signed GCS URL and the browser fetches the
-  file straight from Google, so no file bytes cross Cloud Run. **Uploads do the opposite:** the
-  file is buffered whole in the pdf-web proxy (256Mi) and again in the backend (512Mi) before
-  reaching GCS. Three ceilings follow from that, none of which a bigger `MAX_UPLOAD_SIZE_MB` can
-  lift:
-  - Cloud Run refuses any HTTP/1 request over **32 MiB**, so a larger upload fails in production
-    however the app is configured;
-  - the file sits in RAM twice, so a large upload can take an instance down;
-  - the proxy (`pdf-web/next.config.ts` → `proxyClientMaxBodySize`) has to be raised in step, and
-    silently truncates the body when it is not.
-
-  Until this is built, keep **`MAX_UPLOAD_SIZE_MB` at 25** (and `NEXT_PUBLIC_MAX_UPLOAD_MB` to
-  match, with the proxy a little above it). 25 rather than 32 leaves room for the multipart
-  overhead that counts towards Cloud Run's limit.
-
-  **The correct approach**, which removes all three ceilings at once:
-  1. The browser asks the backend for a signed upload URL (`POST /admin/products/:id/assets/upload-url`),
-     naming the file's size and type. The backend checks the admin's rights, refuses an
-     unreasonable size or type, and returns a URL valid for a few minutes, scoped to one object key
-     it chose.
-  2. The browser `PUT`s the file **directly to GCS**. Nothing passes through Cloud Run or Next.js.
-     GCS takes files up to 5 TB and handles concurrency itself.
-  3. The browser calls the backend back (`POST …/assets/confirm` with the object key). The backend
-     reads the object's **metadata** from GCS — size, content type, and the checksum GCS already
-     computed — and only then writes the `product_assets` row.
-
-  What moves, and must not be lost (today all of it happens while the bytes are in hand, in
-  `product-asset.service.ts`): the MIME-type check against the asset kind, the empty-file check,
-  the SHA-256 that blocks a byte-identical re-upload, and storing the file before the database row.
-  Step 3 can do each of these from GCS metadata without downloading the file (`crc32c`/`md5Hash`
-  are returned by the metadata call; the stored checksum column may need to change to one GCS
-  provides, or be computed in the browser).
-
-  Two new things the design needs, which the current one does not:
-  - **a size cap on the signed URL itself** (`x-goog-content-length-range`), or an admin could
-    upload anything to it;
-  - **cleanup of abandoned objects** — uploads that completed in step 2 but never reached step 3.
-    A sweep over objects with no `product_assets` row, on the existing `SweepRegistry` clock.
-
-  Scope it to `PRIMARY_FILE` PDFs first; cover images and small attachments can keep today's path
-  indefinitely, since they are genuinely small. Roughly half a day. Do it before promising anyone
-  that large files work — not by raising the limit.
+- **Hand-picked testimonials while no session is upcoming** (built 2026-10-21, not deployed): pick screenshots and feedback replies from any sessions for the home page band; replies show as quote cards above the screenshots. Steps: [docs/main-website/admin-guide.md](docs/main-website/admin-guide.md) "Testimonials when no session is upcoming".
+  - Review migration `20261021100000_no_session_hand_picked` before committing. It is additive: one boolean column on `platform_settings` (default off) and two new tables (`no_session_screenshots`, `no_session_quotes`).
+  - Deploy the backend, then pdf-web and main-web. An older main-web ignores the new `quotes` field.
+- **Direct-to-storage uploads** (built 2026-10-20/21, not deployed). Every upload goes from the browser straight to GCS in 8 MB pieces, with progress, cancel and resume after a dropped connection: PDFs, attachments, covers and session screenshots. One `uploads` module and table serve them, and each kind is a registered *purpose*, so user avatars or files later are one class. Public files (covers, screenshots) are checked in private staging and published only once accepted. Limits: 500 MB for PDFs (`MAX_DIRECT_UPLOAD_SIZE_MB`) and 8 MB for images (`MAX_IMAGE_UPLOAD_SIZE_MB`). Details: [docs/pdf-platform/05-storage.md](docs/pdf-platform/05-storage.md) §3b.
+  - Review migration `20261020100000_direct_uploads` before committing. It is additive: one enum, one table (`uploads`), and one nullable column (`product_assets.checksum_md5`).
+  - **Before deploying, apply the CORS rule to the prod private bucket** (one command, in §3b; the rule is in `docs/gcp/gcs-private-bucket-cors.json`). Without it, uploads stop after the first piece with a clear message. The dev bucket already has its rule. The public bucket needs none.
+  - Deploy the backend before pdf-web. Each falls back to the multipart path against an older other half.
+  - **After both are deployed**, lower `MAX_UPLOAD_SIZE_MB` to 5 on the backend and `NEXT_PUBLIC_MAX_UPLOAD_MB` to 5 for the pdf-web build. They then only cap the multipart fallback. Not before: until the new pdf-web is live, the old one still sends PDFs that way.
+  - Not tested on Cloud Run itself: the full flow was tested locally against the real dev buckets (a 30 MB PDF, a dropped connection, a lost last reply, a fake PDF, a cancel, a cover, a screenshot). Upload one large PDF and one cover in prod after deploying.
+  - For user uploads later: image processing, per-user quotas and malware scanning are still to add (§3b, "Adding a kind of upload").
 - **Cloud Scheduler `session-reminders` job:** without it, no session reminders go out in production. The commands are in [docs/gcp/02-deployment-guide.md](docs/gcp/02-deployment-guide.md).
 - **Feedback sections ("What students said after Day 1")** (built, not deployed). Details are in [docs/main-website/README.md](docs/main-website/README.md) §3e.
   - Review migration `20261017190000_testimonial_sections` before committing. It is additive: one table and one nullable column.

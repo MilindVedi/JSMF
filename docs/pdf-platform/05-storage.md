@@ -192,6 +192,176 @@ the same test the other adapters were judged by, reaching the opposite answer.
 
 ---
 
+## 3b. Direct uploads (built 2026-10-20, generalised 2026-10-21)
+
+**Every upload goes straight from the browser to storage.** That covers product
+PDFs, attachments, covers and session screenshots, and later user files. No
+byte passes through Next.js or the API, so neither Cloud Run's 32 MiB request
+cap nor instance memory bounds a file. Downloads already worked this way. The
+old multipart routes (`POST /api/admin/products/:id/assets`,
+`POST /api/admin/sessions/:id/testimonials`) remain as the fallback for
+`STORAGE_DRIVER=cloudinary`, which cannot take direct uploads, and for an
+older admin site during a rollout.
+
+### Purposes: one flow, any kind of file
+
+What a file is for is its **purpose** (`uploads.purpose`). The module that
+owns the thing being uploaded to registers it with `UploadPurposeRegistry` at
+startup (`uploads/application/upload-purpose.ts`). The `uploads` module runs
+the same flow for all of them and never imports any of them.
+
+| Purpose | Registered by | Who | Types | Limit | Becomes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `product.primary_file` | catalog | ADMIN, EDUCATOR | PDF | `MAX_DIRECT_UPLOAD_SIZE_MB` (500) | next `product_assets` version |
+| `product.sample_preview` | catalog | ADMIN, EDUCATOR | PDF | same | same |
+| `product.attachment` | catalog | ADMIN, EDUCATOR | PDF, ZIP, PNG, JPEG, WebP | same | same |
+| `product.cover_image` | catalog | ADMIN, EDUCATOR | PNG, JPEG, WebP | `MAX_IMAGE_UPLOAD_SIZE_MB` (8) | next cover version (public) |
+| `session.testimonial` | events | ADMIN, EDUCATOR | PNG, JPEG, WebP | same | a `session_testimonials` row (public) |
+
+A purpose says: the roles allowed (empty = any signed-in person, with
+`prepare` deciding); its bucket visibility; its types and limit; how to
+validate its own options (`context`, e.g. `{ sectionId }`); `prepare`, which
+checks that the target exists and the person may upload to it and returns the
+key prefix; an optional `inspect` (the product purposes refuse an identical
+re-upload); `record`, which writes the result in the completing transaction;
+and `present`, which builds the response.
+
+### The three steps (`uploads/application/upload.service.ts`)
+
+1. **Start**, `POST /api/uploads` `{ purpose, targetId, context?, filename, contentType, sizeBytes }`.
+   The API checks the role, type and size, then the purpose's `prepare`. It
+   chooses the object key, opens a **GCS resumable upload session** and
+   records an `uploads` row as `PENDING`. It returns the session URL, which is
+   the credential for that one object. It goes to the browser and is never
+   stored or logged.
+2. **Send.** The browser (`pdf-web/src/lib/direct-upload.ts`, which uses
+   `resumable-upload.ts`) `PUT`s the file in `DIRECT_UPLOAD_CHUNK_MB` pieces
+   (default 8) with `Content-Range`, reading each with `File.slice`, so even a
+   huge file costs one piece of memory. Storage answers `308` + `Range` per
+   piece and `200` at the end. After a dropped connection or a 5xx the browser
+   waits (exponential backoff, up to 8 tries), asks storage how much arrived
+   (`Content-Range: bytes */<size>`) and carries on from there. If the last
+   piece's reply is lost, the browser asks and learns the file is complete.
+3. **Complete**, `POST /api/uploads/:id/complete`. The API reads the object's
+   **metadata** (size, type, MD5) and its first 1 KB. It never downloads the
+   whole file. It refuses the upload, and deletes the object at once, if:
+   - the size differs from what was declared;
+   - the type differs;
+   - the first bytes are not the declared format (a PNG renamed `.pdf` fails
+     here: `uploads/domain/file-signature.ts`);
+   - the purpose's `inspect` refuses it.
+
+   It runs `prepare` again, since the target may have been deleted meanwhile.
+   Then the purpose records it. Calling complete again after success returns
+   the same result. The browser retries this call on a network error, but not
+   on a refusal.
+
+### Public files are checked privately first
+
+A file bound for the **public** bucket (covers, screenshots) is uploaded to the
+**private** bucket under `staging/<purpose>/` (`uploads.staged = true`). Only
+once it passes every check is it copied to its public key, inside GCS, with no
+bytes through the app (`StorageProvider.copy`). The staged original is then
+deleted. An unchecked file is therefore never publicly readable, which matters
+once anyone can upload. It also means the public bucket needs no CORS rule.
+
+### What the GCS session guarantees on its own (checked against the dev bucket)
+
+- **Exact size.** The declared size is sent as `X-Upload-Content-Length`, and
+  GCS refuses a final size that is off by one byte either way.
+- **Never an overwrite.** `ifGenerationMatch: 0` on the session and on the
+  copy: finalising onto an existing object fails with 412.
+- **One origin.** The session answers CORS only for the origin it was opened
+  for: the request's `Origin` if it is in `CORS_ORIGINS`, else `STOREFRONT_URL`
+  (`https://resources.jsmf.me` in production).
+
+### Cleanup and limits
+
+- The `uploads` sweep (5-minute clock) marks `PENDING` rows past `expires_at`
+  (`DIRECT_UPLOAD_EXPIRY_HOURS`, default 24) as `EXPIRED` and deletes their
+  objects.
+- A GCS session lives a week, so a browser that kept sending after the app gave
+  up could still finish an object. For 8 days the sweep therefore keeps
+  deleting the objects of `ABORTED`/`EXPIRED` rows and the staged originals of
+  completed public uploads. It never deletes what a completed, unstaged upload
+  became.
+- One person may have at most 20 unfinished uploads open.
+
+**Checksums.** A direct upload's bytes never reach the app, so it has no
+SHA-256. `product_assets.checksum_md5` (hex) holds the MD5 that GCS computed,
+and the multipart path records MD5 too. The "identical to the current version"
+check compares SHA-256 when both rows have it, else MD5.
+
+### Bucket CORS rule (required once, private bucket only)
+
+The session handles CORS for itself, but without a bucket rule GCS does not
+**expose `Range`** to the browser. The browser then cannot tell how much
+arrived, so it cannot resume. It stops with "storage did not say how much it
+received" rather than hanging. Set it once:
+
+```bash
+# Production (the admin panel is served from resources.jsmf.me)
+gcloud storage buckets update gs://jsmf-private-509708 \
+  --cors-file=docs/gcp/gcs-private-bucket-cors.json
+
+# Dev bucket, for http://localhost:3001 (already applied 2026-10-20)
+gcloud storage buckets update gs://jsmf-dev-private-509708 --cors-file=<a copy with origin http://localhost:3001>
+
+# Check
+gcloud storage buckets describe gs://jsmf-private-509708 --format="json(cors_config)"
+```
+
+Uploading from another web origin (a second domain, the raw `run.app` URL)
+needs it added to that file, to `CORS_ORIGINS`, and re-applying. The public
+bucket needs no rule.
+
+### Local driver
+
+`STORAGE_DRIVER=local` speaks the same protocol. The session URL is
+`<APP_PUBLIC_URL>/storage/local/uploads/<signed token>`, served by
+`LocalStorageController`. It appends pieces to a `.part` file and renames it
+into place only when complete. The browser client and the whole flow run
+unchanged without a bucket, and `uploads/application/upload.integration.spec.ts`
+uses it.
+
+### Adding a kind of upload (a user's avatar, a user's file)
+
+Write one class that registers an `UploadPurpose`, as
+`catalog/application/product-upload-purposes.ts` and
+`events/application/session-testimonial-uploads.ts` do. Nothing else changes:
+not the table, the endpoints, nor the browser client
+(`directUpload({ purpose, targetId, file })`). For uploads from **ordinary
+users**, these are still to add, and each fits a step that already exists:
+
+- **Image processing** (resize, re-encode, strip EXIF such as phone GPS) for
+  avatars and covers. Do it between the checks and `record`: read the staged
+  original, which is small and bounded by the purpose's limit, and write the
+  processed variant as what gets published. Re-encoding also defeats files
+  that are both a valid image and something else.
+- **Per-user quotas and rate limits** per purpose. Today there is a global cap
+  of 20 open uploads per person and the general request throttle.
+- **Malware scanning** for user documents, done before `record`, on the staged
+  copy.
+- **Serving user files**: never as `image/svg+xml` or HTML from our own domain.
+  Keep types to the signature-checked list, and serve private files with
+  `Content-Disposition: attachment`.
+
+### Scaling notes
+
+- **Bigger files:** raise `MAX_DIRECT_UPLOAD_SIZE_MB` (GCS allows 5 TB per
+  object). Nothing else changes.
+- **Faster uploads:** raise `DIRECT_UPLOAD_CHUNK_MB`. Fewer requests, more to
+  resend after a drop.
+- **Resuming across a page reload** is not built: the session URL lives only in
+  the tab. It would need the URL kept in the browser (IndexedDB) with the file
+  handle. The backend already allows completing later, until `expires_at`.
+- **Signing locally:** with personal `gcloud` credentials the API cannot sign
+  *download* URLs ("Cannot sign data without `client_email`"). That already
+  applied to every private file. Uploads do not sign anything, so they work
+  locally. Cloud Run signs through its service account.
+
+---
+
 ## 4. Migrating between providers
 
 A migration is **copy, verify, then repoint** — three phases, in that order,
@@ -248,6 +418,11 @@ thing that eventually gets pointed at the wrong database.
 | `GCS_PROJECT_ID` | `production-509708` | `production-509708` |
 | `CLOUDINARY_*` | **keep set** — still read from | not needed once dev rows are migrated |
 | `STORAGE_PRIVATE_BUCKET` / `STORAGE_PUBLIC_BUCKET` | unchanged | unchanged |
+| `MAX_DIRECT_UPLOAD_SIZE_MB` | `500` (default) | `500` (default) |
+| `DIRECT_UPLOAD_CHUNK_MB` | `8` (default) | `8` (default) |
+| `DIRECT_UPLOAD_EXPIRY_HOURS` | `24` (default) | `24` (default) |
+| `MAX_IMAGE_UPLOAD_SIZE_MB` | `8` (default) | `8` (default) |
+| `MAX_UPLOAD_SIZE_MB` | `5` once the new admin site is live (multipart fallback only) | any |
 
 `STORAGE_*_BUCKET` are **Cloudinary folder prefixes**, deliberately left alone
 and not reused for GCS. Existing Cloudinary rows record those values in their

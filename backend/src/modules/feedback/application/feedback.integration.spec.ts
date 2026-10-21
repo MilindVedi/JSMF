@@ -342,6 +342,54 @@ describe('feedback forms', () => {
     expect(gone.testimonialSections.find((s) => s.id === section.id)).toBeUndefined();
   });
 
+  it('puts a consented reply in the no-session band, and follows the student\'s later changes', async () => {
+    const session = await createSession();
+    const student = await seat(session.id, 'Meera', hoursAgo(48));
+    const shy = await seat(session.id, 'Quiet', hoursAgo(48));
+    const form = await forms.create(session.id, { dayId: session.day1 }, admin());
+    await forms.update(
+      session.id,
+      form.id,
+      { status: FeedbackFormStatus.OPEN, emailMode: FeedbackEmailMode.MANUAL, allowAnonymous: true, askConsentToPublish: true },
+      admin(),
+    );
+    const [overall, , useful] = form.questions;
+    const reply = (userId: string, extra: object) =>
+      responses.submit(form.id, { user: { id: userId } as never }, {
+        answers: [{ questionId: overall.id, rating: 5 }, { questionId: useful.id, text: 'The mnemonics stuck.' }],
+        ...extra,
+      });
+    await reply(student.id, { consentToPublish: true });
+    await reply(shy.id, { consentToPublish: false });
+    const results = await forms.results(session.id, form.id);
+    const mine = results.responses.find((r) => r.name === student.name)!;
+    const theirs = results.responses.find((r) => r.name === shy.name)!;
+
+    await expect(highlights.createNoSessionQuote(session.id, form.id, { responseId: theirs.id }, admin())).rejects.toThrow(
+      /did not agree/,
+    );
+    const card = await highlights.createNoSessionQuote(session.id, form.id, { responseId: mine.id }, admin());
+    expect(card.quote).toBe('The mnemonics stuck.');
+    expect(card.attribution).toMatch(/^Meera/);
+    await expect(highlights.createNoSessionQuote(session.id, form.id, { responseId: mine.id }, admin())).rejects.toThrow(
+      /already in the band/,
+    );
+    expect((await forms.results(session.id, form.id)).responses.find((r) => r.id === mine.id)?.noSessionQuoteId).toBe(card.id);
+    const listed = (await highlights.listNoSessionQuotes()).find((q) => q.id === card.id);
+    expect(listed).toMatchObject({ formId: form.id, sessionId: session.id, sessionDeleted: false });
+    expect((await highlights.noSessionQuotes()).find((q) => q.id === card.id)?.quote).toBe('The mnemonics stuck.');
+
+    await highlights.updateNoSessionQuote(card.id, { quote: 'Mnemonics that stuck.' }, admin());
+    // Going anonymous keeps it, without the name; withdrawing consent takes it out.
+    await reply(student.id, { consentToPublish: true, isAnonymous: true });
+    expect((await highlights.noSessionQuotes()).find((q) => q.id === card.id)).toMatchObject({
+      quote: 'Mnemonics that stuck.',
+      attribution: 'A JSMF student',
+    });
+    await reply(student.id, { consentToPublish: false, isAnonymous: true });
+    expect((await highlights.listNoSessionQuotes()).some((q) => q.id === card.id)).toBe(false);
+  });
+
   it("without the consent question, the team picks any reply; the name defaults to the student's choice", async () => {
     const session = await createSession();
     const named = await seat(session.id, 'Asha', hoursAgo(48));

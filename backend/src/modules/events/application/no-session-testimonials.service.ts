@@ -6,6 +6,7 @@ import { PrismaService } from '../../../shared/prisma/prisma.service';
 import type { Actor } from '../../catalog/application/product.service';
 import { StorageService } from '../../storage/application/storage.service';
 import { objectRefOf } from '../../storage/domain/storage-provider.port';
+import { SessionShowcase, type SectionQuote } from './session-showcase';
 
 const SINGLETON_ID = 'global';
 
@@ -25,6 +26,8 @@ export interface NoSessionTestimonialsInput {
   enabled?: boolean;
   /** Null = automatic: the most recent past session that has any. */
   sessionId?: string | null;
+  /** Show the screenshots and replies picked one by one, instead of one session's gallery. */
+  handPicked?: boolean;
   heading?: string | null;
   subheading?: string | null;
 }
@@ -45,12 +48,23 @@ export class NoSessionTestimonialsService {
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     private readonly config: AppConfig,
+    private readonly showcase: SessionShowcase,
   ) {}
 
-  /** What the website shows, or null for nothing (off, or no screenshots anywhere). */
-  async forWebsite(): Promise<{ heading: string; subheading: string; urls: string[] } | null> {
+  /** What the website shows, or null for nothing (off, or nothing to show). */
+  async forWebsite(): Promise<{ heading: string; subheading: string; urls: string[]; quotes: SectionQuote[] } | null> {
     const settings = await this.row();
     if (!settings.noSessionTestimonialsEnabled) return null;
+    const copy = {
+      heading: settings.noSessionTestimonialsHeading ?? NO_SESSION_HEADING_OPTIONS[0],
+      subheading: settings.noSessionTestimonialsSubheading ?? NO_SESSION_DEFAULT_SUBHEADING,
+    };
+
+    if (settings.noSessionTestimonialsHandPicked) {
+      const [screenshots, quotes] = await Promise.all([this.pickedScreenshots(), this.showcase.noSessionQuotes()]);
+      if (screenshots.length === 0 && quotes.length === 0) return null;
+      return { ...copy, urls: screenshots.map((s) => s.url), quotes };
+    }
 
     const sessionId = settings.noSessionTestimonialsSessionId ?? (await this.latestWithTestimonials());
     if (!sessionId) return null;
@@ -62,11 +76,11 @@ export class NoSessionTestimonialsService {
     if (rows.length === 0) return null;
 
     return {
-      heading: settings.noSessionTestimonialsHeading ?? NO_SESSION_HEADING_OPTIONS[0],
-      subheading: settings.noSessionTestimonialsSubheading ?? NO_SESSION_DEFAULT_SUBHEADING,
+      ...copy,
       urls: await Promise.all(
         rows.map((row) => this.storage.getSignedDownloadUrl(objectRefOf(row), { disposition: 'inline' })),
       ),
+      quotes: [],
     };
   }
 
@@ -85,10 +99,24 @@ export class NoSessionTestimonialsService {
       },
     });
     const automaticId = await this.latestWithTestimonials();
+    const pickable = await this.prisma.liveSession.findMany({
+      where: { product: { deletedAt: null } },
+      orderBy: { startsAt: { sort: 'desc', nulls: 'last' } },
+      select: { productId: true, startsAt: true, shortName: true, product: { select: { title: true } } },
+    });
 
     return {
       enabled: settings.noSessionTestimonialsEnabled,
       sessionId: settings.noSessionTestimonialsSessionId,
+      handPicked: settings.noSessionTestimonialsHandPicked,
+      /** Picked screenshots, in display order. The picked replies come from /admin/feedback/no-session-quotes. */
+      screenshots: await this.pickedScreenshots(),
+      /** Every session, newest first, to pick screenshots and replies from. */
+      pickableSessions: pickable.map((s) => ({
+        id: s.productId,
+        title: s.shortName?.trim() || s.product.title,
+        startsAt: s.startsAt,
+      })),
       heading: settings.noSessionTestimonialsHeading,
       subheading: settings.noSessionTestimonialsSubheading,
       headingOptions: [...NO_SESSION_HEADING_OPTIONS],
@@ -119,6 +147,7 @@ export class NoSessionTestimonialsService {
       data: {
         noSessionTestimonialsEnabled: input.enabled,
         noSessionTestimonialsSessionId: input.sessionId,
+        noSessionTestimonialsHandPicked: input.handPicked,
         noSessionTestimonialsHeading: text(input.heading),
         noSessionTestimonialsSubheading: text(input.subheading),
       },
@@ -130,14 +159,80 @@ export class NoSessionTestimonialsService {
       action: 'platform_settings.no_session_testimonials_updated',
       entityType: 'platform_settings',
       entityId: SINGLETON_ID,
-      before: { enabled: before.enabled, sessionId: before.sessionId, heading: before.heading, subheading: before.subheading },
-      after: { enabled: after.enabled, sessionId: after.sessionId, heading: after.heading, subheading: after.subheading },
+      before: {
+        enabled: before.enabled,
+        sessionId: before.sessionId,
+        handPicked: before.handPicked,
+        heading: before.heading,
+        subheading: before.subheading,
+      },
+      after: {
+        enabled: after.enabled,
+        sessionId: after.sessionId,
+        handPicked: after.handPicked,
+        heading: after.heading,
+        subheading: after.subheading,
+      },
       ip: actor.ip,
     });
     return after;
   }
 
+  /**
+   * Replaces the picked screenshots with these, in this order. Any session's
+   * screenshots, from any of its galleries; an empty list clears them.
+   */
+  async setScreenshots(testimonialIds: string[], actor: Actor) {
+    if (new Set(testimonialIds).size !== testimonialIds.length) {
+      throw new BadRequestException('Each screenshot can be picked once.');
+    }
+    const found = await this.prisma.sessionTestimonial.count({
+      where: { id: { in: testimonialIds }, liveSession: { product: { deletedAt: null } } },
+    });
+    if (found !== testimonialIds.length) {
+      throw new BadRequestException('One of those screenshots no longer exists. Reload and try again.');
+    }
+    const before = await this.prisma.noSessionScreenshot.findMany({ orderBy: { sortOrder: 'asc' } });
+    await this.prisma.$transaction([
+      this.prisma.noSessionScreenshot.deleteMany({}),
+      this.prisma.noSessionScreenshot.createMany({
+        data: testimonialIds.map((testimonialId, sortOrder) => ({ testimonialId, sortOrder })),
+      }),
+    ]);
+    await this.audit.record({
+      actorUserId: actor.id,
+      action: 'platform_settings.no_session_screenshots_updated',
+      entityType: 'platform_settings',
+      entityId: SINGLETON_ID,
+      before: { testimonialIds: before.map((row) => row.testimonialId) },
+      after: { testimonialIds },
+      ip: actor.ip,
+    });
+    return this.forAdmin();
+  }
+
   // --- internals ----------------------------------------------------------------
+
+  /** Picked screenshots that still belong to a live session, in display order. */
+  private async pickedScreenshots() {
+    const rows = await this.prisma.noSessionScreenshot.findMany({
+      where: { testimonial: { liveSession: { product: { deletedAt: null } } } },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      include: {
+        testimonial: {
+          include: { liveSession: { select: { shortName: true, product: { select: { title: true } } } } },
+        },
+      },
+    });
+    return Promise.all(
+      rows.map(async ({ testimonial }) => ({
+        testimonialId: testimonial.id,
+        sessionId: testimonial.liveSessionId,
+        sessionTitle: testimonial.liveSession.shortName?.trim() || testimonial.liveSession.product.title,
+        url: await this.storage.getSignedDownloadUrl(objectRefOf(testimonial), { disposition: 'inline' }),
+      })),
+    );
+  }
 
   /** Upserts so a missing row heals itself, as SettingsService does. */
   private row() {

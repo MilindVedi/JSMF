@@ -1,10 +1,14 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { StorageProvider as StorageProviderName } from '@prisma/client';
 import {
+  CopyRequest,
+  DirectUploadRequest,
+  DirectUploadSession,
   ObjectRef,
   SignedUrlOptions,
   StorageProvider,
   StoredObject,
+  StoredObjectInfo,
   UploadRequest,
 } from '../domain/storage-provider.port';
 
@@ -63,6 +67,45 @@ export class StorageService {
 
   exists(ref: ObjectRef): Promise<boolean> {
     return this.adapterFor(ref).exists(ref);
+  }
+
+  /** Whether new files can go straight from the browser to the active provider. */
+  get supportsDirectUpload(): boolean {
+    const adapter = this.defaultAdapter;
+    return Boolean(adapter.createDirectUpload && adapter.stat && adapter.readRange && adapter.copy);
+  }
+
+  /** Like `upload`, to the active provider — but the browser sends the bytes. */
+  createDirectUpload(request: DirectUploadRequest): Promise<DirectUploadSession> {
+    const adapter = this.defaultAdapter;
+    if (!adapter.createDirectUpload) {
+      throw new ServiceUnavailableException(`Storage provider ${adapter.name} does not support direct uploads.`);
+    }
+    return adapter.createDirectUpload(request);
+  }
+
+  stat(ref: ObjectRef): Promise<StoredObjectInfo | null> {
+    const adapter = this.adapterFor(ref);
+    if (!adapter.stat) {
+      throw new ServiceUnavailableException(`Storage provider ${adapter.name} cannot describe stored objects.`);
+    }
+    return adapter.stat(ref);
+  }
+
+  copy(from: ObjectRef, to: CopyRequest): Promise<ObjectRef> {
+    const adapter = this.adapterFor(from);
+    if (!adapter.copy) {
+      throw new ServiceUnavailableException(`Storage provider ${adapter.name} cannot copy objects.`);
+    }
+    return adapter.copy(from, to);
+  }
+
+  readRange(ref: ObjectRef, start: number, end: number): Promise<Buffer> {
+    const adapter = this.adapterFor(ref);
+    if (!adapter.readRange) {
+      throw new ServiceUnavailableException(`Storage provider ${adapter.name} cannot read part of an object.`);
+    }
+    return adapter.readRange(ref, start, end);
   }
 
   /**

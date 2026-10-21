@@ -78,8 +78,14 @@ are stable. Extract a shared package when that stops being true.
 
 ## Uploads
 
-`NEXT_PUBLIC_MAX_UPLOAD_MB` must stay at or below the backend's
-`MAX_UPLOAD_SIZE_MB`, which matches Cloudinary's real ceiling for raw uploads
-(10 MB on the free plan, confirmed empirically). The browser check exists so an
-oversized file fails in a second instead of after a long upload — the server
-rejects it independently either way.
+Every upload goes **straight to storage** from the browser through one
+client, `directUpload({ purpose, targetId, file })` in `src/lib/direct-upload.ts`.
+It covers PDFs, attachments, covers and session screenshots. It sends the file
+in pieces with progress, resumes after a dropped connection, and leaves nothing
+behind on a cancel. See `docs/pdf-platform/05-storage.md` §3b. The site asks
+the backend which purposes it may use and their limits (`GET /api/uploads/options`),
+so no limit is baked into the build.
+
+`NEXT_PUBLIC_MAX_UPLOAD_MB` is now only the limit shown for the multipart
+fallback when the backend cannot answer. Keep it at or below the backend's
+`MAX_UPLOAD_SIZE_MB`.

@@ -6,17 +6,26 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
 import { adminApi } from "@/lib/api/admin";
+import { directLimits, uploadsApi, type UploadOptions } from "@/lib/api/uploads";
 import type { AssetKind, ProductAsset } from "@/lib/api/types";
 import { formatBytes } from "@/lib/money";
+import { directUpload } from "@/lib/direct-upload";
+import { ResumableUploadError } from "@/lib/resumable-upload";
 
 /**
- * Must stay >= the backend's MAX_UPLOAD_SIZE_MB, which in turn matches
- * Cloudinary's real ceiling for raw uploads on the current plan. This check is
- * a courtesy — it fails in the browser in a second instead of after a long
- * upload — and the server rejects the same file independently.
+ * The multipart limit when the backend's own answer is unavailable (an older
+ * backend without /uploads/options). Must stay <= its MAX_UPLOAD_SIZE_MB.
+ * Every limit here is a courtesy — it fails in the browser in a second instead
+ * of after a long upload — and the server rejects the same file independently.
  */
-const MAX_UPLOAD_MB = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB ?? 10);
-const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+const FALLBACK_MAX_UPLOAD_BYTES = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB ?? 10) * 1024 * 1024;
+
+/** A limit as people say it: "500 MB", "1 GB". */
+function limitLabel(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1024 && mb % 1024 === 0 ? `${mb / 1024} GB` : `${Math.round(mb)} MB`;
+}
+
 
 const ACCEPT: Record<AssetKind, string> = {
   PRIMARY_FILE: "application/pdf",
@@ -58,6 +67,41 @@ export const AssetUpload = forwardRef<AssetUploadHandle, Props>(function AssetUp
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // undefined while asking the backend; null when it could not say (an older one).
+  const [options, setOptions] = useState<UploadOptions | null | undefined>(undefined);
+  /** Bytes sent of the file, during a direct upload. */
+  const [progress, setProgress] = useState<{ sent: number; total: number } | null>(null);
+  const cancelRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    uploadsApi
+      .options()
+      .then(setOptions)
+      // An older backend: everything goes the multipart way, as before.
+      .catch(() => setOptions(null));
+  }, []);
+
+  // A direct upload of a large file takes minutes; closing the tab ends it.
+  useEffect(() => {
+    if (!uploading) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Older browsers ask only when this is set.
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [uploading]);
+
+  // "product.primary_file", "product.cover_image", …
+  const purpose = `product.${kind.toLowerCase()}`;
+  const isDirect = (known: UploadOptions | null | undefined) => directLimits(known, purpose) !== null;
+  const direct = isDirect(options);
+  // Unknown until the backend answers: no check then, rather than the wrong one.
+  const limitBytes =
+    options === undefined
+      ? null
+      : (directLimits(options, purpose)?.maxBytes ?? options?.maxMultipartBytes ?? FALLBACK_MAX_UPLOAD_BYTES);
 
   const isPdf = kind === "PRIMARY_FILE" || kind === "SAMPLE_PREVIEW";
   const isImage = !isPdf;
@@ -73,11 +117,10 @@ export const AssetUpload = forwardRef<AssetUploadHandle, Props>(function AssetUp
   }, [previewUrl]);
 
   function selectFile(file: File) {
-    if (file.size > MAX_UPLOAD_BYTES) {
-      toast.error(
-        `${file.name} is ${formatBytes(file.size)} — the limit is ${MAX_UPLOAD_MB} MB.`,
-        { description: "Compress the PDF, or split it into parts, and try again." },
-      );
+    if (limitBytes !== null && file.size > limitBytes) {
+      toast.error(`${file.name} is ${formatBytes(file.size)} — the limit is ${limitLabel(limitBytes)}.`, {
+        description: "Compress the PDF, or split it into parts, and try again.",
+      });
       return;
     }
 
@@ -110,7 +153,11 @@ export const AssetUpload = forwardRef<AssetUploadHandle, Props>(function AssetUp
       if (!pendingFile) return;
       setUploading(true);
       try {
-        const asset = await adminApi.uploadAsset(productId, kind, pendingFile);
+        // Saved before the options arrived: wait for them, so the path is never guessed.
+        const known = options === undefined ? await uploadsApi.options().catch(() => null) : options;
+        const asset = isDirect(known)
+          ? await uploadDirect(pendingFile)
+          : await adminApi.uploadAsset(productId, kind, pendingFile);
         onUploaded(asset);
         discard();
       } catch (error) {
@@ -119,19 +166,44 @@ export const AssetUpload = forwardRef<AssetUploadHandle, Props>(function AssetUp
         // not a reason to keep the file staged, since re-saving would only
         // hit the same conflict again.
         const message =
-          error instanceof ApiError && error.status === 409
+          error instanceof ApiError && error.status === 409 && /identical/i.test(error.message)
             ? `${label}: that file is identical to the current version, so nothing changed.`
             : error instanceof Error
               ? `${label}: ${error.message}`
               : `${label}: upload failed`;
-        discard();
+        // A dropped connection keeps the file staged, so Save tries again;
+        // anything storage or the server refused would only fail the same way.
+        const retryable = error instanceof ResumableUploadError && error.reason === "network";
+        if (!retryable) discard();
         throw new Error(message);
       } finally {
         setUploading(false);
+        setProgress(null);
+        cancelRef.current = null;
       }
     },
     discard,
   }));
+
+  /**
+   * Straight to storage: the backend opens a session locked to this file's
+   * size and type, the browser sends the bytes there in pieces, and the
+   * backend checks what arrived before it becomes the new version.
+   */
+  async function uploadDirect(file: File): Promise<ProductAsset> {
+    const controller = new AbortController();
+    cancelRef.current = controller;
+    setProgress({ sent: 0, total: file.size });
+    return directUpload<ProductAsset>({
+      purpose,
+      targetId: productId,
+      file,
+      signal: controller.signal,
+      onProgress: (sent, total) => setProgress({ sent, total }),
+    });
+  }
+
+  const percent = progress && progress.total > 0 ? Math.floor((progress.sent / progress.total) * 100) : 0;
 
   return (
     <div className="space-y-2">
@@ -163,19 +235,52 @@ export const AssetUpload = forwardRef<AssetUploadHandle, Props>(function AssetUp
           )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{pendingFile.name}</p>
-            <p className="text-xs text-amber-800 dark:text-amber-300">
-              {formatBytes(pendingFile.size)} · not saved yet
-            </p>
+            {progress ? (
+              <div className="mt-1 space-y-1">
+                <div
+                  role="progressbar"
+                  aria-label={`Uploading ${pendingFile.name}`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={percent}
+                  className="h-1.5 overflow-hidden rounded-full bg-amber-200 dark:bg-amber-900"
+                >
+                  <div className="h-full bg-primary transition-[width]" style={{ width: `${percent}%` }} />
+                </div>
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  {progress.sent >= progress.total
+                    ? "Checking the file…"
+                    : `Uploading ${percent}% · ${formatBytes(progress.sent)} of ${formatBytes(progress.total)} · keep this tab open`}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                {formatBytes(pendingFile.size)} · {uploading ? "uploading…" : "not saved yet"}
+              </p>
+            )}
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            disabled={uploading}
-            onClick={discard}
-            aria-label="Discard this selection"
-          >
-            {uploading ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
-          </Button>
+          {progress ? (
+            // A direct upload can take minutes, so it can be stopped; the
+            // multipart one is short and cannot.
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => cancelRef.current?.abort()}
+              aria-label={`Cancel uploading ${pendingFile.name}`}
+            >
+              Cancel
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              variant="ghost"
+              disabled={uploading}
+              onClick={discard}
+              aria-label="Discard this selection"
+            >
+              {uploading ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
+            </Button>
+          )}
         </div>
       ) : (
         /*
@@ -247,9 +352,17 @@ export const AssetUpload = forwardRef<AssetUploadHandle, Props>(function AssetUp
       <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
         <Info className="mt-px size-3.5 shrink-0" />
         <span>
-          {isPdf ? "PDF only" : "PNG, JPEG or WebP"} · maximum{" "}
-          <strong className="font-medium text-foreground">{MAX_UPLOAD_MB} MB</strong>.
-          {isPdf && " Larger scans should be compressed or split before uploading."}
+          {isPdf ? "PDF only" : "PNG, JPEG or WebP"}
+          {limitBytes !== null && (
+            <>
+              {" "}
+              · maximum <strong className="font-medium text-foreground">{limitLabel(limitBytes)}</strong>
+            </>
+          )}
+          .
+          {direct
+            ? " It uploads straight to storage after you save, with progress shown here; keep the tab open until it finishes."
+            : isPdf && " Larger scans should be compressed or split before uploading."}
         </span>
       </p>
     </div>

@@ -81,7 +81,9 @@ Decisions worth recording:
 - **Taxonomy management is ADMIN-only**, while products are ADMIN or EDUCATOR. A taxonomy is shared master data; editing your own PDF is not.
 - **Every admin mutation writes an audit row inside the same transaction as the change.** Not after it — atomically with it, so a published product without an audit row, or an audit row for a rolled-back publish, are both impossible.
 
-Uploads are buffered in memory and bounded by `MAX_UPLOAD_SIZE_MB` (default 64). The upload happens before the database transaction opens, since object storage is not transactional and holding a transaction open across a large file transfer would lock rows for its duration; if the transaction then fails, the orphaned object is removed.
+**Every upload goes straight from the browser to storage**: PDFs, attachments, covers and session screenshots (direct uploads, 2026-10-20/21). The `uploads` module and table handle them, and each kind is a *purpose* registered by its own module. No byte passes through the app, so Cloud Run's 32 MiB request cap no longer bounds a file. A public file is checked in private staging before it is published. The full flow, guarantees, the bucket CORS rule it needs, and how to add a kind of upload (user avatars, say) are in [05-storage.md §3b](05-storage.md). The multipart path below is the fallback for the Cloudinary driver.
+
+Multipart uploads are buffered in memory and bounded by `MAX_UPLOAD_SIZE_MB`. The upload happens before the database transaction opens, since object storage is not transactional and holding a transaction open across a large file transfer would lock rows for its duration; if the transaction then fails, the orphaned object is removed.
 
 ### Featured resources
 

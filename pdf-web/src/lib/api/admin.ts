@@ -1,4 +1,6 @@
 import { api } from "./client";
+import { directLimits, uploadsApi } from "./uploads";
+import { directUpload } from "@/lib/direct-upload";
 import type {
   AdminOrder,
   AssetKind,
@@ -398,6 +400,12 @@ export interface NoSessionTestimonials {
   automaticSessionId: string | null;
   /** Sessions with testimonials, newest first. */
   sessions: Array<{ id: string; title: string; startsAt: string | null; status: string; testimonialCount: number }>;
+  /** On: the screenshots and replies picked one by one are shown, not one session's gallery. */
+  handPicked: boolean;
+  /** Picked screenshots, in display order. Picked replies: `noSessionQuotesApi`. */
+  screenshots: Array<{ testimonialId: string; sessionId: string; sessionTitle: string; url: string }>;
+  /** Every session, newest first, to pick from. */
+  pickableSessions: Array<{ id: string; title: string; startsAt: string | null }>;
 }
 
 export const adminSessionApi = {
@@ -406,9 +414,13 @@ export const adminSessionApi = {
   updateNoSessionTestimonials: (input: {
     enabled?: boolean;
     sessionId?: string | null;
+    handPicked?: boolean;
     heading?: string | null;
     subheading?: string | null;
   }) => api.put<NoSessionTestimonials>("/admin/sessions/no-session-testimonials", input),
+  /** Replaces the picked screenshots with these, in this order. */
+  setNoSessionScreenshots: (testimonialIds: string[]) =>
+    api.put<NoSessionTestimonials>("/admin/sessions/no-session-testimonials/screenshots", { testimonialIds }),
   get: (id: string) => api.get<AdminSession>(`/admin/sessions/${id}`),
   create: (input: SessionInput) => api.post<AdminSession>("/admin/sessions", input),
   update: (id: string, input: SessionInput) => api.patch<AdminSession>(`/admin/sessions/${id}`, input),
@@ -418,8 +430,21 @@ export const adminSessionApi = {
   registrations: (id: string) =>
     api.get<SessionRegistrationRow[]>(`/admin/sessions/${id}/registrations`),
 
-  /** Omit `sectionId` for the original gallery. */
-  addTestimonial(id: string, file: File, sectionId?: string) {
+  /**
+   * Omit `sectionId` for the original gallery. Straight to storage when the
+   * backend offers it (checked in private staging, then published); through
+   * the API otherwise.
+   */
+  async addTestimonial(id: string, file: File, sectionId?: string) {
+    const options = await uploadsApi.options().catch(() => null);
+    if (directLimits(options, "session.testimonial")) {
+      return directUpload<SessionTestimonial>({
+        purpose: "session.testimonial",
+        targetId: id,
+        context: sectionId ? { sectionId } : undefined,
+        file,
+      });
+    }
     const formData = new FormData();
     formData.append("file", file);
     if (sectionId) formData.append("sectionId", sectionId);

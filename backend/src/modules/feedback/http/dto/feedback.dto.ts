@@ -235,6 +235,59 @@ export class UpdateFeedbackHighlightDto {
   rating?: number | null;
 }
 
+export class CreateNoSessionQuoteDto {
+  @ApiProperty()
+  @IsUUID()
+  sessionId!: string;
+
+  @ApiProperty()
+  @IsUUID()
+  formId!: string;
+
+  @ApiProperty()
+  @IsUUID()
+  responseId!: string;
+
+  @ApiPropertyOptional({ maxLength: 1000, description: "Defaults to the reply's longest written answer." })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  quote?: string;
+
+  @ApiPropertyOptional({ maxLength: 120, description: 'Defaults to "First name · Stage". Ignored for an anonymous reply.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  attribution?: string;
+
+  @ApiPropertyOptional({ description: "Show the student's first name. Defaults to their own answer. Never for anonymous replies." })
+  @IsOptional()
+  @IsBoolean()
+  showName?: boolean;
+}
+
+export class UpdateNoSessionQuoteDto {
+  @ApiPropertyOptional({ maxLength: 1000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  quote?: string;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  attribution?: string;
+}
+
+export class ReorderNoSessionQuotesDto {
+  @ApiProperty({ type: [String], description: 'Every picked quote id, once each, in the new order.' })
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  ids!: string[];
+}
+
 // --- public -----------------------------------------------------------------------
 
 export class FeedbackAnswerDto {

@@ -550,6 +550,20 @@ one implementation, one place to style, one visual contract. The section
 renders nothing at all when the upcoming session has no testimonials, so
 the import is safe to leave in regardless.
 
+**Hand-picked (added 2026-10-21).** With
+`platform_settings.no_session_testimonials_hand_picked` on, the band shows
+screenshots and replies picked one by one from any sessions instead of one
+gallery, and the payload gains `quotes: SectionQuote[]` (quote cards in their
+own row above the screenshots, `QuoteCards` in `session-feedback.tsx`, light
+tone). Screenshots: `no_session_screenshots` (pointer to `session_testimonials`,
+cascade), set with `PUT /admin/sessions/no-session-testimonials/screenshots`.
+Replies: `no_session_quotes` (one per reply, editable quote and name copies,
+cascade from the reply), managed at `/admin/feedback/no-session-quotes` by
+`FeedbackHighlightsService`, with the same consent and anonymity rules and
+sync as section highlights, and read by events through
+`SessionShowcase.noSessionQuotes()`. Migration
+`20261021100000_no_session_hand_picked`, additive; off by default.
+
 **With no session upcoming (added 2026-10-19).** The band used to disappear.
 Now `GET /sessions` also returns `noSessionTestimonials: { heading, subheading,
 urls } | null` (null while a session is upcoming, when the setting is off, or

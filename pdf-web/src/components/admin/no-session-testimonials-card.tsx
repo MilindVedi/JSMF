@@ -4,17 +4,31 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { adminSessionApi, type NoSessionTestimonials } from "@/lib/api/admin";
 import { mainWebsiteHost } from "@/lib/site-content";
+import { NoSessionPicks } from "./no-session-picks";
 import { istLabel } from "@/app/(admin)/admin/sessions/ist";
 
 const AUTOMATIC = "AUTO";
+const HAND_PICKED = "HAND";
 const CUSTOM = "CUSTOM";
 
 interface Draft {
@@ -27,7 +41,9 @@ interface Draft {
 function draftOf(settings: NoSessionTestimonials): Draft {
   return {
     enabled: settings.enabled,
-    source: settings.sessionId ?? AUTOMATIC,
+    source: settings.handPicked
+      ? HAND_PICKED
+      : (settings.sessionId ?? AUTOMATIC),
     heading: settings.heading ?? settings.headingOptions[0] ?? "",
     subheading: settings.subheading ?? settings.defaultSubheading,
   };
@@ -50,7 +66,13 @@ export function NoSessionTestimonialsCard() {
         setSettings(loaded);
         setDraft(draftOf(loaded));
       })
-      .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Could not load this setting"));
+      .catch((error: unknown) =>
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Could not load this setting",
+        ),
+      );
   }, []);
 
   if (!settings || !draft) {
@@ -63,16 +85,29 @@ export function NoSessionTestimonialsCard() {
     );
   }
 
-  const automatic = settings.sessions.find((s) => s.id === settings.automaticSessionId);
+  const automatic = settings.sessions.find(
+    (s) => s.id === settings.automaticSessionId,
+  );
   const sessionLabel = (s: NoSessionTestimonials["sessions"][number]) =>
     `${s.title}${s.startsAt ? ` · ${istLabel(s.startsAt)}` : ""} · ${s.testimonialCount} screenshot${s.testimonialCount === 1 ? "" : "s"}`;
   const sourceItems: Record<string, string> = {
-    [AUTOMATIC]: automatic ? `Automatic: the latest past session (now ${automatic.title})` : "Automatic: the latest past session",
-    ...Object.fromEntries(settings.sessions.map((s) => [s.id, sessionLabel(s)])),
+    [HAND_PICKED]:
+      "Hand-picked: screenshots and replies chosen below, from any sessions",
+    [AUTOMATIC]: automatic
+      ? `Automatic: the latest past session (now ${automatic.title})`
+      : "Automatic: the latest past session",
+    ...Object.fromEntries(
+      settings.sessions.map((s) => [s.id, sessionLabel(s)]),
+    ),
   };
-  const headingPreset = settings.headingOptions.includes(draft.heading) ? draft.heading : CUSTOM;
+  const handPicked = draft.source === HAND_PICKED;
+  const headingPreset = settings.headingOptions.includes(draft.heading)
+    ? draft.heading
+    : CUSTOM;
   const headingItems: Record<string, string> = {
-    ...Object.fromEntries(settings.headingOptions.map((option) => [option, option])),
+    ...Object.fromEntries(
+      settings.headingOptions.map((option) => [option, option]),
+    ),
     [CUSTOM]: "Edited (your own text)",
   };
   const dirty = JSON.stringify(draft) !== JSON.stringify(draftOf(settings));
@@ -83,7 +118,11 @@ export function NoSessionTestimonialsCard() {
     try {
       const saved = await adminSessionApi.updateNoSessionTestimonials({
         enabled: draft.enabled,
-        sessionId: draft.source === AUTOMATIC ? null : draft.source,
+        handPicked: draft.source === HAND_PICKED,
+        // Hand-picked leaves the one-session choice as it was, to switch back to.
+        ...(draft.source === HAND_PICKED
+          ? {}
+          : { sessionId: draft.source === AUTOMATIC ? null : draft.source }),
         heading: draft.heading.trim() || null,
         subheading: draft.subheading.trim() || null,
       });
@@ -102,8 +141,9 @@ export function NoSessionTestimonialsCard() {
       <CardHeader>
         <CardTitle>When no session is upcoming</CardTitle>
         <CardDescription>
-          The testimonials {mainWebsiteHost} and /prep-kit show between sessions. While a session is upcoming, its own
-          testimonials are shown instead.
+          The testimonials {mainWebsiteHost} and /prep-kit show between
+          sessions. While a session is upcoming, its own testimonials are shown
+          instead.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -113,47 +153,59 @@ export function NoSessionTestimonialsCard() {
               id="no-session-enabled"
               checked={draft.enabled}
               disabled={saving}
-              onCheckedChange={(enabled: boolean) => setDraft({ ...draft, enabled })}
+              onCheckedChange={(enabled: boolean) =>
+                setDraft({ ...draft, enabled })
+              }
             />
             <Label htmlFor="no-session-enabled" className="text-sm font-medium">
               Show testimonials while no session is upcoming
             </Label>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Off hides the testimonials band until the next session is published.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Off hides the testimonials band until the next session is published.
+          </p>
         </div>
 
         {draft.enabled && (
           <>
             <div className="space-y-1.5">
               <Label>Whose testimonials</Label>
-              {settings.sessions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No session has testimonial screenshots yet. Add them on a session&apos;s page, and they show here.
+              <>
+                <Select
+                  items={sourceItems}
+                  value={draft.source}
+                  onValueChange={(value: string | null) =>
+                    setDraft({ ...draft, source: value ?? AUTOMATIC })
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(sourceItems).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {handPicked
+                    ? "Picks are saved as you make them. Press Save to switch the website over to them."
+                    : "The screenshots in that session's Testimonials section, in the same order."}
                 </p>
-              ) : (
-                <>
-                  <Select
-                    items={sourceItems}
-                    value={draft.source}
-                    onValueChange={(value: string | null) => setDraft({ ...draft, source: value ?? AUTOMATIC })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(sourceItems).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    The screenshots in that session&apos;s Testimonials section, in the same order.
-                  </p>
-                </>
+              </>
+              {handPicked && settings.handPicked !== handPicked && (
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                  Not live yet: the website still shows the previous choice
+                  until you press Save.
+                </p>
               )}
             </div>
+
+            {handPicked && (
+              <NoSessionPicks settings={settings} onSettings={setSettings} />
+            )}
 
             <div className="space-y-1.5">
               <Label htmlFor="no-session-heading">Heading</Label>
@@ -161,7 +213,8 @@ export function NoSessionTestimonialsCard() {
                 items={headingItems}
                 value={headingPreset}
                 onValueChange={(value: string | null) => {
-                  if (value && value !== CUSTOM) setDraft({ ...draft, heading: value });
+                  if (value && value !== CUSTOM)
+                    setDraft({ ...draft, heading: value });
                 }}
               >
                 <SelectTrigger className="w-full">
@@ -173,26 +226,39 @@ export function NoSessionTestimonialsCard() {
                       {option}
                     </SelectItem>
                   ))}
-                  {headingPreset === CUSTOM && <SelectItem value={CUSTOM}>{headingItems[CUSTOM]}</SelectItem>}
+                  {headingPreset === CUSTOM && (
+                    <SelectItem value={CUSTOM}>
+                      {headingItems[CUSTOM]}
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
               <Input
                 id="no-session-heading"
                 value={draft.heading}
                 maxLength={150}
-                onChange={(event) => setDraft({ ...draft, heading: event.target.value })}
+                onChange={(event) =>
+                  setDraft({ ...draft, heading: event.target.value })
+                }
               />
-              <p className="text-xs text-muted-foreground">Pick one, then edit it here if you like. Left empty, the first option is used.</p>
+              <p className="text-xs text-muted-foreground">
+                Pick one, then edit it here if you like. Left empty, the first
+                option is used.
+              </p>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="no-session-subheading">Text under the heading</Label>
+              <Label htmlFor="no-session-subheading">
+                Text under the heading
+              </Label>
               <Textarea
                 id="no-session-subheading"
                 rows={2}
                 value={draft.subheading}
                 maxLength={300}
-                onChange={(event) => setDraft({ ...draft, subheading: event.target.value })}
+                onChange={(event) =>
+                  setDraft({ ...draft, subheading: event.target.value })
+                }
               />
               <p className="text-xs text-muted-foreground">
                 Left empty: &ldquo;{settings.defaultSubheading}&rdquo;
@@ -202,11 +268,20 @@ export function NoSessionTestimonialsCard() {
         )}
 
         <div className="flex gap-2">
-          <Button size="sm" disabled={saving || !dirty} onClick={() => void save()}>
+          <Button
+            size="sm"
+            disabled={saving || !dirty}
+            onClick={() => void save()}
+          >
             {saving ? "Saving…" : "Save"}
           </Button>
           {dirty && (
-            <Button size="sm" variant="ghost" disabled={saving} onClick={() => setDraft(draftOf(settings))}>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={saving}
+              onClick={() => setDraft(draftOf(settings))}
+            >
               Cancel
             </Button>
           )}

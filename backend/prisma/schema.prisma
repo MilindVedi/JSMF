@@ -76,6 +76,7 @@ model User {
   createdProducts        Product[]                 @relation("ProductCreatedBy")
   updatedProducts        Product[]                 @relation("ProductUpdatedBy")
   uploadedAssets         ProductAsset[]
+  uploads                Upload[]
   orders                 Order[]
   entitlements           Entitlement[]
   grantedRoles           UserRole[]                @relation("RoleGrantedBy")
@@ -112,6 +113,7 @@ model User {
   feedbackInvites        FeedbackInvite[]
   feedbackResponses      FeedbackResponse[]
   feedbackHighlights     FeedbackHighlight[]       @relation("FeedbackHighlightCreatedBy")
+  noSessionQuotes        NoSessionQuote[]          @relation("NoSessionQuoteCreatedBy")
 
   @@map("users")
   @@schema("public")
@@ -532,7 +534,13 @@ model ProductAsset {
   mimeType         String?         @map("mime_type") @db.VarChar(120)
   sizeBytes        BigInt?         @map("size_bytes")
   /// Detects a corrupted upload, and an accidental re-upload of an identical file.
+  /// Null for a file uploaded straight to storage (AssetUpload): the bytes never
+  /// pass through this app, so only the checksum the provider computed exists.
   checksumSha256   String?         @map("checksum_sha256") @db.VarChar(64)
+  /// MD5 (hex) as the storage provider computed it, or this app on the
+  /// multipart path. What the "identical to the current version" check compares
+  /// when both rows have it; GCS reports it for every non-composite object.
+  checksumMd5      String?         @map("checksum_md5") @db.VarChar(32)
   pageCount        Int?            @map("page_count")
   version          Int             @default(1)
   isCurrent        Boolean         @default(true) @map("is_current")
@@ -545,6 +553,75 @@ model ProductAsset {
 
   @@index([productId, kind, isCurrent])
   @@map("product_assets")
+  @@schema("public")
+}
+
+enum UploadStatus {
+  /// Session handed to the browser; the bytes may or may not have arrived yet.
+  PENDING
+  /// Checked and recorded by its purpose (`result_id`).
+  COMPLETED
+  /// Cancelled, or refused at completion (`failure_reason`).
+  ABORTED
+  /// Never completed in time; the sweep removed whatever reached storage.
+  EXPIRED
+
+  @@schema("public")
+}
+
+/// A file a browser sends straight to object storage, not through this app —
+/// so its size is bounded by the provider (5 TB on GCS), not by Cloud Run's
+/// 32 MiB request cap or an instance's memory. Every kind of upload uses it:
+/// `purpose` names what the file is for ("product.primary_file",
+/// "session.testimonial", later "user.avatar"), and the module that owns that
+/// purpose decides who may upload, what is allowed, and what a completed
+/// upload becomes (UploadPurposeRegistry).
+///
+/// The row is written *before* any byte moves, with the object key this app
+/// chose; the browser gets a session bound to exactly that key, size and type.
+/// Completing it reads the object's metadata from storage and only then hands
+/// it to the purpose. A row left PENDING past `expires_at` is how the sweep
+/// finds abandoned uploads, whose bytes would otherwise sit in the bucket with
+/// nothing pointing at them.
+///
+/// `result_id` is deliberately not a foreign key: what an upload becomes
+/// depends on its purpose (a product_assets row, a session_testimonials row).
+model Upload {
+  id               String          @id @default(uuid(7)) @db.Uuid
+  purpose          String          @db.VarChar(60)
+  /// What it is for: the product, session or user the purpose attaches it to.
+  targetId         String?         @map("target_id") @db.Uuid
+  /// The purpose's own options from the start of the upload (a section, a page count).
+  context          Json?
+  /// Where the browser's bytes went.
+  storageProvider  StorageProvider @map("storage_provider")
+  bucket           String          @db.VarChar(255)
+  objectKey        String          @map("object_key")
+  /// True when that is a private staging key: a file bound for the public
+  /// bucket is checked there first, and copied out only once accepted, so an
+  /// unchecked file is never publicly readable.
+  staged           Boolean         @default(false)
+  originalFilename String          @map("original_filename") @db.VarChar(255)
+  mimeType         String          @map("mime_type") @db.VarChar(120)
+  /// What the browser declared, and what the storage session is locked to.
+  sizeBytes        BigInt          @map("size_bytes")
+  status           UploadStatus    @default(PENDING)
+  /// Why it was refused at completion, shown to the uploader and kept for support.
+  failureReason    String?         @map("failure_reason") @db.VarChar(300)
+  expiresAt        DateTime        @map("expires_at") @db.Timestamptz(6)
+  createdById      String?         @map("created_by") @db.Uuid
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  finishedAt       DateTime?       @map("finished_at") @db.Timestamptz(6)
+  /// The id of what the purpose recorded it as.
+  resultId         String?         @map("result_id") @db.Uuid
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([storageProvider, bucket, objectKey])
+  @@index([status, expiresAt])
+  @@index([createdById, status])
+  @@index([purpose, targetId])
+  @@map("uploads")
   @@schema("public")
 }
 
@@ -1248,17 +1325,17 @@ model LiveSession {
 
   /// Restrict: a session that has been sold must keep its product forever,
   /// the same rule every other product follows (archive, never delete).
-  product             Product                     @relation(fields: [productId], references: [id], onDelete: Restrict)
-  days                LiveSessionDay[]
-  registrations       SessionRegistration[]
-  deliveries          SessionBundleDelivery[]
-  dateAnnouncements   SessionDateAnnouncement[]
-  detailReceipts      SessionDetailReceipt[]
-  detailEmails        SessionDetailEmail[]
-  testimonials        SessionTestimonial[]
-  testimonialSections SessionTestimonialSection[]
-  materials           SessionMaterial[]
-  feedbackForms       FeedbackForm[]
+  product                  Product                     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  days                     LiveSessionDay[]
+  registrations            SessionRegistration[]
+  deliveries               SessionBundleDelivery[]
+  dateAnnouncements        SessionDateAnnouncement[]
+  detailReceipts           SessionDetailReceipt[]
+  detailEmails             SessionDetailEmail[]
+  testimonials             SessionTestimonial[]
+  testimonialSections      SessionTestimonialSection[]
+  materials                SessionMaterial[]
+  feedbackForms            FeedbackForm[]
   /// The site settings that pick this session's testimonials for the home
   /// page while no session is upcoming (at most the one singleton row).
   noSessionTestimonialsFor PlatformSettings[]
@@ -1381,9 +1458,10 @@ model SessionTestimonial {
   /// the service, which also deletes the stored files.
   sectionId       String?         @map("section_id") @db.Uuid
 
-  liveSession LiveSession                @relation(fields: [liveSessionId], references: [productId], onDelete: Cascade)
-  uploadedBy  User?                      @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
-  section     SessionTestimonialSection? @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  liveSession   LiveSession                @relation(fields: [liveSessionId], references: [productId], onDelete: Cascade)
+  uploadedBy    User?                      @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  section       SessionTestimonialSection? @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  noSessionPick NoSessionScreenshot?
 
   @@index([liveSessionId, sortOrder])
   @@index([sectionId, sortOrder])
@@ -1526,14 +1604,19 @@ model PlatformSettings {
 
   /// The testimonials band on the home page and /prep-kit while no session
   /// is upcoming (until now that band simply disappeared). Off hides it.
-  noSessionTestimonialsEnabled   Boolean @default(true) @map("no_session_testimonials_enabled")
+  noSessionTestimonialsEnabled    Boolean @default(true) @map("no_session_testimonials_enabled")
   /// Whose testimonials (the session's original gallery). Null = the most
   /// recent past session that has any. SetNull: deleting that session falls
   /// back to automatic rather than failing.
-  noSessionTestimonialsSessionId String? @map("no_session_testimonials_session_id") @db.Uuid
+  noSessionTestimonialsSessionId  String? @map("no_session_testimonials_session_id") @db.Uuid
   /// The band's copy. Null falls back to the defaults in LiveSessionService.
   noSessionTestimonialsHeading    String? @map("no_session_testimonials_heading") @db.VarChar(150)
   noSessionTestimonialsSubheading String? @map("no_session_testimonials_subheading") @db.VarChar(300)
+  /// On: the band shows the screenshots and replies picked one by one, from
+  /// any sessions (NoSessionScreenshot, NoSessionQuote). Off: the session
+  /// chosen above, or the automatic one, as before. Off by default, so the
+  /// picks can be prepared before switching over.
+  noSessionTestimonialsHandPicked Boolean @default(false) @map("no_session_testimonials_hand_picked")
 
   noSessionTestimonialsSession LiveSession? @relation(fields: [noSessionTestimonialsSessionId], references: [productId], onDelete: SetNull)
 
@@ -2656,10 +2739,11 @@ model FeedbackResponse {
   editedAt         DateTime?              @map("edited_at") @db.Timestamptz(6)
 
   /// Restrict: a form with replies is closed, never deleted.
-  form       FeedbackForm        @relation(fields: [formId], references: [id], onDelete: Restrict)
-  user       User?               @relation(fields: [userId], references: [id], onDelete: Restrict)
-  answers    FeedbackAnswer[]
-  highlights FeedbackHighlight[]
+  form           FeedbackForm        @relation(fields: [formId], references: [id], onDelete: Restrict)
+  user           User?               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  answers        FeedbackAnswer[]
+  highlights     FeedbackHighlight[]
+  noSessionQuote NoSessionQuote?
 
   @@unique([formId, userId])
   @@unique([formId, editKeyHash])
@@ -2716,5 +2800,44 @@ model FeedbackHighlight {
   @@unique([responseId, sectionId])
   @@index([sectionId, sortOrder])
   @@map("feedback_highlights")
+  @@schema("public")
+}
+
+/// A screenshot picked for the home page's testimonials band while no session
+/// is upcoming (PlatformSettings.noSessionTestimonialsHandPicked). Only a
+/// pointer: the image stays the session's. Cascade: deleting the screenshot
+/// takes it off the band.
+model NoSessionScreenshot {
+  testimonialId String   @id @map("testimonial_id") @db.Uuid
+  /// Display order, lowest first.
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  testimonial SessionTestimonial @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
+
+  @@index([sortOrder])
+  @@map("no_session_screenshots")
+  @@schema("public")
+}
+
+/// A feedback reply picked for the same band, as a quote card. Like
+/// FeedbackHighlight: `quote` and `attribution` are copies the admin can tidy,
+/// and the same consent and anonymity rules apply. One per reply.
+model NoSessionQuote {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  responseId  String   @unique @map("response_id") @db.Uuid
+  quote       String   @db.VarChar(1000)
+  /// "Riya · Final year". "A JSMF student" for an anonymous reply.
+  attribution String   @db.VarChar(120)
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  response  FeedbackResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  createdBy User?            @relation("NoSessionQuoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([sortOrder])
+  @@map("no_session_quotes")
   @@schema("public")
 }

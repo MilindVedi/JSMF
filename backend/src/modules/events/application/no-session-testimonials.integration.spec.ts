@@ -8,6 +8,7 @@ import { EntitlementService } from '../../entitlements/application/entitlement.s
 import { OrderService } from '../../orders/application/order.service';
 import { StubPaymentAdapter } from '../../payments/infrastructure/stub-payment.adapter';
 import { LiveSessionService } from './live-session.service';
+import { SessionShowcase, type SectionQuote } from './session-showcase';
 import {
   NO_SESSION_DEFAULT_SUBHEADING,
   NO_SESSION_HEADING_OPTIONS,
@@ -16,8 +17,8 @@ import {
 
 /**
  * The home page's testimonials while no session is upcoming, against a real
- * Postgres. The settings row is shared with local development, so its four
- * columns are put back as they were afterwards.
+ * Postgres. The settings row and the picked screenshots are shared with local
+ * development, so they are put back as they were afterwards.
  */
 
 const config = {
@@ -37,12 +38,17 @@ const entitlements = new EntitlementService(prisma);
 const products = new ProductService(prisma, audit);
 const orders = new OrderService(prisma, new StubPaymentAdapter(config), entitlements);
 const sessions = new LiveSessionService(prisma, products, orders, entitlements, audit, storage, config);
-const service = new NoSessionTestimonialsService(prisma, storage, audit, config);
+// The feedback module's real quotes are covered in its own spec; a stand-in here.
+let bandQuotes: SectionQuote[] = [];
+const showcase = new SessionShowcase();
+showcase.register({ quotesFor: () => Promise.resolve(new Map()), noSessionQuotes: () => Promise.resolve(bandQuotes) });
+const service = new NoSessionTestimonialsService(prisma, storage, audit, config, showcase);
 
 const tag = randomUUID().slice(0, 8);
 const created = { productIds: [] as string[], userId: '' };
 const admin = () => ({ id: created.userId });
 let saved: Record<string, unknown>;
+let savedScreenshots: Array<{ testimonialId: string; sortOrder: number }>;
 
 /** A published session whose first day began `minutesAgo` ago, with `shots` screenshots. */
 async function pastSession(label: string, minutesAgo: number, shots: number) {
@@ -89,12 +95,16 @@ beforeAll(async () => {
     noSessionTestimonialsSessionId: row.noSessionTestimonialsSessionId,
     noSessionTestimonialsHeading: row.noSessionTestimonialsHeading,
     noSessionTestimonialsSubheading: row.noSessionTestimonialsSubheading,
+    noSessionTestimonialsHandPicked: row.noSessionTestimonialsHandPicked,
   };
+  savedScreenshots = await prisma.noSessionScreenshot.findMany({ select: { testimonialId: true, sortOrder: true } });
   await service.update({ enabled: true, sessionId: null, heading: null, subheading: null }, admin());
 });
 
 afterAll(async () => {
   await prisma.platformSettings.update({ where: { id: 'global' }, data: saved });
+  await prisma.noSessionScreenshot.deleteMany({});
+  await prisma.noSessionScreenshot.createMany({ data: savedScreenshots, skipDuplicates: true });
   await prisma.sessionTestimonial.deleteMany({ where: { liveSessionId: { in: created.productIds } } });
   await prisma.liveSessionDay.deleteMany({ where: { liveSessionId: { in: created.productIds } } });
   await prisma.liveSession.deleteMany({ where: { productId: { in: created.productIds } } });
@@ -136,6 +146,47 @@ describe('testimonials while no session is upcoming', () => {
 
     await service.update({ enabled: false }, admin());
     expect(await service.forWebsite()).toBeNull();
+  });
+
+  it('hand-picked: chosen screenshots from several sessions in the chosen order, plus picked quotes', async () => {
+    await service.update({ enabled: true, handPicked: false }, admin());
+    const a = await pastSession('pick-a', 30, 2);
+    const b = await pastSession('pick-b', 20, 1);
+    const shots = await prisma.sessionTestimonial.findMany({
+      where: { liveSessionId: { in: [a, b] } },
+      orderBy: { objectKey: 'asc' },
+    });
+    const [a0, a1, b0] = shots;
+
+    const admin1 = await service.setScreenshots([b0.id, a1.id], admin());
+    expect(admin1.screenshots.map((s) => s.testimonialId)).toEqual([b0.id, a1.id]);
+    expect(admin1.screenshots[0].sessionId).toBe(b);
+    expect(admin1.pickableSessions.map((s) => s.id)).toEqual(expect.arrayContaining([a, b]));
+
+    // Not switched over yet: the band still shows one gallery, with no quotes.
+    expect((await service.forWebsite())?.quotes).toEqual([]);
+
+    bandQuotes = [{ id: 'q1', quote: 'Loved it.', attribution: 'Riya', rating: null }];
+    await service.update({ handPicked: true }, admin());
+    const picked = await service.forWebsite();
+    expect(picked?.urls).toEqual([b0.objectKey, a1.objectKey].map((key) => `https://example.test/${key}`));
+    expect(picked?.quotes).toEqual(bandQuotes);
+    expect(a0).toBeDefined();
+
+    // Quotes alone are enough to show the band; nothing at all hides it.
+    await service.setScreenshots([], admin());
+    expect((await service.forWebsite())?.urls).toEqual([]);
+    bandQuotes = [];
+    expect(await service.forWebsite()).toBeNull();
+
+    // A deleted screenshot drops out on its own; an unknown or repeated id is refused.
+    await service.setScreenshots([a0.id], admin());
+    await prisma.sessionTestimonial.delete({ where: { id: a0.id } });
+    expect((await service.forAdmin()).screenshots).toEqual([]);
+    await expect(service.setScreenshots([a0.id], admin())).rejects.toThrow(/no longer exists/);
+    await expect(service.setScreenshots([a1.id, a1.id], admin())).rejects.toThrow(/once/);
+
+    await service.update({ handPicked: false }, admin());
   });
 
   it('refuses a session with nothing to show', async () => {

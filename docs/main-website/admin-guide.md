@@ -293,8 +293,27 @@ it; deleting one deletes its images. See [§3e](./README.md#3e-testimonials).
 - **Testimonials when no session is upcoming:** set on **Sessions**, in the card
   **When no session is upcoming**, below the list. On by default.
   - **Whose testimonials:** **Automatic** (the latest past session that has
-    screenshots) or one session you pick. Its Testimonials screenshots are shown,
-    in their order.
+    screenshots), one session you pick (its Testimonials screenshots, in their
+    order), or **Hand-picked**.
+  - **Hand-picked** shows only what you choose, from any sessions:
+    - Under **Add from a session**, choose a session. Tick its screenshots (from
+      any of its galleries), and pick one of its feedback forms to see the
+      replies. **Add to the band** adds a reply, with or without the student's
+      first name; anonymous replies show as "A JSMF student". Where the form
+      asked "Can we show this on our website?", only replies that said yes can
+      be added.
+    - **Picked replies** and **Picked screenshots** list what is chosen. Use
+      the arrows to reorder, the pencil to tidy a reply's text or name (what the
+      student wrote is unchanged), and ✕ to take it out. The first reply is
+      the featured card.
+    - Picks are saved as you make them, but the website switches to them only
+      when you press **Save** with Hand-picked chosen. Switching back to
+      Automatic or one session keeps your picks for later.
+    - On the website the replies show as quote cards in their own row, the
+      first in deep purple, with the screenshots in a row below. A long reply
+      shows five lines and a **Read more** link.
+    - If a student later withdraws consent, their reply leaves the band on its
+      own; if they hide their name, the card stays as "A JSMF student".
   - **Heading:** pick **What students said after the last session.** or
     **Feedbacks from previous sessions.**, then edit the text if you like.
   - **Text under the heading:** editable. Left empty it reads "From a previous

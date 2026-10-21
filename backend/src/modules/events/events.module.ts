@@ -10,6 +10,7 @@ import { SessionMaterialsService } from './application/session-materials.service
 import { SessionTestimonialSectionsService } from './application/session-testimonial-sections.service';
 import { SessionOfflineSaleHandler } from './application/session-offline-sale.handler';
 import { SessionShowcase } from './application/session-showcase';
+import { SessionTestimonialUploads } from './application/session-testimonial-uploads';
 import { NoSessionTestimonialsService } from './application/no-session-testimonials.service';
 import { AdminLiveSessionController } from './http/admin-live-session.controller';
 import { LiveSessionController } from './http/live-session.controller';
@@ -39,6 +40,7 @@ import { SessionReminderController } from './http/session-reminder.controller';
     SessionOfflineSaleHandler,
     SessionShowcase,
     NoSessionTestimonialsService,
+    SessionTestimonialUploads,
   ],
   exports: [SessionShowcase],
 })

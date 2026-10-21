@@ -1,8 +1,9 @@
 "use client";
 
 import { Quote } from "lucide-react";
+import { QuoteCards } from "@/components/session-feedback";
 import { TestimonialGallery } from "@/components/testimonial-gallery";
-import type { LiveSession, NoSessionTestimonials } from "@/lib/api/types";
+import type { LiveSession, NoSessionTestimonials, SectionQuote } from "@/lib/api/types";
 
 /**
  * What past attendees said, on its own light band. The heading and
@@ -29,25 +30,36 @@ export function TestimonialsSection({ session }: { session: LiveSession }) {
 }
 
 /**
- * The same band while no session is upcoming: the screenshots and copy the
- * admin chose for that case (Sessions → "When no session is upcoming").
+ * The same band while no session is upcoming: the screenshots, picked
+ * replies and copy the admin chose for that case (Sessions → "When no
+ * session is upcoming"). Replies get their own row of quote cards above the
+ * screenshots.
  */
 export function NoSessionTestimonialsSection({ testimonials }: { testimonials: NoSessionTestimonials }) {
-  return <TestimonialsBand urls={testimonials.urls} heading={testimonials.heading} subheading={testimonials.subheading} />;
+  return (
+    <TestimonialsBand
+      urls={testimonials.urls}
+      quotes={testimonials.quotes ?? []}
+      heading={testimonials.heading}
+      subheading={testimonials.subheading}
+    />
+  );
 }
 
 function TestimonialsBand({
   urls,
+  quotes = [],
   heading,
   subheading,
   tag = null,
 }: {
   urls: string[];
+  quotes?: SectionQuote[];
   heading: string;
   subheading: string;
   tag?: string | null;
 }) {
-  if (urls.length === 0) return null;
+  if (urls.length === 0 && quotes.length === 0) return null;
 
   return (
     <section className="border-t border-border bg-card py-16">
@@ -72,9 +84,16 @@ function TestimonialsBand({
           )}
         </div>
 
-        <div className="mt-10">
-          <TestimonialGallery urls={urls} imageAlt="A message from a student about the previous session" />
-        </div>
+        {quotes.length > 0 && (
+          <div className="mt-10">
+            <QuoteCards quotes={quotes} tone="light" />
+          </div>
+        )}
+        {urls.length > 0 && (
+          <div className={quotes.length > 0 ? "mt-6" : "mt-10"}>
+            <TestimonialGallery urls={urls} imageAlt="A message from a student about the previous session" />
+          </div>
+        )}
       </div>
     </section>
   );

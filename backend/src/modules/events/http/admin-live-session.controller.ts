@@ -37,6 +37,7 @@ import {
   SendSessionDetailsDto,
   SendSessionMaterialsDto,
   UpdateLiveSessionDto,
+  SetNoSessionScreenshotsDto,
   UpdateNoSessionTestimonialsDto,
   UpdateTestimonialSectionDto,
 } from './dto/live-session.dto';
@@ -80,6 +81,16 @@ export class AdminLiveSessionController {
     @Req() request: Request,
   ) {
     return this.noSession.update(dto, actorFrom(user, request));
+  }
+
+  @Put('no-session-testimonials/screenshots')
+  @ApiOperation({ summary: 'Pick the screenshots shown while no session is upcoming (hand-picked mode)' })
+  setNoSessionScreenshots(
+    @Body() dto: SetNoSessionScreenshotsDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.noSession.setScreenshots(dto.testimonialIds, actorFrom(user, request));
   }
 
   @Get(':id')

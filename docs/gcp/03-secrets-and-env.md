@@ -134,6 +134,10 @@ This document provides a reference for all environment variables, flags, and sec
 | `WHATSAPP_OTP_TEMPLATE_LANGUAGE` | String | `en` | Cloud Run Env Var | Must match the template's language exactly (`en` ≠ `en_US`). |
 | `WHATSAPP_RECEIPT_TEMPLATE_NAME` | String | `jsmf_purchase_receipt` | Cloud Run Env Var | Optional. An approved **Utility** template for purchase receipts to buyers with no email. Without it those buyers get no receipt; the purchase is unaffected. |
 | `WHATSAPP_RECEIPT_TEMPLATE_LANGUAGE` | String | `en` | Cloud Run Env Var | Must match that template's language. |
+| `MAX_DIRECT_UPLOAD_SIZE_MB` | Integer | `500` | Cloud Run Env Var (optional) | Largest PDF/attachment the admin can upload straight to storage. Not bound by Cloud Run's 32 MiB cap; GCS allows 5 TB. |
+| `DIRECT_UPLOAD_CHUNK_MB` | Integer | `8` | Cloud Run Env Var (optional) | Size of each piece the browser sends. |
+| `DIRECT_UPLOAD_EXPIRY_HOURS` | Integer | `24` | Cloud Run Env Var (optional) | Time to finish an upload before the sweep removes it. |
+| `MAX_IMAGE_UPLOAD_SIZE_MB` | Integer | `8` | Cloud Run Env Var (optional) | Largest cover or session screenshot uploaded straight to storage. |
 | `STOREFRONT_URL` | URL | `https://resources.jsmf.me` | Cloud Run Env Var | The **buyer-facing site**, where purchase receipts link. Not `APP_PUBLIC_URL`, which is this API's own base URL and ends in `/api` — using it produced receipt links to `…/api/library`, a page that does not exist. |
 | `WHATSAPP_GRAPH_API_VERSION` | String | `v23.0` | Cloud Run Env Var | Meta retires Graph API versions roughly two years after release. |
 | `PAYMENT_RECONCILIATION_TRIGGER` | Enum | `http` | Cloud Run Env Var | `http` on Cloud Run: an in-process `cron` cannot fire at `--min-instances=0`. No app secret involved — Cloud Scheduler authenticates as an IAM identity granted `roles/run.invoker`, same as the frontend. See *Phase 9.2*. |
@@ -148,7 +152,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `BACKEND_API_URL` | URL of the NestJS backend API. Resolved at **runtime** by `middleware.ts` to dynamically reverse proxy requests. | `https://jsmf-backend-67890.a.run.app` |
 | `NEXT_PUBLIC_SITE_URL` | The one public address the site is published at. Drives `<link rel="canonical">` and absolute metadata URLs. **Must be set on every deployed environment** — see the note below. | `https://resources.jsmf.me` |
 | `NEXT_PUBLIC_MAIN_SITE_URL` | The main JSMF website (jsmf.me). The storefront's "Visit our main website" link and the footer's legal links (About / Privacy / Terms / Refund / Digital Delivery / Disclaimer — all canonically hosted on jsmf.me, so pdf-web links out to avoid duplicating and letting them drift) both read from this. Unset falls back to `https://jsmf.me`. | `https://jsmf.me` |
-| `NEXT_PUBLIC_MAX_UPLOAD_MB`| Max client file size in MB | `10` |
+| `NEXT_PUBLIC_MAX_UPLOAD_MB`| Fallback only: the multipart limit shown if the backend cannot say. The admin site reads every real limit from `GET /api/uploads/options`. Keep it at or below the backend's `MAX_UPLOAD_SIZE_MB` | `25`, then `5` once both are deployed |
 | `PORT` | Listening Port | `3001` |
 | `NODE_ENV` | Production Environment | `production` |
 

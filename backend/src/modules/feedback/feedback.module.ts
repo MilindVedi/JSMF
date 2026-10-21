@@ -5,7 +5,11 @@ import { FeedbackFormsService } from './application/feedback-forms.service';
 import { FeedbackHighlightsService } from './application/feedback-highlights.service';
 import { FeedbackInvitesService } from './application/feedback-invites.service';
 import { FeedbackResponsesService } from './application/feedback-responses.service';
-import { AdminFeedbackController, AdminFeedbackLibraryController } from './http/admin-feedback.controller';
+import {
+  AdminFeedbackController,
+  AdminFeedbackLibraryController,
+  AdminNoSessionQuotesController,
+} from './http/admin-feedback.controller';
 import { FeedbackController } from './http/feedback.controller';
 
 /**
@@ -22,7 +26,7 @@ import { FeedbackController } from './http/feedback.controller';
  */
 @Module({
   imports: [EventsModule],
-  controllers: [AdminFeedbackController, AdminFeedbackLibraryController, FeedbackController],
+  controllers: [AdminFeedbackController, AdminFeedbackLibraryController, AdminNoSessionQuotesController, FeedbackController],
   providers: [
     FeedbackAudience,
     FeedbackFormsService,

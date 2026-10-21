@@ -1,6 +1,6 @@
 "use client";
 
-import { Quote, Star } from "lucide-react";
+import { Quote } from "lucide-react";
 import { TestimonialGallery } from "@/components/testimonial-gallery";
 import type { LiveSession, SectionQuote } from "@/lib/api/types";
 
@@ -45,7 +45,11 @@ export function SessionFeedback({ session, className = "" }: { session: LiveSess
             )}
           </div>
 
-          {(section.quotes?.length ?? 0) > 0 && <QuoteCards quotes={section.quotes!} />}
+          {(section.quotes?.length ?? 0) > 0 && (
+            <div className="mt-8">
+              <QuoteCards quotes={section.quotes!} />
+            </div>
+          )}
 
           {section.urls.length > 0 && (
             <div className="mt-8">
@@ -62,40 +66,78 @@ export function SessionFeedback({ session, className = "" }: { session: LiveSess
   );
 }
 
+/** Past this many characters a reply is cut to five lines, with "Read more". */
+const LONG_QUOTE = 220;
+
+const QUOTE_TONES = {
+  // Inside the dark booking band: the featured card in brand purple, the rest translucent.
+  dark: {
+    featured: "bg-primary text-white shadow-editorial",
+    card: "border border-brand-line bg-white/5",
+    icon: "text-primary",
+    rule: "border-brand-line",
+    caption: "opacity-70",
+  },
+  // On the light testimonials band: the featured card in deep purple, the rest white.
+  light: {
+    featured: "bg-brand-deep text-white shadow-editorial",
+    card: "border border-border bg-card text-brand-deep",
+    icon: "text-primary/60",
+    rule: "border-border",
+    caption: "text-muted-foreground",
+  },
+} as const;
+
 /**
- * Written replies, two or three across on wide screens. Long ones are cut to
- * a few lines with the full text a tap away, so one essay does not push the
- * rest out of sight.
+ * Written replies, as pulled-quote cards: two or three across on wide
+ * screens, in their own row above any screenshots, so neither has to match
+ * the other's size. Cards in a row share one height, with the divider and
+ * name at the bottom. The first is featured. A long reply shows five lines
+ * and opens in full on a tap.
+ *
+ * Shared by the booking band here and the light testimonials band.
  */
-function QuoteCards({ quotes }: { quotes: SectionQuote[] }) {
+export function QuoteCards({ quotes, tone = "dark" }: { quotes: SectionQuote[]; tone?: keyof typeof QUOTE_TONES }) {
+  const style = QUOTE_TONES[tone];
   return (
-    <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {quotes.map((item) => (
-        <figure key={item.id} className="flex flex-col rounded-2xl border border-brand-line bg-white/5 p-5">
-          {item.rating !== null && (
-            <div className="mb-3 flex gap-0.5" aria-label={`${item.rating} out of 5 stars`}>
-              {[1, 2, 3, 4, 5].map((n) => (
-                <Star
-                  key={n}
-                  size={14}
-                  className={n <= item.rating! ? "fill-amber-300 text-amber-300" : "text-white/25"}
-                  aria-hidden
-                />
-              ))}
-            </div>
-          )}
-          <blockquote className="flex-1">
-            <details className="group">
-              <summary className="cursor-pointer list-none text-[15px] leading-relaxed opacity-90 [&::-webkit-details-marker]:hidden">
-                <span className="line-clamp-5 group-open:line-clamp-none">&ldquo;{item.quote}&rdquo;</span>
-              </summary>
-            </details>
-          </blockquote>
-          <figcaption className="mt-4 text-xs font-semibold uppercase tracking-wide opacity-70">
-            {item.attribution}
-          </figcaption>
-        </figure>
-      ))}
+    // While one long reply is open, only that card grows; the others keep their size.
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 has-[details[open]]:items-start">
+      {quotes.map((item, index) => {
+        const featured = index === 0;
+        const long = item.quote.length > LONG_QUOTE;
+        const text = <>&ldquo;{item.quote}&rdquo;</>;
+        return (
+          <figure key={item.id} className={`flex flex-col rounded-2xl p-6 ${featured ? style.featured : style.card}`}>
+            <Quote
+              size={28}
+              strokeWidth={1.75}
+              className={`mb-4 shrink-0 ${featured ? "text-white/80" : style.icon}`}
+              aria-hidden
+            />
+            <blockquote className="flex-1 font-display text-[17px] font-semibold leading-snug">
+              {long ? (
+                <details className="group">
+                  <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                    <span className="line-clamp-5 group-open:line-clamp-none">{text}</span>
+                    <span className="mt-2 inline-block font-sans text-xs font-semibold underline underline-offset-4 opacity-75">
+                      <span className="group-open:hidden">Read more</span>
+                      <span className="hidden group-open:inline">Show less</span>
+                    </span>
+                  </summary>
+                </details>
+              ) : (
+                <p>{text}</p>
+              )}
+            </blockquote>
+            <hr className={`mt-6 border-0 border-t ${featured ? "border-white/20" : style.rule}`} />
+            <figcaption
+              className={`mt-4 text-xs font-semibold ${featured ? "text-white/75" : style.caption}`}
+            >
+              Student feedback{item.attribution ? ` · ${item.attribution}` : ""}
+            </figcaption>
+          </figure>
+        );
+      })}
     </div>
   );
 }

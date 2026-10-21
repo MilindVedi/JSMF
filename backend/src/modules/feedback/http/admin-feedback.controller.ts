@@ -11,10 +11,13 @@ import { FeedbackInvitesService } from '../application/feedback-invites.service'
 import {
   CreateFeedbackFormDto,
   CreateFeedbackHighlightDto,
+  CreateNoSessionQuoteDto,
+  ReorderNoSessionQuotesDto,
   ReplaceFeedbackQuestionsDto,
   SendFeedbackInvitesDto,
   UpdateFeedbackFormDto,
   UpdateFeedbackHighlightDto,
+  UpdateNoSessionQuoteDto,
 } from './dto/feedback.dto';
 
 /**
@@ -197,5 +200,56 @@ export class AdminFeedbackLibraryController {
   @ApiOperation({ summary: 'Every feedback form on every session, newest first, to import from' })
   importable() {
     return this.forms.importable();
+  }
+}
+
+/**
+ * Replies picked for the home page's testimonials band while no session is
+ * upcoming, from any session's forms. Site-wide copy, so admins only, like the
+ * rest of that setting (Sessions → "When no session is upcoming").
+ */
+@ApiTags('admin: feedback')
+@ApiBearerAuth()
+@Roles('ADMIN')
+@Controller('admin/feedback/no-session-quotes')
+export class AdminNoSessionQuotesController {
+  constructor(private readonly highlights: FeedbackHighlightsService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'The replies picked for the band, in display order' })
+  list() {
+    return this.highlights.listNoSessionQuotes();
+  }
+
+  @Post()
+  @ApiOperation({
+    summary: 'Put a reply in the band',
+    description: 'Only for a reply whose author agreed, where the form asked. Quote and name default from the reply.',
+  })
+  create(@Body() dto: CreateNoSessionQuoteDto, @CurrentUser() user: AuthenticatedUser, @Req() request: Request) {
+    const { sessionId, formId, ...input } = dto;
+    return this.highlights.createNoSessionQuote(sessionId, formId, input, actorFrom(user, request));
+  }
+
+  @Put('order')
+  @HttpCode(204)
+  async reorder(@Body() dto: ReorderNoSessionQuotesDto, @CurrentUser() user: AuthenticatedUser, @Req() request: Request) {
+    await this.highlights.reorderNoSessionQuotes(dto.ids, actorFrom(user, request));
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateNoSessionQuoteDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.highlights.updateNoSessionQuote(id, dto, actorFrom(user, request));
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser, @Req() request: Request) {
+    await this.highlights.removeNoSessionQuote(id, actorFrom(user, request));
   }
 }

@@ -451,6 +451,13 @@ export class UpdateNoSessionTestimonialsDto {
   @IsUUID()
   sessionId?: string | null;
 
+  @ApiPropertyOptional({
+    description: 'Show the screenshots and replies picked one by one, from any sessions, instead of one gallery.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  handPicked?: boolean;
+
   @ApiPropertyOptional({ nullable: true, maxLength: 150 })
   @IsOptional()
   @ValidateIf((_, value) => value !== null)
@@ -464,4 +471,12 @@ export class UpdateNoSessionTestimonialsDto {
   @IsString()
   @MaxLength(300)
   subheading?: string | null;
+}
+
+export class SetNoSessionScreenshotsDto {
+  @ApiProperty({ type: [String], description: 'The screenshots to show, in display order. Empty clears them.' })
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  testimonialIds!: string[];
 }

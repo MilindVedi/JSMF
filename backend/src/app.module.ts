@@ -23,6 +23,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { QuestionsModule } from './modules/questions/questions.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 import {
   IdentityThrottlerGuard,
   IP_CEILING_THROTTLER,
@@ -85,6 +86,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     WhatsAppModule,
     IdentityModule,
     StorageModule,
+    UploadsModule,
     PaymentsModule,
     CatalogModule,
     EventsModule,

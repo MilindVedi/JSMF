@@ -393,6 +393,7 @@ export class FeedbackFormsService {
       include: {
         answers: true,
         highlights: { select: { id: true, sectionId: true, quote: true, attribution: true, rating: true } },
+        noSessionQuote: { select: { id: true } },
         user: { select: { name: true, email: true } },
       },
     });
@@ -434,6 +435,8 @@ export class FeedbackFormsService {
           choices: a.choiceValues,
         })),
         highlights: r.highlights,
+        /** Shown in the home page band while no session is upcoming. */
+        noSessionQuoteId: r.noSessionQuote?.id ?? null,
       })),
     };
   }

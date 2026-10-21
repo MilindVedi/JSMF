@@ -10,10 +10,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 import { AppConfig } from '../../../config/config.module';
 import {
+  CopyRequest,
+  DirectUploadRequest,
+  DirectUploadSession,
   ObjectRef,
   SignedUrlOptions,
   StorageProvider,
   StoredObject,
+  StoredObjectInfo,
   UploadRequest,
 } from '../domain/storage-provider.port';
 
@@ -89,6 +93,7 @@ export class GcsStorageAdapter extends StorageProvider {
     // Computed before the write, so a mismatch is detectable later and the
     // value stored is of the bytes we actually sent.
     const checksum = createHash('sha256').update(request.content).digest('hex');
+    const md5 = createHash('md5').update(request.content).digest('hex');
 
     try {
       await file.save(request.content, {
@@ -113,9 +118,94 @@ export class GcsStorageAdapter extends StorageProvider {
       objectKey,
       sizeBytes: request.content.length,
       checksumSha256: checksum,
+      checksumMd5: md5,
       mimeType: request.mimeType,
       originalFilename: request.originalFilename,
     };
+  }
+
+  /**
+   * A GCS resumable upload session, opened here so the browser never needs a
+   * credential of its own. Verified against a real bucket (2026-10-20):
+   *
+   * - `contentLength` becomes `X-Upload-Content-Length`, and GCS refuses a
+   *   final size that differs by a single byte either way. That is the size
+   *   cap on the session itself — not only the one this app checks.
+   * - `ifGenerationMatch: 0` means "only if no such object exists": a session
+   *   can never overwrite a file, even one at the same key.
+   * - `origin` binds CORS for the session to the admin site. The bucket still
+   *   needs a CORS rule exposing `Range`, or the browser cannot read how much
+   *   has arrived and so cannot resume (docs/pdf-platform/05-storage.md).
+   *
+   * A session lives a week on Google's side. This app gives up much sooner
+   * (DIRECT_UPLOAD_EXPIRY_HOURS), and the sweep deletes anything a late session
+   * still manages to finish.
+   */
+  async createDirectUpload(request: DirectUploadRequest): Promise<DirectUploadSession> {
+    const bucketName = this.bucketFor(request.visibility);
+    const objectKey = this.buildObjectKey(request);
+
+    try {
+      const [uploadUrl] = await this.bucket(bucketName)
+        .file(objectKey)
+        .createResumableUpload({
+          origin: request.origin,
+          metadata: {
+            contentType: request.mimeType,
+            contentLength: request.sizeBytes,
+            metadata: { originalFilename: request.originalFilename },
+          },
+          preconditionOpts: { ifGenerationMatch: 0 },
+        });
+
+      return { ref: { provider: this.name, bucket: bucketName, objectKey }, uploadUrl };
+    } catch (cause) {
+      throw gcsError(cause, `opening an upload to ${bucketName}`);
+    }
+  }
+
+  async stat(ref: ObjectRef): Promise<StoredObjectInfo | null> {
+    try {
+      const [metadata] = await this.bucket(ref.bucket).file(ref.objectKey).getMetadata();
+      return {
+        sizeBytes: Number(metadata.size),
+        mimeType: metadata.contentType ?? null,
+        // GCS reports base64; product_assets stores hex, as the app computes it.
+        md5: metadata.md5Hash ? Buffer.from(metadata.md5Hash, 'base64').toString('hex') : null,
+      };
+    } catch (cause) {
+      if ((cause as { code?: number })?.code === 404) return null;
+      throw gcsError(cause, `reading metadata of ${ref.bucket}/${ref.objectKey}`);
+    }
+  }
+
+  async readRange(ref: ObjectRef, start: number, end: number): Promise<Buffer> {
+    try {
+      // `validation: false`: a partial read has no whole-object checksum to match.
+      const [content] = await this.bucket(ref.bucket)
+        .file(ref.objectKey)
+        .download({ start, end, validation: false });
+      return content;
+    } catch (cause) {
+      throw gcsError(cause, `reading ${ref.bucket}/${ref.objectKey}`);
+    }
+  }
+
+  /**
+   * A server-side copy: GCS rewrites the object between buckets itself.
+   * Content type and metadata are carried over.
+   */
+  async copy(from: ObjectRef, to: CopyRequest): Promise<ObjectRef> {
+    const bucketName = this.bucketFor(to.visibility);
+    const objectKey = this.buildObjectKey(to);
+    try {
+      await this.bucket(from.bucket)
+        .file(from.objectKey)
+        .copy(this.bucket(bucketName).file(objectKey), { preconditionOpts: { ifGenerationMatch: 0 } });
+    } catch (cause) {
+      throw gcsError(cause, `copying ${from.bucket}/${from.objectKey} to ${bucketName}`);
+    }
+    return { provider: this.name, bucket: bucketName, objectKey };
   }
 
   /**
@@ -193,7 +283,7 @@ export class GcsStorageAdapter extends StorageProvider {
    * extension is kept because it is what makes a signed URL serve the right
    * content type to a browser, and it is validated rather than trusted.
    */
-  private buildObjectKey(request: UploadRequest): string {
+  private buildObjectKey(request: Pick<UploadRequest, 'originalFilename' | 'keyPrefix'>): string {
     const extension = extname(request.originalFilename).toLowerCase().slice(0, 12);
     const safeExtension = /^\.[a-z0-9]+$/.test(extension) ? extension : '';
 

@@ -14,6 +14,8 @@ export interface SectionQuote {
 export interface SectionQuoteSource {
   /** Quotes per section id, in display order. Sections with none may be left out. */
   quotesFor(sectionIds: string[]): Promise<Map<string, SectionQuote[]>>;
+  /** Quotes hand-picked for the band shown while no session is upcoming, in display order. */
+  noSessionQuotes?(): Promise<SectionQuote[]>;
 }
 
 /**
@@ -52,5 +54,20 @@ export class SessionShowcase {
       }
     }
     return merged;
+  }
+
+  async noSessionQuotes(): Promise<SectionQuote[]> {
+    const all: SectionQuote[] = [];
+    for (const source of this.sources) {
+      if (!source.noSessionQuotes) continue;
+      try {
+        all.push(...(await source.noSessionQuotes()));
+      } catch (cause) {
+        this.logger.warn(
+          `A quote source failed; showing the band without it: ${cause instanceof Error ? cause.message : String(cause)}`,
+        );
+      }
+    }
+    return all;
   }
 }

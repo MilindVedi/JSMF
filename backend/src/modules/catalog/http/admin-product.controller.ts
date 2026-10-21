@@ -183,10 +183,12 @@ export class AdminProductController {
   @Post(':id/assets')
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Upload a new version of an asset',
+    summary: 'Upload a new version of an asset, through the API (multipart)',
     description:
       'Never overwrites. The previous version is retained and this one becomes current, ' +
-      'so a buyer mid-download is unaffected and a mistaken replacement can be rolled back.',
+      'so a buyer mid-download is unaffected and a mistaken replacement can be rolled back. ' +
+      'Bounded by MAX_UPLOAD_SIZE_MB and Cloud Run\'s 32 MiB request cap. The fallback for storage ' +
+      'without direct uploads: otherwise every kind uploads through POST /uploads (product.* purposes).',
   })
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
   uploadAsset(
