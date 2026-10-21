@@ -560,8 +560,10 @@ Sessions page (`QuotesLayoutCard`, sharing the no-session settings endpoint —
 each card sends only its own fields). Migration `20261021140000_quotes_layout`,
 additive. Beside it, `feedback_quotes_expand` (`QuoteExpand`: POPUP, the
 default, or INLINE) picks what "Read more" does: `QuoteDialog`, or a
-`<details>` that unclamps the card in place, with `has-[details[open]]:items-start`
-on the row so only that card grows. Also on `GET /sessions` as `quotesExpand`.
+`<details>` that unclamps the card in place. Either way the row stretches
+every card to the tallest (`items-stretch`), so the "Student feedback · name"
+lines stay level; an open card makes its neighbours grow with it rather than
+letting them drop to their own height. Also on `GET /sessions` as `quotesExpand`.
 Migration `20261021160000_quotes_expand`, additive.
 
 **Long replies (added 2026-10-21).** A quote may be as long as a long answer

@@ -98,7 +98,7 @@ const LONG_QUOTE = 220;
 const QUOTE_TONES = {
   // Inside the dark booking band: the featured card in brand purple, the rest translucent.
   dark: {
-    featured: "bg-primary text-white shadow-editorial",
+    featured: "border border-transparent bg-primary text-white shadow-editorial",
     card: "border border-brand-line bg-white/5",
     icon: "text-primary",
     rule: "border-brand-line",
@@ -106,7 +106,7 @@ const QUOTE_TONES = {
   },
   // On the light testimonials band: the featured card in deep purple, the rest white.
   light: {
-    featured: "bg-brand-deep text-white shadow-editorial",
+    featured: "border border-transparent bg-brand-deep text-white shadow-editorial",
     card: "border border-border bg-card text-brand-deep",
     icon: "text-primary/60",
     rule: "border-border",
@@ -131,7 +131,8 @@ const QUOTE_CARD_WIDTH =
  * lines. What "Read more" does is the admin's `expand` choice: "POPUP" (the
  * default) opens it whole in a pop-up that scrolls on its own, so a card keeps
  * its size however long the reply (up to 5,000 characters); "INLINE" grows
- * that one card in place, with "Show less" to fold it back.
+ * the card in place, with "Show less" to fold it back — and the cards beside
+ * it grow with it, so every name line in the row stays level.
  *
  * `layout` is the admin's site-wide choice: "SCROLL" (the default) is one row
  * that scrolls sideways, two or three in view with the next part way in;
@@ -154,10 +155,6 @@ export function QuoteCards({
   const [reading, setReading] = useState<SectionQuote | null>(null);
   const scrolls = layout === "SCROLL";
   const inline = expand === "INLINE";
-  // Growing in place, as the site did before the pop-up: only the open card
-  // gets taller, and the others drop to their own height instead of stretching
-  // to match it.
-  const growsInPlace = inline ? "has-[details[open]]:items-start" : "";
 
   const cards = quotes.map((item, index) => {
     const featured = index === 0;
@@ -223,13 +220,15 @@ export function QuoteCards({
           tone={tone}
           previousLabel="Show previous replies"
           nextLabel="Show more replies"
-          className={`gap-5 ${growsInPlace}`}
+          // Every card as tall as the tallest, so the names line up in a row.
+          className="items-stretch gap-5"
         >
           {cards}
         </ScrollRow>
       ) : (
         <div
-          className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-3 ${growsInPlace}`}
+          // Every card as tall as the tallest in its line, so the names line up.
+          className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
           {cards}
         </div>

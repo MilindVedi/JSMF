@@ -56,7 +56,7 @@ const EXPANDS: Choice<QuoteExpand>[] = [
     value: "INLINE",
     title: "Grow the card in place",
     detail:
-      'That card gets taller to show the whole reply, with "Show less" to fold it back. The others do not grow with it. A very long reply makes a very tall card.',
+      'That card gets taller to show the whole reply, with "Show less" to fold it back. The cards beside it grow too, so the names stay in one line. A very long reply makes the whole row tall.',
     picture: ["█ █ █", "  █  "],
   },
 ];

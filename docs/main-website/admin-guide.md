@@ -306,8 +306,8 @@ it; deleting one deletes its images. See [§3e](./README.md#3e-testimonials).
     - **Open it in a pop-up** (the default): the whole reply opens over the
       page and scrolls on its own; the cards keep their size.
     - **Grow the card in place:** that card gets taller to show it all, with
-      **Show less** to fold it back. The other cards don't grow with it. A very
-      long reply makes a very tall card.
+      **Show less** to fold it back. The cards beside it grow too, so the
+      names stay in one line; a very long reply makes the whole row tall.
 - **Testimonials when no session is upcoming:** set on **Sessions**, in the card
   **When no session is upcoming**, below the list. On by default.
   - **Whose testimonials:** **Automatic** (the latest past session that has
