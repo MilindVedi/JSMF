@@ -1617,6 +1617,9 @@ model PlatformSettings {
   /// chosen above, or the automatic one, as before. Off by default, so the
   /// picks can be prepared before switching over.
   noSessionTestimonialsHandPicked Boolean @default(false) @map("no_session_testimonials_hand_picked")
+  /// How the written replies are laid out wherever they appear on the website:
+  /// a row that scrolls sideways, or a block that wraps onto several lines.
+  quotesLayout                    QuoteLayout @default(SCROLL) @map("feedback_quotes_layout")
 
   noSessionTestimonialsSession LiveSession? @relation(fields: [noSessionTestimonialsSessionId], references: [productId], onDelete: SetNull)
 
@@ -2800,6 +2803,16 @@ model FeedbackHighlight {
   @@unique([responseId, sectionId])
   @@index([sectionId, sortOrder])
   @@map("feedback_highlights")
+  @@schema("public")
+}
+
+/// How the quote cards are laid out on the website. SCROLL is one row that
+/// scrolls sideways, two or three in view at a time; GRID wraps them onto as
+/// many lines as it takes, two or three across, with nothing to scroll.
+enum QuoteLayout {
+  SCROLL
+  GRID
+
   @@schema("public")
 }
 

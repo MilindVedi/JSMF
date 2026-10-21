@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Quote, X } from "lucide-react";
 import { ScrollRow } from "@/components/scroll-row";
 import { TestimonialGallery } from "@/components/testimonial-gallery";
-import type { LiveSession, SectionQuote } from "@/lib/api/types";
+import type { LiveSession, QuoteLayout, SectionQuote } from "@/lib/api/types";
 
 /**
  * What people are saying about *this* session — "What students said after
@@ -21,9 +21,11 @@ import type { LiveSession, SectionQuote } from "@/lib/api/types";
  */
 export function SessionFeedback({
   session,
+  layout = "SCROLL",
   className = "",
 }: {
   session: LiveSession;
+  layout?: QuoteLayout;
   className?: string;
 }) {
   const sections = session.testimonialSections ?? [];
@@ -60,7 +62,7 @@ export function SessionFeedback({
 
           {(section.quotes?.length ?? 0) > 0 && (
             <div className="mt-8">
-              <QuoteCards quotes={section.quotes!} />
+              <QuoteCards quotes={section.quotes!} layout={layout} />
             </div>
           )}
 
@@ -112,77 +114,88 @@ const QUOTE_CARD_WIDTH =
   "w-[82%] max-w-[300px] min-[560px]:w-[46%] min-[560px]:max-w-none lg:w-[31%]";
 
 /**
- * Written replies, as pulled-quote cards in a row that scrolls sideways,
- * above any screenshots, so neither row has to match the other's size. Cards
- * share one height, with the divider and name at the bottom. The first is
- * featured. A long reply shows five lines; "Read more" opens it whole in a
- * pop-up that scrolls on its own, so every card in the row keeps its size
- * however long the reply (up to 5,000 characters).
+ * Written replies, as pulled-quote cards above any screenshots, so neither
+ * has to match the other's size. Cards share one height, with the divider and
+ * name at the bottom, and the first is featured. A long reply shows five
+ * lines; "Read more" opens it whole in a pop-up that scrolls on its own, so a
+ * card keeps its size however long the reply (up to 5,000 characters).
+ *
+ * `layout` is the admin's site-wide choice: "SCROLL" (the default) is one row
+ * that scrolls sideways, two or three in view with the next part way in;
+ * "GRID" wraps them onto as many lines as it takes, with nothing to scroll.
  *
  * Shared by the booking band here and the light testimonials band.
  */
 export function QuoteCards({
   quotes,
   tone = "dark",
+  layout = "SCROLL",
 }: {
   quotes: SectionQuote[];
   tone?: keyof typeof QUOTE_TONES;
+  layout?: QuoteLayout;
 }) {
   const style = QUOTE_TONES[tone];
   const [reading, setReading] = useState<SectionQuote | null>(null);
+  const scrolls = layout === "SCROLL";
+
+  const cards = quotes.map((item, index) => {
+    const featured = index === 0;
+    const long = item.quote.length > LONG_QUOTE;
+    const text = <>&ldquo;{item.quote}&rdquo;</>;
+    return (
+      <figure
+        key={item.id}
+        className={`flex flex-col rounded-2xl p-6 ${scrolls ? `shrink-0 snap-start ${QUOTE_CARD_WIDTH}` : ""} ${featured ? style.featured : style.card}`}
+      >
+        <Quote
+          size={28}
+          strokeWidth={1.75}
+          className={`mb-4 shrink-0 ${featured ? "text-white/80" : style.icon}`}
+          aria-hidden
+        />
+        <blockquote className="flex-1 font-display text-[17px] font-semibold leading-snug">
+          <p className={`whitespace-pre-line ${long ? "line-clamp-5" : ""}`}>
+            {text}
+          </p>
+          {long && (
+            <button
+              type="button"
+              onClick={() => setReading(item)}
+              className="mt-2 font-sans text-xs font-semibold underline underline-offset-4 opacity-75 transition-opacity hover:opacity-100"
+            >
+              Read more
+            </button>
+          )}
+        </blockquote>
+        <hr
+          className={`mt-6 border-0 border-t ${featured ? "border-white/20" : style.rule}`}
+        />
+        <figcaption
+          className={`mt-4 text-xs font-semibold ${featured ? "text-white/75" : style.caption}`}
+        >
+          Student feedback
+          {item.attribution ? ` · ${item.attribution}` : ""}
+        </figcaption>
+      </figure>
+    );
+  });
+
   return (
     <>
-      <ScrollRow
-        count={quotes.length}
-        tone={tone}
-        previousLabel="Show previous replies"
-        nextLabel="Show more replies"
-        className="gap-5"
-      >
-        {quotes.map((item, index) => {
-          const featured = index === 0;
-          const long = item.quote.length > LONG_QUOTE;
-          const text = <>&ldquo;{item.quote}&rdquo;</>;
-          return (
-            <figure
-              key={item.id}
-              className={`flex shrink-0 snap-start flex-col rounded-2xl p-6 ${QUOTE_CARD_WIDTH} ${featured ? style.featured : style.card}`}
-            >
-              <Quote
-                size={28}
-                strokeWidth={1.75}
-                className={`mb-4 shrink-0 ${featured ? "text-white/80" : style.icon}`}
-                aria-hidden
-              />
-              <blockquote className="flex-1 font-display text-[17px] font-semibold leading-snug">
-                <p
-                  className={`whitespace-pre-line ${long ? "line-clamp-5" : ""}`}
-                >
-                  {text}
-                </p>
-                {long && (
-                  <button
-                    type="button"
-                    onClick={() => setReading(item)}
-                    className="mt-2 font-sans text-xs font-semibold underline underline-offset-4 opacity-75 transition-opacity hover:opacity-100"
-                  >
-                    Read more
-                  </button>
-                )}
-              </blockquote>
-              <hr
-                className={`mt-6 border-0 border-t ${featured ? "border-white/20" : style.rule}`}
-              />
-              <figcaption
-                className={`mt-4 text-xs font-semibold ${featured ? "text-white/75" : style.caption}`}
-              >
-                Student feedback
-                {item.attribution ? ` · ${item.attribution}` : ""}
-              </figcaption>
-            </figure>
-          );
-        })}
-      </ScrollRow>
+      {scrolls ? (
+        <ScrollRow
+          count={quotes.length}
+          tone={tone}
+          previousLabel="Show previous replies"
+          nextLabel="Show more replies"
+          className="gap-5"
+        >
+          {cards}
+        </ScrollRow>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{cards}</div>
+      )}
       <QuoteDialog quote={reading} onClose={() => setReading(null)} />
     </>
   );
@@ -208,11 +221,12 @@ function QuoteDialog({
     const dialog = ref.current;
     if (!dialog || !quote) return;
     dialog.showModal();
-    // The page behind stays put while the reply is read.
-    const before = document.body.style.overflow;
+    // The page behind stays put while the reply is read. Cleared rather than
+    // put back to whatever was found, as the lightbox does: reading what is
+    // there risks catching another dialog's "hidden" and keeping it forever.
     document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = before;
+      document.body.style.overflow = "";
       if (dialog.open) dialog.close();
     };
   }, [quote]);

@@ -74,9 +74,18 @@ export interface LiveSession {
   included: Array<{ title: string }>;
 }
 
+/**
+ * How the written replies are laid out: "SCROLL" is one row that scrolls
+ * sideways (the default), "GRID" wraps them onto as many lines as it takes.
+ * Set in the admin panel and used everywhere replies appear.
+ */
+export type QuoteLayout = "SCROLL" | "GRID";
+
 export interface SessionLanding {
   upcoming: LiveSession | null;
   previous: LiveSession | null;
+  /** Absent from an older API, which means the scrolling row. */
+  quotesLayout?: QuoteLayout;
   /** Set only while nothing is upcoming: the testimonials the admin chose for that case. */
   noSessionTestimonials?: NoSessionTestimonials | null;
 }

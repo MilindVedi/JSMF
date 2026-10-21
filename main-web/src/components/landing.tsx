@@ -25,8 +25,15 @@ import { MentorshipBanner } from "@/components/mentorship/mentorship-banner";
 import { MentorshipHeroCta } from "@/components/mentorship/mentorship-hero-cta";
 import { SiteLayout } from "@/components/site";
 import { SessionFeedback } from "@/components/session-feedback";
-import { NoSessionTestimonialsSection, TestimonialsSection } from "@/components/testimonials-section";
-import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/social-icons";
+import {
+  NoSessionTestimonialsSection,
+  TestimonialsSection,
+} from "@/components/testimonials-section";
+import {
+  InstagramIcon,
+  TelegramIcon,
+  YouTubeIcon,
+} from "@/components/social-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
 import { sessionsApi } from "@/lib/api/sessions";
@@ -49,7 +56,11 @@ import { credentials, links } from "@/lib/site-content";
  * deploy to announce the next one. When no session is upcoming, every CTA
  * falls back to the Telegram channel rather than a dead "Reserve" button.
  */
-export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null }) {
+export function Landing({
+  checkoutUrl = null,
+}: {
+  checkoutUrl?: string | null;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const [data, setData] = useState<SessionLanding | null>(null);
@@ -67,7 +78,10 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
     : () => setOpen(true);
   /** The same action, recorded first with which button it came from. */
   const reserveFrom = (location: string) => () => {
-    track("book_click", checkoutUrl ? { location, external: true } : { location });
+    track(
+      "book_click",
+      checkoutUrl ? { location, external: true } : { location },
+    );
     reserve();
   };
 
@@ -98,7 +112,9 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
 
   return (
     <SiteLayout>
-      {session && <RegisterDialog open={open} onClose={close} session={session} />}
+      {session && (
+        <RegisterDialog open={open} onClose={close} session={session} />
+      )}
 
       {/* Hero */}
       <section className="border-b border-border bg-card">
@@ -108,32 +124,47 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
               Prepare smarter, with a doctor who has just done it.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
-              Dr. Angad Rai — NEET-PG 2026, AIR 925. Sharing the 
-              revision system behind his preparation — live sessions, high-yield material, and honest guidance through JSMF.
+              Dr. Angad Rai — NEET-PG 2026, AIR 925. Sharing the revision system
+              behind his preparation — live sessions, high-yield material, and
+              honest guidance through JSMF.
             </p>
 
             <div className="mt-9 flex flex-col items-start">
-              {loading ? (
-                <Button size="xl" className="w-full max-w-md rounded-full text-base font-semibold" disabled>
-                  <Loader2 size={18} className="animate-spin" /> Loading session
-                </Button>
-              ) : live ? (
-                <button
-                  type="button"
-                  onClick={reserveFrom("hero")}
-                  className="cta-spot flex w-full max-w-md flex-col items-center justify-center rounded-full px-8 py-3 text-center text-white active:translate-y-0"
-                >
-                  <span className="cta-shine" aria-hidden />
-                  <span className="flex items-center gap-2.5 font-display text-lg font-semibold leading-tight">
-                    Book Your Spot Now <ArrowRight size={18} strokeWidth={2.4} className="cta-arrow transition-transform duration-300" />
-                  </span>
-                  <span className="mt-0.5 text-xs font-normal opacity-80">
-                    Reserve your seat for the upcoming live session
-                  </span>
-                </button>
-              ) : null /* No session: the Telegram invite lives in the "coming soon" band below. */}
+              {
+                loading ? (
+                  <Button
+                    size="xl"
+                    className="w-full max-w-md rounded-full text-base font-semibold"
+                    disabled
+                  >
+                    <Loader2 size={18} className="animate-spin" /> Loading
+                    session
+                  </Button>
+                ) : live ? (
+                  <button
+                    type="button"
+                    onClick={reserveFrom("hero")}
+                    className="cta-spot flex w-full max-w-md flex-col items-center justify-center rounded-full px-8 py-3 text-center text-white active:translate-y-0"
+                  >
+                    <span className="cta-shine" aria-hidden />
+                    <span className="flex items-center gap-2.5 font-display text-lg font-semibold leading-tight">
+                      Book Your Spot Now{" "}
+                      <ArrowRight
+                        size={18}
+                        strokeWidth={2.4}
+                        className="cta-arrow transition-transform duration-300"
+                      />
+                    </span>
+                    <span className="mt-0.5 text-xs font-normal opacity-80">
+                      Reserve your seat for the upcoming live session
+                    </span>
+                  </button>
+                ) : null /* No session: the Telegram invite lives in the "coming soon" band below. */
+              }
 
-              {!checkoutUrl && live && session && <SeatsLine session={session} className="mt-4" />}
+              {!checkoutUrl && live && session && (
+                <SeatsLine session={session} className="mt-4" />
+              )}
 
               {/* The second offer, a one-to-one call. Hidden until one is published. */}
               <MentorshipHeroCta className={loading || live ? "mt-5" : ""} />
@@ -162,13 +193,25 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
 
                 {session.highlights.length > 0 && (
                   <div className="mt-10">
-                    <p className="text-[11px] font-bold uppercase tracking-wide opacity-70">What you&apos;ll learn</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wide opacity-70">
+                      What you&apos;ll learn
+                    </p>
                     <ul className="mt-5 grid gap-3">
                       {session.highlights.map((item) => {
-                        const hasEmoji = /^\p{Extended_Pictographic}/u.test(item) || /^[^\p{L}\p{N}\s]/u.test(item);
+                        const hasEmoji =
+                          /^\p{Extended_Pictographic}/u.test(item) ||
+                          /^[^\p{L}\p{N}\s]/u.test(item);
                         return (
-                          <li key={item} className="flex items-start gap-3 text-sm leading-relaxed opacity-90">
-                            {!hasEmoji && <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-primary" />}
+                          <li
+                            key={item}
+                            className="flex items-start gap-3 text-sm leading-relaxed opacity-90"
+                          >
+                            {!hasEmoji && (
+                              <CheckCircle2
+                                size={17}
+                                className="mt-0.5 shrink-0 text-primary"
+                              />
+                            )}
                             <span>{item}</span>
                           </li>
                         );
@@ -179,12 +222,20 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
               </div>
 
               <div className="lg:col-span-5">
-                <SessionCard session={session} onRegister={reserveFrom("session_card")} external={Boolean(checkoutUrl)} />
+                <SessionCard
+                  session={session}
+                  onRegister={reserveFrom("session_card")}
+                  external={Boolean(checkoutUrl)}
+                />
               </div>
 
               {/* This session's own feedback (e.g. after Day 1), beside the
                   Book button. Nothing renders until the admin shows a section. */}
-              <SessionFeedback session={session} className="mt-6 lg:col-span-12" />
+              <SessionFeedback
+                session={session}
+                layout={data?.quotesLayout}
+                className="mt-6 lg:col-span-12"
+              />
             </div>
           ) : (
             <div>
@@ -192,7 +243,9 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
                 {loading ? "Loading" : "Next session coming soon"}
               </span>
               <h2 className="mt-5 max-w-2xl font-display text-3xl font-semibold leading-tight md:text-4xl">
-                {loading ? "Loading the next session…" : "The last session has wrapped up"}
+                {loading
+                  ? "Loading the next session…"
+                  : "The last session has wrapped up"}
               </h2>
               <p className="mt-4 max-w-2xl text-base leading-relaxed opacity-80">
                 {loading
@@ -212,7 +265,15 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
                     <Send size={18} /> Get notified on Telegram
                   </a>
                   {data?.previous?.recordingUrl && (
-                    <a href={data.previous.recordingUrl} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary", size: "lg" })}>
+                    <a
+                      href={data.previous.recordingUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={buttonVariants({
+                        variant: "secondary",
+                        size: "lg",
+                      })}
+                    >
                       <Play size={16} /> Watch the last recording
                     </a>
                   )}
@@ -227,41 +288,75 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
           no testimonials yet, so this is safe to leave in regardless. With
           nothing upcoming, the testimonials the admin chose for that case. */}
       {session ? (
-        <TestimonialsSection session={session} />
+        <TestimonialsSection session={session} layout={data?.quotesLayout} />
       ) : (
-        data?.noSessionTestimonials && <NoSessionTestimonialsSection testimonials={data.noSessionTestimonials} />
+        data?.noSessionTestimonials && (
+          <NoSessionTestimonialsSection
+            testimonials={data.noSessionTestimonials}
+            layout={data.quotesLayout}
+          />
+        )
       )}
 
       {/* About Dr. Angad + recent interview */}
-      <section id="about" className="border-b border-border bg-background py-20">
+      <section
+        id="about"
+        className="border-b border-border bg-background py-20"
+      >
         <div className="mx-auto grid max-w-7xl gap-12 px-5 lg:grid-cols-12 lg:px-8">
           <div className="lg:col-span-6">
-            <span className="eyebrow"><Stethoscope size={13} /> About Dr. Angad Rai</span>
+            <span className="eyebrow">
+              <Stethoscope size={13} /> About Dr. Angad Rai
+            </span>
             <h2 className="mt-6 max-w-xl font-display text-3xl font-semibold leading-tight text-brand-deep md:text-4xl">
               A recent aspirant, now a mentor — not a distant faculty member.
             </h2>
             <div className="mt-6 grid gap-4 text-base leading-relaxed text-muted-foreground">
               <p>
-                Dr. Angad Rai completed his MBBS as a Bronze Medalist and secured AIR 925 in NEET-PG
-                2026. He prepared alongside postings, night duties and the same exhaustion every
-                aspirant knows.
+                Dr. Angad Rai completed his MBBS as a Bronze Medalist and
+                secured AIR 925 in NEET-PG 2026. He prepared alongside postings,
+                night duties and the same exhaustion every aspirant knows.
               </p>
               <p>
-                That is what shapes JSMF. Instead of endless question banks, the focus is on
-                understanding why an answer is right, revising in cycles that stick, and cutting the
-                noise that costs aspirants months.
+                That is what shapes JSMF. Instead of endless question banks, the
+                focus is on understanding why an answer is right, revising in
+                cycles that stick, and cutting the noise that costs aspirants
+                months.
               </p>
             </div>
             <div className="mt-8 flex flex-wrap gap-2">
               {credentials.map((item) => (
-                <span key={item} className="credential-chip">{item}</span>
+                <span key={item} className="credential-chip">
+                  {item}
+                </span>
               ))}
               <span className="credential-chip">Mentor · JSMF</span>
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
-              <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary" })}><Send size={15} /> Telegram</a>
-              <a href={links.youtube} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary" })}><YouTubeIcon size={15} /> YouTube</a>
-              <a href={links.instagram} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "secondary" })}><InstagramIcon size={15} /> Instagram</a>
+              <a
+                href={links.telegram}
+                target="_blank"
+                rel="noreferrer"
+                className={buttonVariants({ variant: "secondary" })}
+              >
+                <Send size={15} /> Telegram
+              </a>
+              <a
+                href={links.youtube}
+                target="_blank"
+                rel="noreferrer"
+                className={buttonVariants({ variant: "secondary" })}
+              >
+                <YouTubeIcon size={15} /> YouTube
+              </a>
+              <a
+                href={links.instagram}
+                target="_blank"
+                rel="noreferrer"
+                className={buttonVariants({ variant: "secondary" })}
+              >
+                <InstagramIcon size={15} /> Instagram
+              </a>
             </div>
           </div>
 
@@ -278,12 +373,26 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
                 />
               </div>
               <div className="p-6">
-                <p className="text-[10px] font-bold uppercase text-primary">Recent interview</p>
-                <h3 className="mt-2 font-display text-lg font-semibold text-brand-deep">Dr. Angad Rai on his NEET-PG journey</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  The routine, the mistakes, and what he would do differently — in his own words.
+                <p className="text-[10px] font-bold uppercase text-primary">
+                  Recent interview
                 </p>
-                <a href={links.interviewWatch} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "ghost", size: "sm", className: "mt-4" })}>
+                <h3 className="mt-2 font-display text-lg font-semibold text-brand-deep">
+                  Dr. Angad Rai on his NEET-PG journey
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  The routine, the mistakes, and what he would do differently —
+                  in his own words.
+                </p>
+                <a
+                  href={links.interviewWatch}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={buttonVariants({
+                    variant: "ghost",
+                    size: "sm",
+                    className: "mt-4",
+                  })}
+                >
                   Watch on YouTube <ArrowRight size={14} />
                 </a>
               </div>
@@ -300,14 +409,18 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
             One preparation ecosystem, built by a doctor for aspirants.
           </h2>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground">
-            JSMF brings together live mentorship sessions, high-yield revision material and question
-            practice into a single place — so your preparation stops being scattered across a dozen
-            apps, groups and playlists.
+            JSMF brings together live mentorship sessions, high-yield revision
+            material and question practice into a single place — so your
+            preparation stops being scattered across a dozen apps, groups and
+            playlists.
           </p>
           <blockquote className="mt-10 font-display text-xl font-medium leading-relaxed text-brand-deep md:text-2xl">
-            &ldquo;Solve the right questions, understand why they&apos;re right, and know exactly what to revise.&rdquo;
+            &ldquo;Solve the right questions, understand why they&apos;re right,
+            and know exactly what to revise.&rdquo;
           </blockquote>
-          <p className="mt-4 text-sm font-semibold text-muted-foreground">— Dr. Angad Rai</p>
+          <p className="mt-4 text-sm font-semibold text-muted-foreground">
+            — Dr. Angad Rai
+          </p>
         </div>
       </section>
 
@@ -321,11 +434,15 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
 
           <div className="mt-10 grid gap-5 md:grid-cols-2">
             <article className="rounded-3xl border border-border bg-card p-8 shadow-editorial">
-              <div className="grid size-11 place-items-center rounded-2xl bg-accent text-primary"><FileQuestion size={20} /></div>
-              <h3 className="mt-5 font-display text-xl font-semibold text-brand-deep">PYQ Practice</h3>
+              <div className="grid size-11 place-items-center rounded-2xl bg-accent text-primary">
+                <FileQuestion size={20} />
+              </div>
+              <h3 className="mt-5 font-display text-xl font-semibold text-brand-deep">
+                PYQ Practice
+              </h3>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                Previous-year questions with reasoning-first explanations, built specifically for
-                medical exam preparation.
+                Previous-year questions with reasoning-first explanations, built
+                specifically for medical exam preparation.
               </p>
               <span className="mt-6 inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
                 Coming soon
@@ -333,11 +450,15 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
             </article>
 
             <article className="rounded-3xl border border-border bg-card p-8 shadow-editorial">
-              <div className="grid size-11 place-items-center rounded-2xl bg-accent text-primary"><Library size={20} /></div>
-              <h3 className="mt-5 font-display text-xl font-semibold text-brand-deep">Study Resources</h3>
+              <div className="grid size-11 place-items-center rounded-2xl bg-accent text-primary">
+                <Library size={20} />
+              </div>
+              <h3 className="mt-5 font-display text-xl font-semibold text-brand-deep">
+                Study Resources
+              </h3>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                Curated, doctor-written material to support your revision — growing steadily with each
-                subject we cover.
+                Curated, doctor-written material to support your revision —
+                growing steadily with each subject we cover.
               </p>
               <span className="mt-6 inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
                 Coming soon
@@ -354,7 +475,9 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
       <section className="bg-brand-deep py-20 text-brand-on-deep">
         <div className="mx-auto max-w-3xl px-5 text-center">
           <div className="mx-auto mb-8 h-px w-14 bg-brand-line" />
-          <h2 className="font-display text-3xl font-semibold leading-tight md:text-4xl">Ready to start preparing smarter?</h2>
+          <h2 className="font-display text-3xl font-semibold leading-tight md:text-4xl">
+            Ready to start preparing smarter?
+          </h2>
           <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed opacity-80">
             {live && session
               ? `Join Dr. Angad Rai live ${checkoutUrl || !session.startsAt ? "— date to be announced" : `${session.days.length > 1 ? `over ${session.days.length} days, from` : "on"} ${dateLabel(session.startsAt)}`}.${session.included.length ? " The revision planner comes with your seat." : ""}`
@@ -362,9 +485,18 @@ export function Landing({ checkoutUrl = null }: { checkoutUrl?: string | null })
           </p>
           <div className="mt-9 flex justify-center">
             {live ? (
-              <Button size="lg" onClick={reserveFrom("cta")}>Book Your Spot Now <ArrowRight size={17} /></Button>
+              <Button size="lg" onClick={reserveFrom("cta")}>
+                Book Your Spot Now <ArrowRight size={17} />
+              </Button>
             ) : (
-              <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ size: "lg" })}><Send size={16} /> Join Telegram</a>
+              <a
+                href={links.telegram}
+                target="_blank"
+                rel="noreferrer"
+                className={buttonVariants({ size: "lg" })}
+              >
+                <Send size={16} /> Join Telegram
+              </a>
             )}
           </div>
         </div>
@@ -380,38 +512,91 @@ export function DoctorPortrait({ className = "" }: { className?: string }) {
   return (
     <div className={`relative mx-auto w-full max-w-sm ${className}`}>
       <div className="absolute -top-3 right-0 z-20 flex items-center gap-2">
-        <a href={links.instagram} target="_blank" rel="noreferrer" aria-label="Instagram" className="social-orb"><InstagramIcon size={16} /></a>
-        <a href={links.youtube} target="_blank" rel="noreferrer" aria-label="YouTube" className="social-orb"><YouTubeIcon size={16} /></a>
-        <a href={links.telegram} target="_blank" rel="noreferrer" aria-label="Telegram" className="social-orb"><TelegramIcon size={16} /></a>
+        <a
+          href={links.instagram}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Instagram"
+          className="social-orb"
+        >
+          <InstagramIcon size={16} />
+        </a>
+        <a
+          href={links.youtube}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="YouTube"
+          className="social-orb"
+        >
+          <YouTubeIcon size={16} />
+        </a>
+        <a
+          href={links.telegram}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Telegram"
+          className="social-orb"
+        >
+          <TelegramIcon size={16} />
+        </a>
       </div>
-      <div className="rank-badge"><Award size={13} /> AIR 925 · NEET-PG 2026</div>
-      
+      <div className="rank-badge">
+        <Award size={13} /> AIR 925 · NEET-PG 2026
+      </div>
+
       <div className="absolute top-36 -right-6 z-10 hidden flex-col items-end gap-3 sm:flex">
-        <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Award size={13} /> AIR 9 · FMGE 2023</div>
-        <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Stethoscope size={13} /> MBBS · Bronze Medalist</div>
+        <div className="credential-chip flex w-fit items-center gap-2 shadow-md">
+          <Award size={13} /> AIR 9 · FMGE 2023
+        </div>
+        <div className="credential-chip flex w-fit items-center gap-2 shadow-md">
+          <Stethoscope size={13} /> MBBS · Bronze Medalist
+        </div>
       </div>
 
       <div className="portrait-frame">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/dr-angad-rai.jpg" alt="Dr. Angad Rai" width={800} height={1000} className="h-full w-full object-cover" />
+        <img
+          src="/dr-angad-rai.jpg"
+          alt="Dr. Angad Rai"
+          width={800}
+          height={1000}
+          className="h-full w-full object-cover"
+        />
       </div>
       <div className="doctor-credential">
-        <div className="credential-chip absolute -top-3 right-4 z-10 flex w-fit items-center gap-2 shadow-md"><MonitorPlay size={13} /> Live sessions</div>
-        <p className="text-[10px] font-bold uppercase text-primary">Founder &amp; mentor</p>
-        <h2 className="mt-1 font-display font-semibold text-brand-deep">Dr. Angad Rai</h2>
-        <p className="mt-1 text-xs text-muted-foreground">MBBS — Medical Lead, JSMF</p>
+        <div className="credential-chip absolute -top-3 right-4 z-10 flex w-fit items-center gap-2 shadow-md">
+          <MonitorPlay size={13} /> Live sessions
+        </div>
+        <p className="text-[10px] font-bold uppercase text-primary">
+          Founder &amp; mentor
+        </p>
+        <h2 className="mt-1 font-display font-semibold text-brand-deep">
+          Dr. Angad Rai
+        </h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          MBBS — Medical Lead, JSMF
+        </p>
       </div>
     </div>
   );
 }
 
-function SeatsLine({ session, className = "" }: { session: LiveSession; className?: string }) {
+function SeatsLine({
+  session,
+  className = "",
+}: {
+  session: LiveSession;
+  className?: string;
+}) {
   if (session.seatsRemaining === null) return null;
   return (
-    <div className={`flex items-center gap-2 text-sm font-semibold text-red-600 ${className}`}>
+    <div
+      className={`flex items-center gap-2 text-sm font-semibold text-red-600 ${className}`}
+    >
       <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" />
       <span>
-        Only {session.seatsRemaining} {session.seatsRemaining === 1 ? "seat" : "seats"} left
+        Only {session.seatsRemaining}{" "}
+        {session.seatsRemaining === 1 ? "seat" : "seats"} left
       </span>
     </div>
   );
@@ -441,12 +626,21 @@ function ExternalSeatsLine({
   else if (seats < 150) label = `Filling fast — less than ${seats} seats left`;
   else label = `Less than ${seats} seats available`;
 
-  const tone = seats === 0 ? "text-muted-foreground" : urgent ? "text-red-600" : "text-emerald-600";
+  const tone =
+    seats === 0
+      ? "text-muted-foreground"
+      : urgent
+        ? "text-red-600"
+        : "text-emerald-600";
 
   return (
-    <div className={`mt-4 flex items-center justify-center gap-2 text-sm font-semibold ${tone}`}>
+    <div
+      className={`mt-4 flex items-center justify-center gap-2 text-sm font-semibold ${tone}`}
+    >
       {seats !== 0 && (
-        <span className={`h-2 w-2 shrink-0 rounded-full ${urgent ? "bg-red-600" : "bg-emerald-600"}`} />
+        <span
+          className={`h-2 w-2 shrink-0 rounded-full ${urgent ? "bg-red-600" : "bg-emerald-600"}`}
+        />
       )}
       <span>{label}</span>
     </div>
@@ -483,32 +677,41 @@ export function SessionCard({
             external || session.days.length === 0 ? (
               TO_BE_ANNOUNCED
             ) : session.days.length === 1 ? (
-              timeLabel(session.days[0].startsAt, session.days[0].durationMinutes)
+              timeLabel(
+                session.days[0].startsAt,
+                session.days[0].durationMinutes,
+              )
             ) : (
               <span className="grid gap-1">
                 {session.days.map((day, index) => (
                   <span key={day.startsAt}>
-                    Day {index + 1} · {shortDateLabel(day.startsAt)} · {timeLabel(day.startsAt, day.durationMinutes)}
+                    Day {index + 1} · {shortDateLabel(day.startsAt)} ·{" "}
+                    {timeLabel(day.startsAt, day.durationMinutes)}
                   </span>
                 ))}
               </span>
             )
           }
         />
-        <Detail icon={<MonitorPlay size={18} />} label="Where" value={session.platformLabel} />
+        <Detail
+          icon={<MonitorPlay size={18} />}
+          label="Where"
+          value={session.platformLabel}
+        />
       </div>
 
       {session.perkText && (
         <div className="mt-6 flex gap-3 rounded-2xl bg-accent p-4">
           <FileText size={18} className="mt-0.5 shrink-0 text-primary" />
           <div className="text-xs leading-relaxed text-accent-foreground">
-            <p className="font-semibold text-brand-deep">
-              {session.perkText}
-            </p>
+            <p className="font-semibold text-brand-deep">{session.perkText}</p>
             {session.included.length > 0 && (
               <p className="mt-1 font-medium opacity-80">
-                A practical PDF to help you structure your revision and focus on high-yield areas.{" "}
-                {external ? "Emailed to you before the session." : "Added to your JSMF account as soon as you pay."}
+                A practical PDF to help you structure your revision and focus on
+                high-yield areas.{" "}
+                {external
+                  ? "Emailed to you before the session."
+                  : "Added to your JSMF account as soon as you pay."}
               </p>
             )}
           </div>
@@ -516,11 +719,22 @@ export function SessionCard({
       )}
 
       <div className="mt-6 flex items-baseline justify-center gap-2">
-        <span className="font-display text-3xl font-semibold text-brand-deep">{price}</span>
-        {compareAt && <span className="text-sm text-muted-foreground line-through">{compareAt}</span>}
+        <span className="font-display text-3xl font-semibold text-brand-deep">
+          {price}
+        </span>
+        {compareAt && (
+          <span className="text-sm text-muted-foreground line-through">
+            {compareAt}
+          </span>
+        )}
       </div>
 
-      {external && <ExternalSeatsLine seats={session.displaySeats} capacity={session.capacity} />}
+      {external && (
+        <ExternalSeatsLine
+          seats={session.displaySeats}
+          capacity={session.capacity}
+        />
+      )}
 
       {session.registrationOpen ? (
         // One call to action either way. Which checkout it opens is ours to
@@ -531,36 +745,57 @@ export function SessionCard({
           className="cta-spot mt-4 flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base text-white"
         >
           <span className="cta-shine" aria-hidden />
-          Book Your Spot Now <ArrowRight size={18} strokeWidth={2.4} className="cta-arrow" />
+          Book Your Spot Now{" "}
+          <ArrowRight size={18} strokeWidth={2.4} className="cta-arrow" />
         </button>
       ) : (
         <Button size="lg" className="mt-4 w-full" disabled>
-          {session.seatsRemaining === 0 ? "This session is full" : "Registration closed"}
+          {session.seatsRemaining === 0
+            ? "This session is full"
+            : "Registration closed"}
         </Button>
       )}
       <p className="mt-3 text-center text-[11px] font-semibold text-muted-foreground">
         Secure payment by Razorpay
-        {!external && session.seatsRemaining !== null && session.registrationOpen && (
-          <>
-            {" · "}
-            <span className="font-bold text-destructive">
-              Only {session.seatsRemaining} {session.seatsRemaining === 1 ? "seat" : "seats"} remaining
-            </span>
-          </>
-        )}
+        {!external &&
+          session.seatsRemaining !== null &&
+          session.registrationOpen && (
+            <>
+              {" · "}
+              <span className="font-bold text-destructive">
+                Only {session.seatsRemaining}{" "}
+                {session.seatsRemaining === 1 ? "seat" : "seats"} remaining
+              </span>
+            </>
+          )}
       </p>
-      <a href={links.telegram} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "ghost", size: "sm", className: "mt-2 w-full" })}>
+      <a
+        href={links.telegram}
+        target="_blank"
+        rel="noreferrer"
+        className={buttonVariants({
+          variant: "ghost",
+          size: "sm",
+          className: "mt-2 w-full",
+        })}
+      >
         <Send size={14} /> Join Telegram for updates
       </a>
 
       {/* What someone is agreeing to by paying, where they are about to pay. */}
       <p className="mt-3 text-center text-[11px] leading-relaxed text-muted-foreground">
         By proceeding with payment, you agree to the JSMF{" "}
-        <Link href="/terms" className="font-medium text-primary hover:underline">
+        <Link
+          href="/terms"
+          className="font-medium text-primary hover:underline"
+        >
           Terms &amp; Conditions
         </Link>{" "}
         and{" "}
-        <Link href="/refund-policy" className="font-medium text-primary hover:underline">
+        <Link
+          href="/refund-policy"
+          className="font-medium text-primary hover:underline"
+        >
           Refund &amp; Cancellation Policy
         </Link>
         .
@@ -569,12 +804,22 @@ export function SessionCard({
   );
 }
 
-function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
+function Detail({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
     <div className="flex items-start gap-3">
       <span className="mt-0.5 shrink-0 text-primary">{icon}</span>
       <div>
-        <p className="text-[10px] font-bold uppercase text-muted-foreground">{label}</p>
+        <p className="text-[10px] font-bold uppercase text-muted-foreground">
+          {label}
+        </p>
         <div className="text-sm font-semibold text-brand-deep">{value}</div>
       </div>
     </div>

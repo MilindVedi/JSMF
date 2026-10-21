@@ -290,6 +290,17 @@ it; deleting one deletes its images. See [§3e](./README.md#3e-testimonials).
   it, **Book a 1:1 session** (only once a 1:1 offering is published). With no
   session open, only the 1:1 button shows, and the dark "Next session coming
   soon" band shows **Get notified on Telegram**.
+- **How student replies are laid out:** set on **Sessions**, in the card **How
+  student replies are laid out**, above the one below. It applies everywhere the
+  website shows written replies — the band between sessions, and each session's
+  own feedback sections — so the two never disagree. Screenshots always sit in a
+  row that scrolls, whichever you pick.
+  - **One row that scrolls sideways** (the default): two or three replies in
+    view, the next one part way in, arrows on wider screens. However many you
+    pick, the band stays the same height.
+  - **A block over several lines:** two or three across, wrapping onto as many
+    lines as it takes, with nothing to scroll. Every reply is on the page at
+    once, so the band grows as you pick more.
 - **Testimonials when no session is upcoming:** set on **Sessions**, in the card
   **When no session is upcoming**, below the list. On by default.
   - **Whose testimonials:** **Automatic** (the latest past session that has

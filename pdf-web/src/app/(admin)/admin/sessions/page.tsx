@@ -5,10 +5,18 @@ import Link from "next/link";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { NoSessionTestimonialsCard } from "@/components/admin/no-session-testimonials-card";
+import { QuotesLayoutCard } from "@/components/admin/quotes-layout-card";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { adminSessionApi, type AdminSession } from "@/lib/api/admin";
 import { formatMoney } from "@/lib/money";
 import { mainWebsiteHost } from "@/lib/site-content";
@@ -22,7 +30,9 @@ export default function AdminSessionsPage() {
       .list()
       .then(setSessions)
       .catch((error: unknown) => {
-        toast.error(error instanceof Error ? error.message : "Could not load sessions");
+        toast.error(
+          error instanceof Error ? error.message : "Could not load sessions",
+        );
         setSessions([]);
       });
   }, []);
@@ -31,9 +41,12 @@ export default function AdminSessionsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Live sessions</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Live sessions
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Paid sessions sold on the main website. The next published one is what {mainWebsiteHost} shows.
+            Paid sessions sold on the main website. The next published one is
+            what {mainWebsiteHost} shows.
           </p>
         </div>
         <Link href="/admin/sessions/new" className={buttonVariants()}>
@@ -48,8 +61,8 @@ export default function AdminSessionsPage() {
       ) : sessions.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No sessions yet. The website shows &ldquo;New Session announced&rdquo; until one is
-            published.
+            No sessions yet. The website shows &ldquo;New Session
+            announced&rdquo; until one is published.
           </CardContent>
         </Card>
       ) : (
@@ -68,7 +81,10 @@ export default function AdminSessionsPage() {
               {sessions.map((session) => (
                 <TableRow key={session.id}>
                   <TableCell>
-                    <Link href={`/admin/sessions/${session.id}`} className="font-medium hover:underline">
+                    <Link
+                      href={`/admin/sessions/${session.id}`}
+                      className="font-medium hover:underline"
+                    >
                       {session.title}
                     </Link>
                   </TableCell>
@@ -76,13 +92,19 @@ export default function AdminSessionsPage() {
                     {session.startsAt ? (
                       istLabel(session.startsAt)
                     ) : (
-                      <span className="text-muted-foreground">To be announced</span>
+                      <span className="text-muted-foreground">
+                        To be announced
+                      </span>
                     )}
                     {session.days.length > 1 && (
-                      <span className="ml-1.5 text-xs text-muted-foreground">· {session.days.length} days</span>
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        · {session.days.length} days
+                      </span>
                     )}
                   </TableCell>
-                  <TableCell>{formatMoney(session.priceAmountMinor, session.currency)}</TableCell>
+                  <TableCell>
+                    {formatMoney(session.priceAmountMinor, session.currency)}
+                  </TableCell>
                   <TableCell>
                     {session.seatsTaken}
                     {session.capacity ? ` / ${session.capacity}` : ""}
@@ -96,6 +118,8 @@ export default function AdminSessionsPage() {
           </Table>
         </Card>
       )}
+
+      <QuotesLayoutCard />
 
       <NoSessionTestimonialsCard />
     </div>

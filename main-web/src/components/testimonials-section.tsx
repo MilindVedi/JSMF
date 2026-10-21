@@ -3,7 +3,12 @@
 import { Quote } from "lucide-react";
 import { QuoteCards } from "@/components/session-feedback";
 import { TestimonialGallery } from "@/components/testimonial-gallery";
-import type { LiveSession, NoSessionTestimonials, SectionQuote } from "@/lib/api/types";
+import type {
+  LiveSession,
+  NoSessionTestimonials,
+  QuoteLayout,
+  SectionQuote,
+} from "@/lib/api/types";
 
 /**
  * What past attendees said, on its own light band. The heading and
@@ -15,11 +20,21 @@ import type { LiveSession, NoSessionTestimonials, SectionQuote } from "@/lib/api
  *
  * Shared by the home page (`landing.tsx`) and `/prep-kit` (`book-page.tsx`).
  */
-export function TestimonialsSection({ session }: { session: LiveSession }) {
+export function TestimonialsSection({
+  session,
+  layout = "SCROLL",
+}: {
+  session: LiveSession;
+  layout?: QuoteLayout;
+}) {
   return (
     <TestimonialsBand
+      layout={layout}
       urls={session.testimonialUrls}
-      heading={session.testimonialsHeading || "What students said after the last session."}
+      heading={
+        session.testimonialsHeading ||
+        "What students said after the last session."
+      }
       subheading={
         session.testimonialsSubheading ||
         "From a previous revision session held before the FMGE exam. A few moments students shared afterward."
@@ -35,9 +50,16 @@ export function TestimonialsSection({ session }: { session: LiveSession }) {
  * session is upcoming"). Replies get their own row of quote cards above the
  * screenshots.
  */
-export function NoSessionTestimonialsSection({ testimonials }: { testimonials: NoSessionTestimonials }) {
+export function NoSessionTestimonialsSection({
+  testimonials,
+  layout = "SCROLL",
+}: {
+  testimonials: NoSessionTestimonials;
+  layout?: QuoteLayout;
+}) {
   return (
     <TestimonialsBand
+      layout={layout}
       urls={testimonials.urls}
       quotes={testimonials.quotes ?? []}
       heading={testimonials.heading}
@@ -51,12 +73,14 @@ function TestimonialsBand({
   quotes = [],
   heading,
   subheading,
+  layout = "SCROLL",
   tag = null,
 }: {
   urls: string[];
   quotes?: SectionQuote[];
   heading: string;
   subheading: string;
+  layout?: QuoteLayout;
   tag?: string | null;
 }) {
   if (urls.length === 0 && quotes.length === 0) return null;
@@ -73,7 +97,9 @@ function TestimonialsBand({
             <h2 className="max-w-2xl font-display text-3xl font-semibold leading-tight text-brand-deep md:text-4xl">
               {heading}
             </h2>
-            <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">{subheading}</p>
+            <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">
+              {subheading}
+            </p>
           </div>
           {/* Optional, so it is left out entirely when unset — an empty tag
               with a dangling border reads as broken, not minimal. */}
@@ -86,12 +112,15 @@ function TestimonialsBand({
 
         {quotes.length > 0 && (
           <div className="mt-10">
-            <QuoteCards quotes={quotes} tone="light" />
+            <QuoteCards quotes={quotes} tone="light" layout={layout} />
           </div>
         )}
         {urls.length > 0 && (
           <div className={quotes.length > 0 ? "mt-6" : "mt-10"}>
-            <TestimonialGallery urls={urls} imageAlt="A message from a student about the previous session" />
+            <TestimonialGallery
+              urls={urls}
+              imageAlt="A message from a student about the previous session"
+            />
           </div>
         )}
       </div>

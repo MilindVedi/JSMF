@@ -9,11 +9,18 @@ import { TelegramFloat } from "@/components/telegram-float";
 import { RegisterDialog } from "@/components/register-dialog";
 import { DoctorPortrait, SessionCard } from "@/components/landing";
 import { SessionFeedback } from "@/components/session-feedback";
-import { NoSessionTestimonialsSection, TestimonialsSection } from "@/components/testimonials-section";
+import {
+  NoSessionTestimonialsSection,
+  TestimonialsSection,
+} from "@/components/testimonials-section";
 import { buttonVariants } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
 import { sessionsApi } from "@/lib/api/sessions";
-import type { LiveSession, NoSessionTestimonials } from "@/lib/api/types";
+import type {
+  LiveSession,
+  NoSessionTestimonials,
+  QuoteLayout,
+} from "@/lib/api/types";
 import { links } from "@/lib/site-content";
 
 /**
@@ -24,7 +31,10 @@ import { links } from "@/lib/site-content";
  */
 export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
   const [session, setSession] = useState<LiveSession | null>(null);
-  const [fallbackTestimonials, setFallbackTestimonials] = useState<NoSessionTestimonials | null>(null);
+  const [fallbackTestimonials, setFallbackTestimonials] =
+    useState<NoSessionTestimonials | null>(null);
+  // The admin's site-wide choice of how replies are laid out.
+  const [quotesLayout, setQuotesLayout] = useState<QuoteLayout>("SCROLL");
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const params = useSearchParams();
@@ -40,6 +50,7 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
       .then((result) => {
         setSession(result.upcoming);
         setFallbackTestimonials(result.noSessionTestimonials ?? null);
+        setQuotesLayout(result.quotesLayout ?? "SCROLL");
         if (!checkoutUrl && resume && result.upcoming?.registrationOpen) {
           setOpen(true);
           router.replace("/prep-kit", { scroll: false });
@@ -59,7 +70,10 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
   };
   /** The same action, recorded first with which button it came from. */
   const bookFrom = (location: string) => () => {
-    track("book_click", checkoutUrl ? { location, external: true } : { location });
+    track(
+      "book_click",
+      checkoutUrl ? { location, external: true } : { location },
+    );
     book();
   };
 
@@ -67,14 +81,20 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
 
   return (
     <SiteLayout>
-      {session && !checkoutUrl && <RegisterDialog open={open} onClose={close} session={session} />}
+      {session && !checkoutUrl && (
+        <RegisterDialog open={open} onClose={close} session={session} />
+      )}
 
       <section className="bg-brand-deep py-16 text-brand-on-deep">
         <div className="mx-auto grid max-w-6xl items-start gap-10 px-5 lg:grid-cols-12 lg:px-8">
           <div className="lg:col-span-7">
             <div className="flex flex-wrap items-center gap-4">
               <span className="inline-flex items-center gap-2 rounded-full bg-brand-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
-                {loading ? "Loading" : session ? "Upcoming live session" : "Next session coming soon"}
+                {loading
+                  ? "Loading"
+                  : session
+                    ? "Upcoming live session"
+                    : "Next session coming soon"}
               </span>
               {session && (
                 <button
@@ -84,14 +104,19 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
                 >
                   <span className="cta-shine" aria-hidden />
                   Book Your Spot Now
-                  <ArrowRight size={18} strokeWidth={2.4} className="cta-arrow" />
+                  <ArrowRight
+                    size={18}
+                    strokeWidth={2.4}
+                    className="cta-arrow"
+                  />
                 </button>
               )}
             </div>
 
             {loading ? (
               <p className="mt-8 flex items-center gap-2 opacity-80">
-                <Loader2 size={18} className="animate-spin" /> Loading the session…
+                <Loader2 size={18} className="animate-spin" /> Loading the
+                session…
               </p>
             ) : session ? (
               <>
@@ -99,18 +124,32 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
                   {session.title}
                 </h1>
                 {session.tagline && (
-                  <p className="mt-4 max-w-2xl text-base leading-relaxed opacity-80">{session.tagline}</p>
+                  <p className="mt-4 max-w-2xl text-base leading-relaxed opacity-80">
+                    {session.tagline}
+                  </p>
                 )}
 
                 {session.highlights.length > 0 && (
                   <div className="mt-10">
-                    <p className="text-[11px] font-bold uppercase tracking-wide opacity-70">What you&apos;ll learn</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wide opacity-70">
+                      What you&apos;ll learn
+                    </p>
                     <ul className="mt-5 grid gap-3">
                       {session.highlights.map((item) => {
-                        const hasEmoji = /^\p{Extended_Pictographic}/u.test(item) || /^[^\p{L}\p{N}\s]/u.test(item);
+                        const hasEmoji =
+                          /^\p{Extended_Pictographic}/u.test(item) ||
+                          /^[^\p{L}\p{N}\s]/u.test(item);
                         return (
-                          <li key={item} className="flex items-start gap-3 text-sm leading-relaxed opacity-90">
-                            {!hasEmoji && <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-primary" />}
+                          <li
+                            key={item}
+                            className="flex items-start gap-3 text-sm leading-relaxed opacity-90"
+                          >
+                            {!hasEmoji && (
+                              <CheckCircle2
+                                size={17}
+                                className="mt-0.5 shrink-0 text-primary"
+                              />
+                            )}
                             <span>{item}</span>
                           </li>
                         );
@@ -158,13 +197,23 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
 
           {session && (
             <div className="lg:col-span-5">
-              <SessionCard session={session} onRegister={bookFrom("session_card")} external={Boolean(checkoutUrl)} />
+              <SessionCard
+                session={session}
+                onRegister={bookFrom("session_card")}
+                external={Boolean(checkoutUrl)}
+              />
             </div>
           )}
 
           {/* This session's own feedback (e.g. after Day 1), beside the Book
               button. Nothing renders until the admin shows a section. */}
-          {session && <SessionFeedback session={session} className="mt-6 lg:col-span-12" />}
+          {session && (
+            <SessionFeedback
+              session={session}
+              layout={quotesLayout}
+              className="mt-6 lg:col-span-12"
+            />
+          )}
         </div>
       </section>
 
@@ -177,7 +226,9 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
                 The strategy behind the preparation.
               </h2>
               <p className="mt-5 max-w-lg text-base leading-relaxed opacity-80">
-                Dr. Angad Rai shares the revision methods, strategies, and question-solving approaches that shaped his own preparation journey.
+                Dr. Angad Rai shares the revision methods, strategies, and
+                question-solving approaches that shaped his own preparation
+                journey.
               </p>
             </div>
           </div>
@@ -185,9 +236,14 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
       )}
 
       {session ? (
-        <TestimonialsSection session={session} />
+        <TestimonialsSection session={session} layout={quotesLayout} />
       ) : (
-        fallbackTestimonials && <NoSessionTestimonialsSection testimonials={fallbackTestimonials} />
+        fallbackTestimonials && (
+          <NoSessionTestimonialsSection
+            testimonials={fallbackTestimonials}
+            layout={quotesLayout}
+          />
+        )
       )}
 
       <FloatingVideo />
@@ -195,4 +251,3 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
     </SiteLayout>
   );
 }
-

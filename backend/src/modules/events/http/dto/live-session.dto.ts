@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { BundleDeliveryMode } from '@prisma/client';
+import { BundleDeliveryMode, QuoteLayout } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -457,6 +457,14 @@ export class UpdateNoSessionTestimonialsDto {
   @IsOptional()
   @IsBoolean()
   handPicked?: boolean;
+
+  @ApiPropertyOptional({
+    enum: QuoteLayout,
+    description: 'How quote cards are laid out everywhere on the website: a sideways-scrolling row, or a wrapping block.',
+  })
+  @IsOptional()
+  @IsEnum(QuoteLayout)
+  quotesLayout?: QuoteLayout;
 
   @ApiPropertyOptional({ nullable: true, maxLength: 150 })
   @IsOptional()

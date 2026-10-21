@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ProductStatus } from '@prisma/client';
+import { ProductStatus, QuoteLayout } from '@prisma/client';
 import { AppConfig } from '../../../config/config.module';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
@@ -28,6 +28,8 @@ export interface NoSessionTestimonialsInput {
   sessionId?: string | null;
   /** Show the screenshots and replies picked one by one, instead of one session's gallery. */
   handPicked?: boolean;
+  /** How quote cards are laid out everywhere on the website. */
+  quotesLayout?: QuoteLayout;
   heading?: string | null;
   subheading?: string | null;
 }
@@ -84,6 +86,19 @@ export class NoSessionTestimonialsService {
     };
   }
 
+  /**
+   * How the quote cards are laid out wherever the website shows them — the
+   * band between sessions and a session's own feedback sections alike, so the
+   * two never disagree. Falls back to SCROLL if the row is somehow missing.
+   */
+  async quotesLayout(): Promise<QuoteLayout> {
+    const settings = await this.prisma.platformSettings.findUnique({
+      where: { id: SINGLETON_ID },
+      select: { quotesLayout: true },
+    });
+    return settings?.quotesLayout ?? QuoteLayout.SCROLL;
+  }
+
   /** The stored setting, the choices, and which session "automatic" means right now. */
   async forAdmin() {
     const settings = await this.row();
@@ -109,6 +124,8 @@ export class NoSessionTestimonialsService {
       enabled: settings.noSessionTestimonialsEnabled,
       sessionId: settings.noSessionTestimonialsSessionId,
       handPicked: settings.noSessionTestimonialsHandPicked,
+      quotesLayout: settings.quotesLayout,
+      quotesLayoutOptions: Object.values(QuoteLayout),
       /** Picked screenshots, in display order. The picked replies come from /admin/feedback/no-session-quotes. */
       screenshots: await this.pickedScreenshots(),
       /** Every session, newest first, to pick screenshots and replies from. */
@@ -148,6 +165,7 @@ export class NoSessionTestimonialsService {
         noSessionTestimonialsEnabled: input.enabled,
         noSessionTestimonialsSessionId: input.sessionId,
         noSessionTestimonialsHandPicked: input.handPicked,
+        quotesLayout: input.quotesLayout,
         noSessionTestimonialsHeading: text(input.heading),
         noSessionTestimonialsSubheading: text(input.subheading),
       },
@@ -163,6 +181,7 @@ export class NoSessionTestimonialsService {
         enabled: before.enabled,
         sessionId: before.sessionId,
         handPicked: before.handPicked,
+        quotesLayout: before.quotesLayout,
         heading: before.heading,
         subheading: before.subheading,
       },
@@ -170,6 +189,7 @@ export class NoSessionTestimonialsService {
         enabled: after.enabled,
         sessionId: after.sessionId,
         handPicked: after.handPicked,
+        quotesLayout: after.quotesLayout,
         heading: after.heading,
         subheading: after.subheading,
       },

@@ -385,6 +385,12 @@ export interface SessionRegistrationRow {
 }
 
 /** Live sessions sold on the main website (jsmf.me). */
+/**
+ * How the written replies are laid out on the website: "SCROLL" is one row
+ * that scrolls sideways (the default), "GRID" wraps them onto several lines.
+ */
+export type QuoteLayout = "SCROLL" | "GRID";
+
 /** The home page's testimonials while no session is upcoming. */
 export interface NoSessionTestimonials {
   enabled: boolean;
@@ -402,6 +408,9 @@ export interface NoSessionTestimonials {
   sessions: Array<{ id: string; title: string; startsAt: string | null; status: string; testimonialCount: number }>;
   /** On: the screenshots and replies picked one by one are shown, not one session's gallery. */
   handPicked: boolean;
+  /** How the quote cards are laid out everywhere on the website. */
+  quotesLayout: QuoteLayout;
+  quotesLayoutOptions: QuoteLayout[];
   /** Picked screenshots, in display order. Picked replies: `noSessionQuotesApi`. */
   screenshots: Array<{ testimonialId: string; sessionId: string; sessionTitle: string; url: string }>;
   /** Every session, newest first, to pick from. */
@@ -415,6 +424,7 @@ export const adminSessionApi = {
     enabled?: boolean;
     sessionId?: string | null;
     handPicked?: boolean;
+    quotesLayout?: QuoteLayout;
     heading?: string | null;
     subheading?: string | null;
   }) => api.put<NoSessionTestimonials>("/admin/sessions/no-session-testimonials", input),

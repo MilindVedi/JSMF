@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { StorageProvider, UserStatus } from '@prisma/client';
+import { QuoteLayout, StorageProvider, UserStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
@@ -96,9 +96,15 @@ beforeAll(async () => {
     noSessionTestimonialsHeading: row.noSessionTestimonialsHeading,
     noSessionTestimonialsSubheading: row.noSessionTestimonialsSubheading,
     noSessionTestimonialsHandPicked: row.noSessionTestimonialsHandPicked,
+    quotesLayout: row.quotesLayout,
   };
   savedScreenshots = await prisma.noSessionScreenshot.findMany({ select: { testimonialId: true, sortOrder: true } });
-  await service.update({ enabled: true, sessionId: null, heading: null, subheading: null }, admin());
+  // handPicked explicitly off: the row is shared with local development, where
+  // it may well be on, and the first test is about the one-session behaviour.
+  await service.update(
+    { enabled: true, sessionId: null, handPicked: false, quotesLayout: QuoteLayout.SCROLL, heading: null, subheading: null },
+    admin(),
+  );
 });
 
 afterAll(async () => {
@@ -187,6 +193,21 @@ describe('testimonials while no session is upcoming', () => {
     await expect(service.setScreenshots([a1.id, a1.id], admin())).rejects.toThrow(/once/);
 
     await service.update({ handPicked: false }, admin());
+  });
+
+  it('remembers how the replies should be laid out, for the whole website', async () => {
+    const fresh = await service.forAdmin();
+    expect(fresh.quotesLayoutOptions).toEqual([QuoteLayout.SCROLL, QuoteLayout.GRID]);
+    expect(fresh.quotesLayout).toBe(QuoteLayout.SCROLL);
+    expect(await service.quotesLayout()).toBe(QuoteLayout.SCROLL);
+
+    await service.update({ quotesLayout: QuoteLayout.GRID }, admin());
+    expect(await service.quotesLayout()).toBe(QuoteLayout.GRID);
+    // Changing something else leaves it alone.
+    await service.update({ heading: 'Still grid.' }, admin());
+    expect((await service.forAdmin()).quotesLayout).toBe(QuoteLayout.GRID);
+    await service.update({ quotesLayout: QuoteLayout.SCROLL, heading: null }, admin());
+    expect(await service.quotesLayout()).toBe(QuoteLayout.SCROLL);
   });
 
   it('refuses a session with nothing to show', async () => {

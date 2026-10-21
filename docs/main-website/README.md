@@ -550,6 +550,16 @@ one implementation, one place to style, one visual contract. The section
 renders nothing at all when the upcoming session has no testimonials, so
 the import is safe to leave in regardless.
 
+**Layout, admin-set (added 2026-10-21).** `platform_settings.feedback_quotes_layout`
+(`QuoteLayout`: SCROLL, the default, or GRID) decides how `QuoteCards` lays the
+replies out, and `GET /sessions` carries it as `quotesLayout` at the root so
+both the no-session band and a session's own feedback sections agree. SCROLL is
+the `ScrollRow`; GRID is the earlier `grid gap-4 sm:grid-cols-2 lg:grid-cols-3`,
+with the cards dropping their fixed widths and snap points. Set on the admin
+Sessions page (`QuotesLayoutCard`, sharing the no-session settings endpoint —
+each card sends only its own fields). Migration `20261021140000_quotes_layout`,
+additive.
+
 **Long replies (added 2026-10-21).** A quote may be as long as a long answer
 (`LONG_TEXT_MAX`, 5000; it was capped at 1000, so a longer reply could not be
 picked at all). Migration `20261021120000_longer_quotes` widens
