@@ -20,7 +20,7 @@ export function DoctorPortrait({ className = "" }: { className?: string }) {
 
       <div className="portrait-frame">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/dr-angad-rai.jpg" alt="Dr. Angad Rai" width={800} height={1000} className="h-full w-full object-cover" />
+        <img src="/dr-angad-rai-v2.jpg" alt="Dr. Angad Rai" width={800} height={1000} className="h-full w-full object-cover" />
       </div>
       <div className="doctor-credential">
         <div className="credential-chip absolute -top-3 right-4 z-10 flex w-fit items-center gap-2 shadow-md"><MonitorPlay size={13} /> Live sessions</div>

@@ -20,7 +20,7 @@ export function TeamSection() {
             initials="AR"
             name="Dr. Angad Rai"
             title="Founder & Medical Lead"
-            photoSrc="/dr-angad-rai.jpg"
+            photoSrc="/dr-angad-rai-v2.jpg"
             badges={[
               { icon: Trophy, label: "AIR 925 · NEET-PG 2026" },
               { icon: Trophy, label: "AIR 9 · FMGE 2023" },

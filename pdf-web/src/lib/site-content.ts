@@ -75,7 +75,7 @@ export const author = {
    * it is a photograph, where JPEG is the right format, and it loads in the
    * hero of the first page a visitor sees — often on mobile data.
    */
-  photo: "/dr-angad-rai.jpg" as string | null,
+  photo: "/dr-angad-rai-v2.jpg" as string | null,
   /**
    * The single achievement shown on the portrait itself, separate from
    * `credentials` because it is the headline one — the rank a visitor should

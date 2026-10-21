@@ -546,23 +546,11 @@ export function DoctorPortrait({ className = "" }: { className?: string }) {
           <TelegramIcon size={16} />
         </a>
       </div>
-      <div className="rank-badge">
-        <Award size={13} /> AIR 925 · NEET-PG 2026
-      </div>
-
-      <div className="absolute top-36 -right-6 z-10 hidden flex-col items-end gap-3 sm:flex">
-        <div className="credential-chip flex w-fit items-center gap-2 shadow-md">
-          <Award size={13} /> AIR 9 · FMGE 2023
-        </div>
-        <div className="credential-chip flex w-fit items-center gap-2 shadow-md">
-          <Stethoscope size={13} /> MBBS · Bronze Medalist
-        </div>
-      </div>
 
       <div className="portrait-frame">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/dr-angad-rai.jpg"
+          src="/dr-angad-rai-v2.jpg"
           alt="Dr. Angad Rai"
           width={800}
           height={1000}
@@ -582,6 +570,26 @@ export function DoctorPortrait({ className = "" }: { className?: string }) {
         <p className="mt-1 text-xs text-muted-foreground">
           MBBS — Medical Lead, JSMF
         </p>
+        <ul className="mt-3 space-y-2 border-t border-border pt-3">
+          <li className="flex items-center gap-2 text-xs font-semibold text-brand-deep">
+            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#FFD700] text-brand-deep">
+              <Award size={12} />
+            </span>
+            AIR 925 · NEET-PG 2026
+          </li>
+          <li className="flex items-center gap-2 text-xs font-semibold text-brand-deep">
+            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-primary">
+              <Award size={12} />
+            </span>
+            AIR 9 · FMGE 2023
+          </li>
+          <li className="flex items-center gap-2 text-xs font-semibold text-brand-deep">
+            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-primary">
+              <Stethoscope size={12} />
+            </span>
+            MBBS · Bronze Medalist
+          </li>
+        </ul>
       </div>
     </div>
   );

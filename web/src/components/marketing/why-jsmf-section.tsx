@@ -34,7 +34,7 @@ export function WhyJsmfSection() {
 
           <div className="flex items-center gap-3 border-t border-brand-line pt-5">
             {/* eslint-disable-next-line @next/next/no-img-element -- build-time constant from public/ */}
-            <img src="/dr-angad-rai.jpg" alt="Dr. Angad Rai" width={40} height={40} className="size-10 rounded-full object-cover object-top" />
+            <img src="/dr-angad-rai-v2.jpg" alt="Dr. Angad Rai" width={40} height={40} className="size-10 rounded-full object-cover object-top" />
             <div>
               <p className="text-sm font-semibold">Dr. Angad Rai</p>
               <p className="text-xs opacity-70">Founder · Medical Lead</p>

@@ -228,7 +228,7 @@ export function MentorshipPage() {
             <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-editorial">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/dr-angad-rai.jpg"
+                src="/dr-angad-rai-v2.jpg"
                 alt="Dr. Angad Rai"
                 width={800}
                 height={1000}
