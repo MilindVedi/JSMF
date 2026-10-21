@@ -189,10 +189,10 @@ export class CreateFeedbackHighlightDto {
   @IsUUID()
   sectionId!: string;
 
-  @ApiPropertyOptional({ maxLength: 1000, description: "Defaults to the reply's longest written answer." })
+  @ApiPropertyOptional({ maxLength: 5000, description: "Defaults to the reply's longest written answer." })
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(5000)
   quote?: string;
 
   @ApiPropertyOptional({ maxLength: 120, description: 'Defaults to "First name · Stage". Ignored for an anonymous reply.' })
@@ -215,10 +215,10 @@ export class CreateFeedbackHighlightDto {
 }
 
 export class UpdateFeedbackHighlightDto {
-  @ApiPropertyOptional({ maxLength: 1000 })
+  @ApiPropertyOptional({ maxLength: 5000 })
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(5000)
   quote?: string;
 
   @ApiPropertyOptional({ maxLength: 120 })
@@ -248,10 +248,10 @@ export class CreateNoSessionQuoteDto {
   @IsUUID()
   responseId!: string;
 
-  @ApiPropertyOptional({ maxLength: 1000, description: "Defaults to the reply's longest written answer." })
+  @ApiPropertyOptional({ maxLength: 5000, description: "Defaults to the reply's longest written answer." })
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(5000)
   quote?: string;
 
   @ApiPropertyOptional({ maxLength: 120, description: 'Defaults to "First name · Stage". Ignored for an anonymous reply.' })
@@ -267,10 +267,10 @@ export class CreateNoSessionQuoteDto {
 }
 
 export class UpdateNoSessionQuoteDto {
-  @ApiPropertyOptional({ maxLength: 1000 })
+  @ApiPropertyOptional({ maxLength: 5000 })
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(5000)
   quote?: string;
 
   @ApiPropertyOptional({ maxLength: 120 })

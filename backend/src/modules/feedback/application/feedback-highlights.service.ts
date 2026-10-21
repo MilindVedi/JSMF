@@ -7,7 +7,7 @@ import {
   type SectionQuote,
   type SectionQuoteSource,
 } from '../../events/application/session-showcase';
-import { ANONYMOUS_ATTRIBUTION, nameMayBeShown } from '../domain/feedback-rules';
+import { ANONYMOUS_ATTRIBUTION, LONG_TEXT_MAX, nameMayBeShown } from '../domain/feedback-rules';
 import { FeedbackAudience } from './feedback-audience';
 
 type Actor = { id: string; ip?: string | null };
@@ -28,7 +28,8 @@ export interface HighlightInput {
   showName?: boolean;
 }
 
-const QUOTE_MAX = 1000;
+/** As long as the longest answer a student can write, so any reply can be shown whole. */
+const QUOTE_MAX = LONG_TEXT_MAX;
 const ATTRIBUTION_MAX = 120;
 
 /**

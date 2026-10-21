@@ -310,8 +310,13 @@ it; deleting one deletes its images. See [§3e](./README.md#3e-testimonials).
       when you press **Save** with Hand-picked chosen. Switching back to
       Automatic or one session keeps your picks for later.
     - On the website the replies show as quote cards in their own row, the
-      first in deep purple, with the screenshots in a row below. A long reply
-      shows five lines and a **Read more** link.
+      first in deep purple, with the screenshots in a row below. Both rows
+      scroll sideways: two cards at a time on most screens, one on a narrow
+      phone, with the next card part way into view and arrow buttons on
+      wider screens. A long reply shows five lines and a **Read more** link,
+      which opens the whole reply in a pop-up that scrolls on its own. Any
+      reply can be shown, however long (up to 5,000 characters, the most a
+      student can write); you can still shorten it with the pencil.
     - If a student later withdraws consent, their reply leaves the band on its
       own; if they hide their name, the card stays as "A JSMF student".
   - **Heading:** pick **What students said after the last session.** or

@@ -278,7 +278,7 @@ function PickedQuote({
         <div className="space-y-2">
           <Textarea
             rows={4}
-            maxLength={1000}
+            maxLength={5000}
             value={text}
             onChange={(event) => setText(event.target.value)}
           />

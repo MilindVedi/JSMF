@@ -550,12 +550,31 @@ one implementation, one place to style, one visual contract. The section
 renders nothing at all when the upcoming session has no testimonials, so
 the import is safe to leave in regardless.
 
+**Long replies (added 2026-10-21).** A quote may be as long as a long answer
+(`LONG_TEXT_MAX`, 5000; it was capped at 1000, so a longer reply could not be
+picked at all). Migration `20261021120000_longer_quotes` widens
+`feedback_highlights.quote` and `no_session_quotes.quote` to VARCHAR(5000), a
+catalogue-only change. On the website a quote over 220 characters shows five
+lines; **Read more** opens `QuoteDialog` (native `<dialog>`: Escape, backdrop
+click and the close button close it, focus returns, the page behind is locked,
+only the text scrolls). Cards no longer grow in place.
+
 **Hand-picked (added 2026-10-21).** With
 `platform_settings.no_session_testimonials_hand_picked` on, the band shows
 screenshots and replies picked one by one from any sessions instead of one
 gallery, and the payload gains `quotes: SectionQuote[]` (quote cards in their
 own row above the screenshots, `QuoteCards` in `session-feedback.tsx`, light
-tone). Screenshots: `no_session_screenshots` (pointer to `session_testimonials`,
+tone). Both that row and the screenshot row are `ScrollRow`
+(`main-web/src/components/scroll-row.tsx`): one sideways-scrolling row with
+snap points, an edge bleed so the next card peeks, and arrow buttons from `sm`
+up that hide at each end. Quote cards are 82%/46%/31% of the row (one, two,
+three across) so a card is always part way in view; the arrows sit at `z-50`,
+above the fixed Telegram pill (`z-40`), which would otherwise cover the
+right-hand one at some widths. That pill (`telegram-float.tsx`) can also be
+dragged up and down the right edge; how high it was put is kept in
+`localStorage` under `jsmf.telegram-float.top`, clamped back on screen when the
+window changes, and a drag takes the `href` off for the gesture so it neither
+navigates nor counts an `outbound_click`. Screenshots: `no_session_screenshots` (pointer to `session_testimonials`,
 cascade), set with `PUT /admin/sessions/no-session-testimonials/screenshots`.
 Replies: `no_session_quotes` (one per reply, editable quote and name copies,
 cascade from the reply), managed at `/admin/feedback/no-session-quotes` by

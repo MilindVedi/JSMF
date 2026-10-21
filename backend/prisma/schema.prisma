@@ -2781,7 +2781,7 @@ model FeedbackHighlight {
   id          String   @id @default(uuid(7)) @db.Uuid
   responseId  String   @map("response_id") @db.Uuid
   sectionId   String   @map("section_id") @db.Uuid
-  quote       String   @db.VarChar(1000)
+  quote       String   @db.VarChar(5000)
   /// "Riya · Final year". "A JSMF student" for an anonymous reply.
   attribution String   @db.VarChar(120)
   /// Stars shown on the card, 1 to 5. Null shows none.
@@ -2826,7 +2826,7 @@ model NoSessionScreenshot {
 model NoSessionQuote {
   id          String   @id @default(uuid(7)) @db.Uuid
   responseId  String   @unique @map("response_id") @db.Uuid
-  quote       String   @db.VarChar(1000)
+  quote       String   @db.VarChar(5000)
   /// "Riya · Final year". "A JSMF student" for an anonymous reply.
   attribution String   @db.VarChar(120)
   sortOrder   Int      @default(0) @map("sort_order")

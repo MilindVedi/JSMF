@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Eye, Quote, X } from "lucide-react";
+import { ScrollRow } from "@/components/scroll-row";
 
 /**
  * A horizontally-scrolling row of testimonial screenshots, each framed with a
@@ -31,40 +32,15 @@ export function TestimonialGallery({
   // common case is "I want to read *this* one bigger," not "show me #1."
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
-  // The scrolling row, with arrow buttons in place of a scrollbar. We track
-  // how far it can still scroll either way so an arrow hides when its end is
-  // reached — a button that does nothing is worse than no button.
-  const rowRef = useRef<HTMLDivElement>(null);
-  const [canScroll, setCanScroll] = useState({ left: false, right: false });
-
-  const measure = useCallback(() => {
-    const row = rowRef.current;
-    if (!row) return;
-    const max = row.scrollWidth - row.clientWidth;
-    setCanScroll({ left: row.scrollLeft > 4, right: row.scrollLeft < max - 4 });
-  }, []);
-
-  useEffect(() => {
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-    // urls.length so adding/removing cards re-checks whether arrows are needed.
-  }, [measure, urls.length]);
-
-  const scrollByCards = (direction: 1 | -1) => {
-    const row = rowRef.current;
-    if (!row) return;
-    // Roughly one card-and-gap, so a tap advances by about one card.
-    row.scrollBy({ left: direction * 300, behavior: "smooth" });
-  };
-
   const close = useCallback(() => setActiveIndex(null), []);
   // Wrap around so the loop never dead-ends on an arrow press. urls.length
   // is read inside so a hot-reloaded set does not stale the closure.
   const step = useCallback(
     (delta: number) =>
       setActiveIndex((current) =>
-        current === null ? current : (current + delta + urls.length) % urls.length,
+        current === null
+          ? current
+          : (current + delta + urls.length) % urls.length,
       ),
     [urls.length],
   );
@@ -93,85 +69,71 @@ export function TestimonialGallery({
   const viewAll = dark
     ? "border-brand-line bg-white/5 text-brand-on-deep hover:bg-white/10"
     : "border-border bg-background text-primary hover:bg-accent";
-  const arrow = dark
-    ? "border-brand-line bg-brand-deep/60 text-brand-on-deep hover:bg-brand-deep/90"
-    : "border-border bg-background/60 text-brand-deep hover:bg-background/90";
 
   return (
     <>
-      {/* The row bleeds to the screen edge on small screens (-mx-5/-mx-8);
-          the arrow buttons sit just inside that bleed, vertically centred. */}
-      <div className="relative">
-        <div
-          ref={rowRef}
-          onScroll={measure}
-          className="no-scrollbar -mx-5 flex snap-x snap-mandatory gap-5 overflow-x-auto px-5 pb-2 lg:-mx-8 lg:px-8"
-        >
-          {urls.map((url, index) => (
-            <button
-              type="button"
-              key={url}
-              onClick={() => setActiveIndex(index)}
-              title="Preview"
-              aria-label={`Preview testimonial ${index + 1} of ${urls.length}`}
-              className={`group/card relative aspect-[4/3] w-[280px] shrink-0 snap-start overflow-hidden rounded-2xl border text-left shadow-editorial transition-transform hover:scale-[1.02] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${card}`}
-            >
-              <Quote size={20} className="absolute left-4 top-4 z-10 text-primary/30" />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt={imageAlt} loading="lazy" className="size-full object-cover" />
-              {/* The hover overlay: a soft dim so the eye icon reads over any
-                  background, and the label sits beside the icon so what the
-                  click does is spelled out, not just implied by the pictogram. */}
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 bg-black/50 text-sm font-semibold text-white opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-visible/card:opacity-100"
-              >
-                <Eye size={18} /> Preview
-              </span>
-            </button>
-          ))}
-
-          {urls.length > 1 && (
-            <button
-              type="button"
-              onClick={() => setActiveIndex(0)}
-              className={`flex aspect-[4/3] w-[280px] shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-2xl border border-dashed text-sm font-semibold transition-colors ${viewAll}`}
-            >
-              View all
-              <span className={`text-xs font-normal ${dark ? "opacity-70" : "text-muted-foreground"}`}>
-                {urls.length} testimonials
-              </span>
-            </button>
-          )}
-        </div>
-
-        {/* Arrow buttons stand in for the scrollbar. Shown from `sm` up,
-            where a pointer is likely; on a phone the row is swiped. Each
-            hides when there is nothing more to scroll that way. */}
-        {canScroll.left && (
+      <ScrollRow
+        count={urls.length}
+        tone={tone}
+        previousLabel="Show previous testimonials"
+        nextLabel="Show more testimonials"
+        className="gap-5"
+      >
+        {urls.map((url, index) => (
           <button
             type="button"
-            onClick={() => scrollByCards(-1)}
-            aria-label="Show previous testimonials"
-            className={`absolute left-1 top-1/2 hidden size-11 -translate-y-1/2 place-items-center rounded-full border shadow-editorial backdrop-blur transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:grid ${arrow}`}
+            key={url}
+            onClick={() => setActiveIndex(index)}
+            title="Preview"
+            aria-label={`Preview testimonial ${index + 1} of ${urls.length}`}
+            className={`group/card relative aspect-[4/3] w-[280px] shrink-0 snap-start overflow-hidden rounded-2xl border text-left shadow-editorial transition-transform hover:scale-[1.02] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${card}`}
           >
-            <ChevronLeft size={22} />
+            <Quote
+              size={20}
+              className="absolute left-4 top-4 z-10 text-primary/30"
+            />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={url}
+              alt={imageAlt}
+              loading="lazy"
+              className="size-full object-cover"
+            />
+            {/* The hover overlay: a soft dim so the eye icon reads over any
+                background, and the label sits beside the icon so what the
+                click does is spelled out, not just implied by the pictogram. */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 bg-black/50 text-sm font-semibold text-white opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-visible/card:opacity-100"
+            >
+              <Eye size={18} /> Preview
+            </span>
           </button>
-        )}
-        {canScroll.right && (
+        ))}
+
+        {urls.length > 1 && (
           <button
             type="button"
-            onClick={() => scrollByCards(1)}
-            aria-label="Show more testimonials"
-            className={`absolute right-1 top-1/2 hidden size-11 -translate-y-1/2 place-items-center rounded-full border shadow-editorial backdrop-blur transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:grid ${arrow}`}
+            onClick={() => setActiveIndex(0)}
+            className={`flex aspect-[4/3] w-[280px] shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-2xl border border-dashed text-sm font-semibold transition-colors ${viewAll}`}
           >
-            <ChevronRight size={22} />
+            View all
+            <span
+              className={`text-xs font-normal ${dark ? "opacity-70" : "text-muted-foreground"}`}
+            >
+              {urls.length} testimonials
+            </span>
           </button>
         )}
-      </div>
+      </ScrollRow>
 
       {activeIndex !== null && (
-        <TestimonialLightbox urls={urls} index={activeIndex} onClose={close} onStep={step} />
+        <TestimonialLightbox
+          urls={urls}
+          index={activeIndex}
+          onClose={close}
+          onStep={step}
+        />
       )}
     </>
   );
@@ -259,7 +221,10 @@ function TestimonialLightbox({
       {!only && (
         /* Tiny dot strip so position in the set is visible at a glance, and
            tappable on a phone where arrow keys are not an option. */
-        <div className="mt-3 flex justify-center gap-1.5" onClick={(event) => event.stopPropagation()}>
+        <div
+          className="mt-3 flex justify-center gap-1.5"
+          onClick={(event) => event.stopPropagation()}
+        >
           {urls.map((url, dotIndex) => (
             <button
               type="button"
@@ -267,7 +232,9 @@ function TestimonialLightbox({
               onClick={() => onStep(dotIndex - index)}
               aria-label={`Go to testimonial ${dotIndex + 1}`}
               className={`h-1.5 rounded-full transition-all ${
-                dotIndex === index ? "w-6 bg-white" : "w-1.5 bg-white/40 hover:bg-white/70"
+                dotIndex === index
+                  ? "w-6 bg-white"
+                  : "w-1.5 bg-white/40 hover:bg-white/70"
               }`}
             />
           ))}

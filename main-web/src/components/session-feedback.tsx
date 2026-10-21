@@ -1,6 +1,8 @@
 "use client";
 
-import { Quote } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Quote, X } from "lucide-react";
+import { ScrollRow } from "@/components/scroll-row";
 import { TestimonialGallery } from "@/components/testimonial-gallery";
 import type { LiveSession, SectionQuote } from "@/lib/api/types";
 
@@ -17,7 +19,13 @@ import type { LiveSession, SectionQuote } from "@/lib/api/types";
  *
  * Shared by the home page (`landing.tsx`) and `/prep-kit` (`book-page.tsx`).
  */
-export function SessionFeedback({ session, className = "" }: { session: LiveSession; className?: string }) {
+export function SessionFeedback({
+  session,
+  className = "",
+}: {
+  session: LiveSession;
+  className?: string;
+}) {
   const sections = session.testimonialSections ?? [];
   if (sections.length === 0) return null;
 
@@ -28,13 +36,18 @@ export function SessionFeedback({ session, className = "" }: { session: LiveSess
           <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
             <div>
               <span className="inline-flex items-center gap-2 rounded-full bg-brand-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
-                <Quote size={13} /> {section.dayNumber ? `Day ${section.dayNumber} feedback` : "In their own words"}
+                <Quote size={13} />{" "}
+                {section.dayNumber
+                  ? `Day ${section.dayNumber} feedback`
+                  : "In their own words"}
               </span>
               <h3 className="mt-5 max-w-2xl font-display text-2xl font-semibold leading-tight md:text-3xl">
                 {section.heading}
               </h3>
               {section.subheading && (
-                <p className="mt-3 max-w-2xl text-base leading-relaxed opacity-80">{section.subheading}</p>
+                <p className="mt-3 max-w-2xl text-base leading-relaxed opacity-80">
+                  {section.subheading}
+                </p>
               )}
             </div>
             {/* Optional, like the testimonials tag — left out when unset. */}
@@ -89,55 +102,159 @@ const QUOTE_TONES = {
 } as const;
 
 /**
- * Written replies, as pulled-quote cards: two or three across on wide
- * screens, in their own row above any screenshots, so neither has to match
- * the other's size. Cards in a row share one height, with the divider and
- * name at the bottom. The first is featured. A long reply shows five lines
- * and opens in full on a tap.
+ * Card widths, as a share of the row, chosen so the next card is always part
+ * way into view: that peek is what says "there is more to the side". Two
+ * cards from 560px up, where each is still wide enough to read; below that
+ * one at a time, since two on a phone would be about a dozen characters a
+ * line.
+ */
+const QUOTE_CARD_WIDTH =
+  "w-[82%] max-w-[300px] min-[560px]:w-[46%] min-[560px]:max-w-none lg:w-[31%]";
+
+/**
+ * Written replies, as pulled-quote cards in a row that scrolls sideways,
+ * above any screenshots, so neither row has to match the other's size. Cards
+ * share one height, with the divider and name at the bottom. The first is
+ * featured. A long reply shows five lines; "Read more" opens it whole in a
+ * pop-up that scrolls on its own, so every card in the row keeps its size
+ * however long the reply (up to 5,000 characters).
  *
  * Shared by the booking band here and the light testimonials band.
  */
-export function QuoteCards({ quotes, tone = "dark" }: { quotes: SectionQuote[]; tone?: keyof typeof QUOTE_TONES }) {
+export function QuoteCards({
+  quotes,
+  tone = "dark",
+}: {
+  quotes: SectionQuote[];
+  tone?: keyof typeof QUOTE_TONES;
+}) {
   const style = QUOTE_TONES[tone];
+  const [reading, setReading] = useState<SectionQuote | null>(null);
   return (
-    // While one long reply is open, only that card grows; the others keep their size.
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 has-[details[open]]:items-start">
-      {quotes.map((item, index) => {
-        const featured = index === 0;
-        const long = item.quote.length > LONG_QUOTE;
-        const text = <>&ldquo;{item.quote}&rdquo;</>;
-        return (
-          <figure key={item.id} className={`flex flex-col rounded-2xl p-6 ${featured ? style.featured : style.card}`}>
+    <>
+      <ScrollRow
+        count={quotes.length}
+        tone={tone}
+        previousLabel="Show previous replies"
+        nextLabel="Show more replies"
+        className="gap-5"
+      >
+        {quotes.map((item, index) => {
+          const featured = index === 0;
+          const long = item.quote.length > LONG_QUOTE;
+          const text = <>&ldquo;{item.quote}&rdquo;</>;
+          return (
+            <figure
+              key={item.id}
+              className={`flex shrink-0 snap-start flex-col rounded-2xl p-6 ${QUOTE_CARD_WIDTH} ${featured ? style.featured : style.card}`}
+            >
+              <Quote
+                size={28}
+                strokeWidth={1.75}
+                className={`mb-4 shrink-0 ${featured ? "text-white/80" : style.icon}`}
+                aria-hidden
+              />
+              <blockquote className="flex-1 font-display text-[17px] font-semibold leading-snug">
+                <p
+                  className={`whitespace-pre-line ${long ? "line-clamp-5" : ""}`}
+                >
+                  {text}
+                </p>
+                {long && (
+                  <button
+                    type="button"
+                    onClick={() => setReading(item)}
+                    className="mt-2 font-sans text-xs font-semibold underline underline-offset-4 opacity-75 transition-opacity hover:opacity-100"
+                  >
+                    Read more
+                  </button>
+                )}
+              </blockquote>
+              <hr
+                className={`mt-6 border-0 border-t ${featured ? "border-white/20" : style.rule}`}
+              />
+              <figcaption
+                className={`mt-4 text-xs font-semibold ${featured ? "text-white/75" : style.caption}`}
+              >
+                Student feedback
+                {item.attribution ? ` · ${item.attribution}` : ""}
+              </figcaption>
+            </figure>
+          );
+        })}
+      </ScrollRow>
+      <QuoteDialog quote={reading} onClose={() => setReading(null)} />
+    </>
+  );
+}
+
+/**
+ * One reply in full, over the page. The native <dialog> brings what a pop-up
+ * needs without a library: it sits above everything, Escape closes it, focus
+ * moves in and goes back to "Read more" afterwards, and the page behind
+ * cannot be clicked. A tap on the dimmed backdrop closes it too. Only the
+ * text scrolls, so the close button and the name stay in view.
+ */
+function QuoteDialog({
+  quote,
+  onClose,
+}: {
+  quote: SectionQuote | null;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog || !quote) return;
+    dialog.showModal();
+    // The page behind stays put while the reply is read.
+    const before = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = before;
+      if (dialog.open) dialog.close();
+    };
+  }, [quote]);
+
+  return (
+    <dialog
+      ref={ref}
+      aria-label="A student's reply"
+      onClose={onClose}
+      // A click on the dialog element itself, not its contents, is the backdrop.
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+      className="m-auto max-h-[85vh] w-[min(92vw,40rem)] overflow-hidden rounded-2xl bg-card p-0 text-brand-deep shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+    >
+      {quote && (
+        <div className="flex max-h-[85vh] flex-col">
+          <div className="flex items-start justify-between gap-4 px-6 pb-2 pt-6 sm:px-8 sm:pt-8">
             <Quote
-              size={28}
+              size={32}
               strokeWidth={1.75}
-              className={`mb-4 shrink-0 ${featured ? "text-white/80" : style.icon}`}
+              className="text-primary/60"
               aria-hidden
             />
-            <blockquote className="flex-1 font-display text-[17px] font-semibold leading-snug">
-              {long ? (
-                <details className="group">
-                  <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-                    <span className="line-clamp-5 group-open:line-clamp-none">{text}</span>
-                    <span className="mt-2 inline-block font-sans text-xs font-semibold underline underline-offset-4 opacity-75">
-                      <span className="group-open:hidden">Read more</span>
-                      <span className="hidden group-open:inline">Show less</span>
-                    </span>
-                  </summary>
-                </details>
-              ) : (
-                <p>{text}</p>
-              )}
-            </blockquote>
-            <hr className={`mt-6 border-0 border-t ${featured ? "border-white/20" : style.rule}`} />
-            <figcaption
-              className={`mt-4 text-xs font-semibold ${featured ? "text-white/75" : style.caption}`}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              autoFocus
+              className="-mr-2 -mt-2 grid size-10 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-brand-deep focus-visible:outline-2 focus-visible:outline-primary"
             >
-              Student feedback{item.attribution ? ` · ${item.attribution}` : ""}
-            </figcaption>
-          </figure>
-        );
-      })}
-    </div>
+              <X size={20} />
+            </button>
+          </div>
+          <blockquote className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 font-display text-lg font-semibold leading-relaxed sm:px-8">
+            <p className="whitespace-pre-line">&ldquo;{quote.quote}&rdquo;</p>
+          </blockquote>
+          <div className="mx-6 mt-5 border-t border-border py-4 text-xs font-semibold text-muted-foreground sm:mx-8 sm:pb-6">
+            Student feedback{quote.attribution ? ` · ${quote.attribution}` : ""}
+          </div>
+        </div>
+      )}
+    </dialog>
   );
 }

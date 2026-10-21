@@ -342,6 +342,30 @@ describe('feedback forms', () => {
     expect(gone.testimonialSections.find((s) => s.id === section.id)).toBeUndefined();
   });
 
+  it('shows a reply as long as the longest answer a student can write, whole', async () => {
+    const session = await createSession();
+    const student = await seat(session.id, 'Kavya', hoursAgo(48));
+    const form = await forms.create(session.id, { dayId: session.day1 }, admin());
+    await forms.update(session.id, form.id, { status: FeedbackFormStatus.OPEN, emailMode: FeedbackEmailMode.MANUAL }, admin());
+    const section = await sections.create(session.id, { heading: 'What students said', dayId: session.day1 }, admin());
+    const [overall, , useful] = form.questions;
+    // The longest a long answer may be: once too long to pick at all.
+    const essay = 'The revision plan finally made sense to me. '.repeat(200).slice(0, 5000).trim();
+    expect(essay.length).toBeGreaterThan(4900);
+    await responses.submit(form.id, { user: { id: student.id } as never }, {
+      answers: [{ questionId: overall.id, rating: 5 }, { questionId: useful.id, text: essay }],
+    });
+    const reply = (await forms.results(session.id, form.id)).responses[0];
+
+    const card = await highlights.create(session.id, form.id, { responseId: reply.id, sectionId: section.id }, admin());
+    expect(card.quote).toBe(essay);
+    const band = await highlights.createNoSessionQuote(session.id, form.id, { responseId: reply.id }, admin());
+    expect(band.quote).toBe(essay);
+    await expect(
+      highlights.updateNoSessionQuote(band.id, { quote: `${essay} and more than any answer can hold` }, admin()),
+    ).rejects.toThrow(/at most 5000/);
+  });
+
   it('puts a consented reply in the no-session band, and follows the student\'s later changes', async () => {
     const session = await createSession();
     const student = await seat(session.id, 'Meera', hoursAgo(48));
