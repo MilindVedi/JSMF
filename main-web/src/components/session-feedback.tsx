@@ -4,7 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { Quote, X } from "lucide-react";
 import { ScrollRow } from "@/components/scroll-row";
 import { TestimonialGallery } from "@/components/testimonial-gallery";
-import type { LiveSession, QuoteLayout, SectionQuote } from "@/lib/api/types";
+import type {
+  LiveSession,
+  QuoteExpand,
+  QuoteLayout,
+  SectionQuote,
+} from "@/lib/api/types";
 
 /**
  * What people are saying about *this* session — "What students said after
@@ -22,10 +27,12 @@ import type { LiveSession, QuoteLayout, SectionQuote } from "@/lib/api/types";
 export function SessionFeedback({
   session,
   layout = "SCROLL",
+  expand = "POPUP",
   className = "",
 }: {
   session: LiveSession;
   layout?: QuoteLayout;
+  expand?: QuoteExpand;
   className?: string;
 }) {
   const sections = session.testimonialSections ?? [];
@@ -62,7 +69,11 @@ export function SessionFeedback({
 
           {(section.quotes?.length ?? 0) > 0 && (
             <div className="mt-8">
-              <QuoteCards quotes={section.quotes!} layout={layout} />
+              <QuoteCards
+                quotes={section.quotes!}
+                layout={layout}
+                expand={expand}
+              />
             </div>
           )}
 
@@ -117,8 +128,10 @@ const QUOTE_CARD_WIDTH =
  * Written replies, as pulled-quote cards above any screenshots, so neither
  * has to match the other's size. Cards share one height, with the divider and
  * name at the bottom, and the first is featured. A long reply shows five
- * lines; "Read more" opens it whole in a pop-up that scrolls on its own, so a
- * card keeps its size however long the reply (up to 5,000 characters).
+ * lines. What "Read more" does is the admin's `expand` choice: "POPUP" (the
+ * default) opens it whole in a pop-up that scrolls on its own, so a card keeps
+ * its size however long the reply (up to 5,000 characters); "INLINE" grows
+ * that one card in place, with "Show less" to fold it back.
  *
  * `layout` is the admin's site-wide choice: "SCROLL" (the default) is one row
  * that scrolls sideways, two or three in view with the next part way in;
@@ -130,14 +143,21 @@ export function QuoteCards({
   quotes,
   tone = "dark",
   layout = "SCROLL",
+  expand = "POPUP",
 }: {
   quotes: SectionQuote[];
   tone?: keyof typeof QUOTE_TONES;
   layout?: QuoteLayout;
+  expand?: QuoteExpand;
 }) {
   const style = QUOTE_TONES[tone];
   const [reading, setReading] = useState<SectionQuote | null>(null);
   const scrolls = layout === "SCROLL";
+  const inline = expand === "INLINE";
+  // Growing in place, as the site did before the pop-up: only the open card
+  // gets taller, and the others drop to their own height instead of stretching
+  // to match it.
+  const growsInPlace = inline ? "has-[details[open]]:items-start" : "";
 
   const cards = quotes.map((item, index) => {
     const featured = index === 0;
@@ -155,10 +175,24 @@ export function QuoteCards({
           aria-hidden
         />
         <blockquote className="flex-1 font-display text-[17px] font-semibold leading-snug">
-          <p className={`whitespace-pre-line ${long ? "line-clamp-5" : ""}`}>
-            {text}
-          </p>
-          {long && (
+          {long && inline ? (
+            <details className="group">
+              <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                <span className="line-clamp-5 whitespace-pre-line group-open:line-clamp-none">
+                  {text}
+                </span>
+                <span className="mt-2 inline-block font-sans text-xs font-semibold underline underline-offset-4 opacity-75">
+                  <span className="group-open:hidden">Read more</span>
+                  <span className="hidden group-open:inline">Show less</span>
+                </span>
+              </summary>
+            </details>
+          ) : (
+            <p className={`whitespace-pre-line ${long ? "line-clamp-5" : ""}`}>
+              {text}
+            </p>
+          )}
+          {long && !inline && (
             <button
               type="button"
               onClick={() => setReading(item)}
@@ -189,14 +223,20 @@ export function QuoteCards({
           tone={tone}
           previousLabel="Show previous replies"
           nextLabel="Show more replies"
-          className="gap-5"
+          className={`gap-5 ${growsInPlace}`}
         >
           {cards}
         </ScrollRow>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{cards}</div>
+        <div
+          className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-3 ${growsInPlace}`}
+        >
+          {cards}
+        </div>
       )}
-      <QuoteDialog quote={reading} onClose={() => setReading(null)} />
+      {!inline && (
+        <QuoteDialog quote={reading} onClose={() => setReading(null)} />
+      )}
     </>
   );
 }

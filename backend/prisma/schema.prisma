@@ -1620,6 +1620,8 @@ model PlatformSettings {
   /// How the written replies are laid out wherever they appear on the website:
   /// a row that scrolls sideways, or a block that wraps onto several lines.
   quotesLayout                    QuoteLayout @default(SCROLL) @map("feedback_quotes_layout")
+  /// What "Read more" on a long reply does, everywhere on the website.
+  quotesExpand                    QuoteExpand @default(POPUP) @map("feedback_quotes_expand")
 
   noSessionTestimonialsSession LiveSession? @relation(fields: [noSessionTestimonialsSessionId], references: [productId], onDelete: SetNull)
 
@@ -2809,6 +2811,15 @@ model FeedbackHighlight {
 /// How the quote cards are laid out on the website. SCROLL is one row that
 /// scrolls sideways, two or three in view at a time; GRID wraps them onto as
 /// many lines as it takes, two or three across, with nothing to scroll.
+/// What "Read more" on a long reply does. POPUP opens the whole reply over
+/// the page, so the cards keep their size; INLINE grows that card in place.
+enum QuoteExpand {
+  POPUP
+  INLINE
+
+  @@schema("public")
+}
+
 enum QuoteLayout {
   SCROLL
   GRID

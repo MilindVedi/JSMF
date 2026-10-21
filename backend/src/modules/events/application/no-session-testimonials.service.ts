@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ProductStatus, QuoteLayout } from '@prisma/client';
+import { ProductStatus, QuoteExpand, QuoteLayout } from '@prisma/client';
 import { AppConfig } from '../../../config/config.module';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
@@ -30,6 +30,8 @@ export interface NoSessionTestimonialsInput {
   handPicked?: boolean;
   /** How quote cards are laid out everywhere on the website. */
   quotesLayout?: QuoteLayout;
+  /** What "Read more" does everywhere on the website. */
+  quotesExpand?: QuoteExpand;
   heading?: string | null;
   subheading?: string | null;
 }
@@ -87,16 +89,19 @@ export class NoSessionTestimonialsService {
   }
 
   /**
-   * How the quote cards are laid out wherever the website shows them — the
+   * How the quote cards are laid out, and what "Read more" does, wherever the website shows them — the
    * band between sessions and a session's own feedback sections alike, so the
    * two never disagree. Falls back to SCROLL if the row is somehow missing.
    */
-  async quotesLayout(): Promise<QuoteLayout> {
+  async quotesDisplay(): Promise<{ quotesLayout: QuoteLayout; quotesExpand: QuoteExpand }> {
     const settings = await this.prisma.platformSettings.findUnique({
       where: { id: SINGLETON_ID },
-      select: { quotesLayout: true },
+      select: { quotesLayout: true, quotesExpand: true },
     });
-    return settings?.quotesLayout ?? QuoteLayout.SCROLL;
+    return {
+      quotesLayout: settings?.quotesLayout ?? QuoteLayout.SCROLL,
+      quotesExpand: settings?.quotesExpand ?? QuoteExpand.POPUP,
+    };
   }
 
   /** The stored setting, the choices, and which session "automatic" means right now. */
@@ -126,6 +131,8 @@ export class NoSessionTestimonialsService {
       handPicked: settings.noSessionTestimonialsHandPicked,
       quotesLayout: settings.quotesLayout,
       quotesLayoutOptions: Object.values(QuoteLayout),
+      quotesExpand: settings.quotesExpand,
+      quotesExpandOptions: Object.values(QuoteExpand),
       /** Picked screenshots, in display order. The picked replies come from /admin/feedback/no-session-quotes. */
       screenshots: await this.pickedScreenshots(),
       /** Every session, newest first, to pick screenshots and replies from. */
@@ -166,6 +173,7 @@ export class NoSessionTestimonialsService {
         noSessionTestimonialsSessionId: input.sessionId,
         noSessionTestimonialsHandPicked: input.handPicked,
         quotesLayout: input.quotesLayout,
+        quotesExpand: input.quotesExpand,
         noSessionTestimonialsHeading: text(input.heading),
         noSessionTestimonialsSubheading: text(input.subheading),
       },
@@ -182,6 +190,7 @@ export class NoSessionTestimonialsService {
         sessionId: before.sessionId,
         handPicked: before.handPicked,
         quotesLayout: before.quotesLayout,
+        quotesExpand: before.quotesExpand,
         heading: before.heading,
         subheading: before.subheading,
       },
@@ -190,6 +199,7 @@ export class NoSessionTestimonialsService {
         sessionId: after.sessionId,
         handPicked: after.handPicked,
         quotesLayout: after.quotesLayout,
+        quotesExpand: after.quotesExpand,
         heading: after.heading,
         subheading: after.subheading,
       },

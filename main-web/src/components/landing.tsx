@@ -234,6 +234,7 @@ export function Landing({
               <SessionFeedback
                 session={session}
                 layout={data?.quotesLayout}
+                expand={data?.quotesExpand}
                 className="mt-6 lg:col-span-12"
               />
             </div>
@@ -288,12 +289,17 @@ export function Landing({
           no testimonials yet, so this is safe to leave in regardless. With
           nothing upcoming, the testimonials the admin chose for that case. */}
       {session ? (
-        <TestimonialsSection session={session} layout={data?.quotesLayout} />
+        <TestimonialsSection
+          session={session}
+          layout={data?.quotesLayout}
+          expand={data?.quotesExpand}
+        />
       ) : (
         data?.noSessionTestimonials && (
           <NoSessionTestimonialsSection
             testimonials={data.noSessionTestimonials}
             layout={data.quotesLayout}
+            expand={data.quotesExpand}
           />
         )
       )}

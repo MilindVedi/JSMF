@@ -14,17 +14,20 @@ import {
 import {
   adminSessionApi,
   type NoSessionTestimonials,
+  type QuoteExpand,
   type QuoteLayout,
 } from "@/lib/api/admin";
 import { mainWebsiteHost } from "@/lib/site-content";
 import { errorText } from "./feedback-forms/shared";
 
-const CHOICES: Array<{
-  value: QuoteLayout;
+interface Choice<T extends string> {
+  value: T;
   title: string;
   detail: string;
   picture: string[];
-}> = [
+}
+
+const LAYOUTS: Choice<QuoteLayout>[] = [
   {
     value: "SCROLL",
     title: "One row that scrolls sideways",
@@ -37,21 +40,39 @@ const CHOICES: Array<{
     title: "A block over several lines",
     detail:
       "Two or three across, wrapping onto as many lines as it takes, with nothing to scroll. Every reply is on the page at once, so the band grows as you pick more.",
-    picture: ["█ █ █", "█ █ █"],
+    picture: ["█ █ █", "█ █"],
+  },
+];
+
+const EXPANDS: Choice<QuoteExpand>[] = [
+  {
+    value: "POPUP",
+    title: "Open it in a pop-up",
+    detail:
+      "The whole reply opens over the page, and scrolls on its own if it is long. The cards keep their size, so the row never jumps.",
+    picture: ["█ ▢ █"],
+  },
+  {
+    value: "INLINE",
+    title: "Grow the card in place",
+    detail:
+      'That card gets taller to show the whole reply, with "Show less" to fold it back. The others do not grow with it. A very long reply makes a very tall card.',
+    picture: ["█ █ █", "  █  "],
   },
 ];
 
 /**
- * How the written replies are laid out wherever the website shows them: the
- * band between sessions and each session's own feedback sections alike, so
- * the two never disagree.
+ * How the written replies look wherever the website shows them — the band
+ * between sessions and each session's own feedback sections alike, so the
+ * two never disagree: how the cards are laid out, and what "Read more" does.
  *
  * Shares the one settings row with NoSessionTestimonialsCard; each card sends
  * only the fields it owns, so neither overwrites the other.
  */
 export function QuotesLayoutCard() {
   const [settings, setSettings] = useState<NoSessionTestimonials | null>(null);
-  const [choice, setChoice] = useState<QuoteLayout>("SCROLL");
+  const [layout, setLayout] = useState<QuoteLayout>("SCROLL");
+  const [expand, setExpand] = useState<QuoteExpand>("POPUP");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -59,7 +80,8 @@ export function QuotesLayoutCard() {
       .noSessionTestimonials()
       .then((loaded) => {
         setSettings(loaded);
-        setChoice(loaded.quotesLayout);
+        setLayout(loaded.quotesLayout);
+        setExpand(loaded.quotesExpand);
       })
       .catch((error: unknown) =>
         toast.error(errorText(error, "Could not load this setting")),
@@ -76,16 +98,19 @@ export function QuotesLayoutCard() {
     );
   }
 
-  const dirty = choice !== settings.quotesLayout;
+  const dirty =
+    layout !== settings.quotesLayout || expand !== settings.quotesExpand;
 
   async function save() {
     setSaving(true);
     try {
       const saved = await adminSessionApi.updateNoSessionTestimonials({
-        quotesLayout: choice,
+        quotesLayout: layout,
+        quotesExpand: expand,
       });
       setSettings(saved);
-      setChoice(saved.quotesLayout);
+      setLayout(saved.quotesLayout);
+      setExpand(saved.quotesExpand);
       toast.success("Saved");
     } catch (error) {
       toast.error(errorText(error, "Could not save"));
@@ -104,51 +129,23 @@ export function QuotesLayoutCard() {
           Screenshots always sit in a row that scrolls.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          {CHOICES.map((option) => {
-            const picked = choice === option.value;
-            return (
-              <label
-                key={option.value}
-                // Tied to the input by id, so a click anywhere on the card
-                // picks it — wrapping the input alone does not always do that.
-                htmlFor={`quotes-layout-${option.value}`}
-                className={`flex cursor-pointer gap-3 rounded-lg border p-4 transition-colors ${
-                  picked ? "border-primary bg-accent/50" : "hover:bg-accent/30"
-                }`}
-              >
-                <input
-                  type="radio"
-                  id={`quotes-layout-${option.value}`}
-                  name="quotes-layout"
-                  className="mt-1"
-                  checked={picked}
-                  disabled={saving}
-                  onChange={() => setChoice(option.value)}
-                />
-                <span className="space-y-1.5">
-                  <span className="block text-sm font-medium">
-                    {option.title}
-                  </span>
-                  <span
-                    aria-hidden
-                    className="block font-mono text-sm leading-tight tracking-widest text-primary/70"
-                  >
-                    {option.picture.map((line, row) => (
-                      <span key={row} className="block">
-                        {line}
-                      </span>
-                    ))}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    {option.detail}
-                  </span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
+      <CardContent className="space-y-6">
+        <ChoiceGroup
+          name="quotes-layout"
+          label="Layout"
+          choices={LAYOUTS}
+          value={layout}
+          disabled={saving}
+          onChange={setLayout}
+        />
+        <ChoiceGroup
+          name="quotes-expand"
+          label={'When someone presses "Read more" on a long reply'}
+          choices={EXPANDS}
+          value={expand}
+          disabled={saving}
+          onChange={setExpand}
+        />
 
         <div className="flex gap-2">
           <Button
@@ -163,7 +160,10 @@ export function QuotesLayoutCard() {
               size="sm"
               variant="ghost"
               disabled={saving}
-              onClick={() => setChoice(settings.quotesLayout)}
+              onClick={() => {
+                setLayout(settings.quotesLayout);
+                setExpand(settings.quotesExpand);
+              }}
             >
               Cancel
             </Button>
@@ -171,5 +171,72 @@ export function QuotesLayoutCard() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ChoiceGroup<T extends string>({
+  name,
+  label,
+  choices,
+  value,
+  disabled,
+  onChange,
+}: {
+  name: string;
+  label: string;
+  choices: Choice<T>[];
+  value: T;
+  disabled: boolean;
+  onChange: (next: T) => void;
+}) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="mb-2 text-sm font-medium">{label}</legend>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {choices.map((option) => {
+          const picked = value === option.value;
+          const id = `${name}-${option.value}`;
+          return (
+            <label
+              key={option.value}
+              // Tied to the input by id, so a click anywhere on the option
+              // picks it — wrapping the input alone does not always do that.
+              htmlFor={id}
+              className={`flex cursor-pointer gap-3 rounded-lg border p-4 transition-colors ${
+                picked ? "border-primary bg-accent/50" : "hover:bg-accent/30"
+              }`}
+            >
+              <input
+                type="radio"
+                id={id}
+                name={name}
+                className="mt-1"
+                checked={picked}
+                disabled={disabled}
+                onChange={() => onChange(option.value)}
+              />
+              <span className="space-y-1.5">
+                <span className="block text-sm font-medium">
+                  {option.title}
+                </span>
+                <span
+                  aria-hidden
+                  className="block whitespace-pre font-mono text-sm leading-tight tracking-widest text-primary/70"
+                >
+                  {option.picture.map((line, row) => (
+                    <span key={row} className="block">
+                      {line}
+                    </span>
+                  ))}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {option.detail}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }

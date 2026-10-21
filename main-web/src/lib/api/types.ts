@@ -81,11 +81,19 @@ export interface LiveSession {
  */
 export type QuoteLayout = "SCROLL" | "GRID";
 
+/**
+ * What "Read more" on a long reply does: "POPUP" opens it whole over the page
+ * (the default), "INLINE" grows that card in place. Set in the admin panel.
+ */
+export type QuoteExpand = "POPUP" | "INLINE";
+
 export interface SessionLanding {
   upcoming: LiveSession | null;
   previous: LiveSession | null;
   /** Absent from an older API, which means the scrolling row. */
   quotesLayout?: QuoteLayout;
+  /** Absent from an older API, which means the pop-up. */
+  quotesExpand?: QuoteExpand;
   /** Set only while nothing is upcoming: the testimonials the admin chose for that case. */
   noSessionTestimonials?: NoSessionTestimonials | null;
 }

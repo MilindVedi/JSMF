@@ -56,13 +56,15 @@ export interface BundleContents {
 }
 
 export const adminApi = {
-  listProducts(params: {
-    status?: string;
-    type?: ProductType;
-    q?: string;
-    page?: number;
-    includeArchived?: boolean;
-  } = {}) {
+  listProducts(
+    params: {
+      status?: string;
+      type?: ProductType;
+      q?: string;
+      page?: number;
+      includeArchived?: boolean;
+    } = {},
+  ) {
     const query = new URLSearchParams();
     if (params.status) query.set("status", params.status);
     if (params.type) query.set("type", params.type);
@@ -76,31 +78,49 @@ export const adminApi = {
 
   getProduct: (id: string) => api.get<ProductDetail>(`/admin/products/${id}`),
 
-  bundleItems: (id: string) => api.get<BundleContents>(`/admin/products/${id}/bundle-items`),
+  bundleItems: (id: string) =>
+    api.get<BundleContents>(`/admin/products/${id}/bundle-items`),
   addBundleItem: (id: string, productId: string, sellOnItsOwn: boolean) =>
-    api.post<BundleContents>(`/admin/products/${id}/bundle-items`, { productId, sellOnItsOwn }),
+    api.post<BundleContents>(`/admin/products/${id}/bundle-items`, {
+      productId,
+      sellOnItsOwn,
+    }),
   removeBundleItem: (id: string, productId: string) =>
-    api.delete<BundleContents>(`/admin/products/${id}/bundle-items/${productId}`),
+    api.delete<BundleContents>(
+      `/admin/products/${id}/bundle-items/${productId}`,
+    ),
   reorderBundle: (id: string, productIds: string[]) =>
-    api.put<BundleContents>(`/admin/products/${id}/bundle-items/order`, { productIds }),
+    api.put<BundleContents>(`/admin/products/${id}/bundle-items/order`, {
+      productIds,
+    }),
 
-  createProduct: (input: ProductInput) => api.post<Product>("/admin/products", input),
+  createProduct: (input: ProductInput) =>
+    api.post<Product>("/admin/products", input),
 
   updateProduct: (id: string, input: Partial<ProductInput>) =>
     api.patch<Product>(`/admin/products/${id}`, input),
 
   publish: (id: string) => api.post<Product>(`/admin/products/${id}/publish`),
-  unpublish: (id: string) => api.post<Product>(`/admin/products/${id}/unpublish`),
+  unpublish: (id: string) =>
+    api.post<Product>(`/admin/products/${id}/unpublish`),
   archive: (id: string) => api.delete<Product>(`/admin/products/${id}`),
   restore: (id: string) => api.post<Product>(`/admin/products/${id}/restore`),
 
-  uploadAsset(productId: string, kind: AssetKind, file: File, pageCount?: number) {
+  uploadAsset(
+    productId: string,
+    kind: AssetKind,
+    file: File,
+    pageCount?: number,
+  ) {
     const formData = new FormData();
     formData.append("kind", kind);
     if (pageCount) formData.append("pageCount", String(pageCount));
     formData.append("file", file);
 
-    return api.upload<ProductAsset>(`/admin/products/${productId}/assets`, formData);
+    return api.upload<ProductAsset>(
+      `/admin/products/${productId}/assets`,
+      formData,
+    );
   },
 
   previewAssetUrl: (assetId: string) =>
@@ -112,14 +132,18 @@ export const adminApi = {
   setTerms: (productId: string, termIds: string[]) =>
     api.put<void>(`/admin/products/${productId}/terms`, { termIds }),
 
-  addLink: (productId: string, input: { kind: LinkKind; url: string; label?: string }) =>
-    api.post<ProductLink>(`/admin/products/${productId}/links`, input),
+  addLink: (
+    productId: string,
+    input: { kind: LinkKind; url: string; label?: string },
+  ) => api.post<ProductLink>(`/admin/products/${productId}/links`, input),
 
   removeLink: (productId: string, linkId: string) =>
     api.delete<void>(`/admin/products/${productId}/links/${linkId}`),
 
   restoreLink: (productId: string, linkId: string) =>
-    api.post<ProductLink>(`/admin/products/${productId}/links/${linkId}/restore`),
+    api.post<ProductLink>(
+      `/admin/products/${productId}/links/${linkId}/restore`,
+    ),
 
   /** Includes featured products that are currently unpublished — they keep
    *  their slot but do not show on the storefront. */
@@ -142,7 +166,8 @@ export const adminApi = {
   createTerm: (taxonomyId: string, input: { name: string; slug?: string }) =>
     api.post<TaxonomyTerm>(`/admin/taxonomies/${taxonomyId}/terms`, input),
 
-  deleteTerm: (termId: string) => api.delete<void>(`/admin/taxonomies/terms/${termId}`),
+  deleteTerm: (termId: string) =>
+    api.delete<void>(`/admin/taxonomies/terms/${termId}`),
 
   restoreTerm: (termId: string) =>
     api.post<TaxonomyTerm>(`/admin/taxonomies/terms/${termId}/restore`),
@@ -158,7 +183,14 @@ export type RefundSpeed = "NORMAL" | "INSTANT";
 
 /** Platform-wide order visibility and refunds — ADMIN only, server-enforced. */
 export const adminOrderApi = {
-  list(params: { status?: OrderStatus; q?: string; page?: number; pageSize?: number } = {}) {
+  list(
+    params: {
+      status?: OrderStatus;
+      q?: string;
+      page?: number;
+      pageSize?: number;
+    } = {},
+  ) {
     const query = new URLSearchParams();
     if (params.status) query.set("status", params.status);
     if (params.q) query.set("q", params.q);
@@ -179,7 +211,13 @@ export const adminOrderApi = {
    */
   refund: (
     id: string,
-    input: { reason?: string; speed?: RefundSpeed; amountMinor?: string; revokeAccess: boolean; notifyBuyer: boolean },
+    input: {
+      reason?: string;
+      speed?: RefundSpeed;
+      amountMinor?: string;
+      revokeAccess: boolean;
+      notifyBuyer: boolean;
+    },
   ) => api.post<RefundResult>(`/admin/orders/${id}/refund`, input),
 
   /** A refund the admin already made by UPI, bank or cash. Nothing is sent to Razorpay. */
@@ -198,7 +236,10 @@ export const adminOrderApi = {
 
   /** Takes away what the order gave, without moving money. */
   revokeAccess: (id: string, reason?: string) =>
-    api.post<{ orderId: string; revoked: number }>(`/admin/orders/${id}/revoke-access`, { reason }),
+    api.post<{ orderId: string; revoked: number }>(
+      `/admin/orders/${id}/revoke-access`,
+      { reason },
+    ),
 };
 
 export interface RefundResult {
@@ -273,10 +314,15 @@ export interface BundleDeliveryList {
 export interface BundleSendResult {
   attempted: number;
   sent: number;
-  failed: Array<{ userId: string; name: string; email: string | null; reason: string }>;
+  failed: Array<{
+    userId: string;
+    name: string;
+    email: string | null;
+    reason: string;
+  }>;
 }
 
-export type AnnouncementStatus = 'PENDING' | 'SENT' | 'FAILED';
+export type AnnouncementStatus = "PENDING" | "SENT" | "FAILED";
 
 /** A live session as the admin API returns it. Money is paise, as a string. */
 export interface SessionDay {
@@ -391,6 +437,9 @@ export interface SessionRegistrationRow {
  */
 export type QuoteLayout = "SCROLL" | "GRID";
 
+/** What "Read more" on a long reply does: a pop-up (the default), or the card grows in place. */
+export type QuoteExpand = "POPUP" | "INLINE";
+
 /** The home page's testimonials while no session is upcoming. */
 export interface NoSessionTestimonials {
   enabled: boolean;
@@ -405,37 +454,67 @@ export interface NoSessionTestimonials {
   /** Which session "automatic" picks right now, or null when none has any. */
   automaticSessionId: string | null;
   /** Sessions with testimonials, newest first. */
-  sessions: Array<{ id: string; title: string; startsAt: string | null; status: string; testimonialCount: number }>;
+  sessions: Array<{
+    id: string;
+    title: string;
+    startsAt: string | null;
+    status: string;
+    testimonialCount: number;
+  }>;
   /** On: the screenshots and replies picked one by one are shown, not one session's gallery. */
   handPicked: boolean;
   /** How the quote cards are laid out everywhere on the website. */
   quotesLayout: QuoteLayout;
   quotesLayoutOptions: QuoteLayout[];
+  quotesExpand: QuoteExpand;
+  quotesExpandOptions: QuoteExpand[];
   /** Picked screenshots, in display order. Picked replies: `noSessionQuotesApi`. */
-  screenshots: Array<{ testimonialId: string; sessionId: string; sessionTitle: string; url: string }>;
+  screenshots: Array<{
+    testimonialId: string;
+    sessionId: string;
+    sessionTitle: string;
+    url: string;
+  }>;
   /** Every session, newest first, to pick from. */
-  pickableSessions: Array<{ id: string; title: string; startsAt: string | null }>;
+  pickableSessions: Array<{
+    id: string;
+    title: string;
+    startsAt: string | null;
+  }>;
 }
 
 export const adminSessionApi = {
   list: () => api.get<AdminSession[]>("/admin/sessions"),
-  noSessionTestimonials: () => api.get<NoSessionTestimonials>("/admin/sessions/no-session-testimonials"),
+  noSessionTestimonials: () =>
+    api.get<NoSessionTestimonials>("/admin/sessions/no-session-testimonials"),
   updateNoSessionTestimonials: (input: {
     enabled?: boolean;
     sessionId?: string | null;
     handPicked?: boolean;
     quotesLayout?: QuoteLayout;
+    quotesExpand?: QuoteExpand;
     heading?: string | null;
     subheading?: string | null;
-  }) => api.put<NoSessionTestimonials>("/admin/sessions/no-session-testimonials", input),
+  }) =>
+    api.put<NoSessionTestimonials>(
+      "/admin/sessions/no-session-testimonials",
+      input,
+    ),
   /** Replaces the picked screenshots with these, in this order. */
   setNoSessionScreenshots: (testimonialIds: string[]) =>
-    api.put<NoSessionTestimonials>("/admin/sessions/no-session-testimonials/screenshots", { testimonialIds }),
+    api.put<NoSessionTestimonials>(
+      "/admin/sessions/no-session-testimonials/screenshots",
+      { testimonialIds },
+    ),
   get: (id: string) => api.get<AdminSession>(`/admin/sessions/${id}`),
-  create: (input: SessionInput) => api.post<AdminSession>("/admin/sessions", input),
-  update: (id: string, input: SessionInput) => api.patch<AdminSession>(`/admin/sessions/${id}`, input),
-  publish: (id: string) => api.post<AdminSession>(`/admin/sessions/${id}/publish`),
-  unpublish: (id: string) => api.post<AdminSession>(`/admin/sessions/${id}/unpublish`),
+  create: (input: SessionInput) =>
+    api.post<AdminSession>("/admin/sessions", input),
+  update: (id: string, input: SessionInput) =>
+    api.patch<AdminSession>(`/admin/sessions/${id}`, input),
+  publish: (id: string) =>
+    api.post<AdminSession>(`/admin/sessions/${id}/publish`),
+  unpublish: (id: string) =>
+    api.post<AdminSession>(`/admin/sessions/${id}/unpublish`),
   archive: (id: string) => api.delete<void>(`/admin/sessions/${id}`),
   registrations: (id: string) =>
     api.get<SessionRegistrationRow[]>(`/admin/sessions/${id}/registrations`),
@@ -458,28 +537,50 @@ export const adminSessionApi = {
     const formData = new FormData();
     formData.append("file", file);
     if (sectionId) formData.append("sectionId", sectionId);
-    return api.upload<SessionTestimonial>(`/admin/sessions/${id}/testimonials`, formData);
+    return api.upload<SessionTestimonial>(
+      `/admin/sessions/${id}/testimonials`,
+      formData,
+    );
   },
 
   removeTestimonial: (id: string, testimonialId: string) =>
     api.delete<void>(`/admin/sessions/${id}/testimonials/${testimonialId}`),
 
   /** Every testimonial id of one gallery, once each, in the new display order. Omit `sectionId` for the original gallery. */
-  reorderTestimonials: (id: string, testimonialIds: string[], sectionId?: string) =>
-    api.patch<void>(`/admin/sessions/${id}/testimonials/reorder`, { testimonialIds, sectionId }),
+  reorderTestimonials: (
+    id: string,
+    testimonialIds: string[],
+    sectionId?: string,
+  ) =>
+    api.patch<void>(`/admin/sessions/${id}/testimonials/reorder`, {
+      testimonialIds,
+      sectionId,
+    }),
 
   createTestimonialSection: (id: string, input: TestimonialSectionInput) =>
-    api.post<SessionTestimonialSection>(`/admin/sessions/${id}/testimonial-sections`, input),
+    api.post<SessionTestimonialSection>(
+      `/admin/sessions/${id}/testimonial-sections`,
+      input,
+    ),
 
-  updateTestimonialSection: (id: string, sectionId: string, input: TestimonialSectionInput) =>
-    api.patch<SessionTestimonialSection>(`/admin/sessions/${id}/testimonial-sections/${sectionId}`, input),
+  updateTestimonialSection: (
+    id: string,
+    sectionId: string,
+    input: TestimonialSectionInput,
+  ) =>
+    api.patch<SessionTestimonialSection>(
+      `/admin/sessions/${id}/testimonial-sections/${sectionId}`,
+      input,
+    ),
 
   /** Deletes the section and its images. Hide it instead to keep it. */
   removeTestimonialSection: (id: string, sectionId: string) =>
     api.delete<void>(`/admin/sessions/${id}/testimonial-sections/${sectionId}`),
 
   reorderTestimonialSections: (id: string, sectionIds: string[]) =>
-    api.patch<void>(`/admin/sessions/${id}/testimonial-sections/reorder`, { sectionIds }),
+    api.patch<void>(`/admin/sessions/${id}/testimonial-sections/reorder`, {
+      sectionIds,
+    }),
 
   /** Who has received the material included with this session, and who has not. */
   bundleDeliveries: (id: string) =>
@@ -491,5 +592,7 @@ export const adminSessionApi = {
    * repeating this never delivers twice.
    */
   sendBundle: (id: string, userIds?: string[]) =>
-    api.post<BundleSendResult>(`/admin/sessions/${id}/bundle-deliveries/send`, { userIds }),
+    api.post<BundleSendResult>(`/admin/sessions/${id}/bundle-deliveries/send`, {
+      userIds,
+    }),
 };

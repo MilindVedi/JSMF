@@ -558,7 +558,11 @@ the `ScrollRow`; GRID is the earlier `grid gap-4 sm:grid-cols-2 lg:grid-cols-3`,
 with the cards dropping their fixed widths and snap points. Set on the admin
 Sessions page (`QuotesLayoutCard`, sharing the no-session settings endpoint —
 each card sends only its own fields). Migration `20261021140000_quotes_layout`,
-additive.
+additive. Beside it, `feedback_quotes_expand` (`QuoteExpand`: POPUP, the
+default, or INLINE) picks what "Read more" does: `QuoteDialog`, or a
+`<details>` that unclamps the card in place, with `has-[details[open]]:items-start`
+on the row so only that card grows. Also on `GET /sessions` as `quotesExpand`.
+Migration `20261021160000_quotes_expand`, additive.
 
 **Long replies (added 2026-10-21).** A quote may be as long as a long answer
 (`LONG_TEXT_MAX`, 5000; it was capped at 1000, so a longer reply could not be

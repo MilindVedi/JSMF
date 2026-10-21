@@ -6,6 +6,7 @@ import { TestimonialGallery } from "@/components/testimonial-gallery";
 import type {
   LiveSession,
   NoSessionTestimonials,
+  QuoteExpand,
   QuoteLayout,
   SectionQuote,
 } from "@/lib/api/types";
@@ -23,13 +24,16 @@ import type {
 export function TestimonialsSection({
   session,
   layout = "SCROLL",
+  expand = "POPUP",
 }: {
   session: LiveSession;
   layout?: QuoteLayout;
+  expand?: QuoteExpand;
 }) {
   return (
     <TestimonialsBand
       layout={layout}
+      expand={expand}
       urls={session.testimonialUrls}
       heading={
         session.testimonialsHeading ||
@@ -53,13 +57,16 @@ export function TestimonialsSection({
 export function NoSessionTestimonialsSection({
   testimonials,
   layout = "SCROLL",
+  expand = "POPUP",
 }: {
   testimonials: NoSessionTestimonials;
   layout?: QuoteLayout;
+  expand?: QuoteExpand;
 }) {
   return (
     <TestimonialsBand
       layout={layout}
+      expand={expand}
       urls={testimonials.urls}
       quotes={testimonials.quotes ?? []}
       heading={testimonials.heading}
@@ -74,6 +81,7 @@ function TestimonialsBand({
   heading,
   subheading,
   layout = "SCROLL",
+  expand = "POPUP",
   tag = null,
 }: {
   urls: string[];
@@ -81,6 +89,7 @@ function TestimonialsBand({
   heading: string;
   subheading: string;
   layout?: QuoteLayout;
+  expand?: QuoteExpand;
   tag?: string | null;
 }) {
   if (urls.length === 0 && quotes.length === 0) return null;
@@ -112,7 +121,12 @@ function TestimonialsBand({
 
         {quotes.length > 0 && (
           <div className="mt-10">
-            <QuoteCards quotes={quotes} tone="light" layout={layout} />
+            <QuoteCards
+              quotes={quotes}
+              tone="light"
+              layout={layout}
+              expand={expand}
+            />
           </div>
         )}
         {urls.length > 0 && (

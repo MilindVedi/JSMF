@@ -27,12 +27,12 @@ export class LiveSessionController {
   @Get()
   @ApiOperation({ summary: 'The next session, the most recent past one, and testimonials for when none is upcoming' })
   async landing() {
-    const [landing, quotesLayout] = await Promise.all([this.sessions.landing(), this.noSession.quotesLayout()]);
+    const [landing, display] = await Promise.all([this.sessions.landing(), this.noSession.quotesDisplay()]);
     return {
       ...landing,
       // Site-wide, so a session's own feedback and the band between sessions
       // are laid out the same way.
-      quotesLayout,
+      ...display,
       // Only while nothing is upcoming: otherwise the upcoming session's own
       // testimonials are the band.
       noSessionTestimonials: landing.upcoming ? null : await this.noSession.forWebsite(),

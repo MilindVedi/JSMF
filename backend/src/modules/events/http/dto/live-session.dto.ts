@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { BundleDeliveryMode, QuoteLayout } from '@prisma/client';
+import { BundleDeliveryMode, QuoteExpand, QuoteLayout } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -465,6 +465,14 @@ export class UpdateNoSessionTestimonialsDto {
   @IsOptional()
   @IsEnum(QuoteLayout)
   quotesLayout?: QuoteLayout;
+
+  @ApiPropertyOptional({
+    enum: QuoteExpand,
+    description: 'What "Read more" on a long reply does: open it in a pop-up, or grow the card in place.',
+  })
+  @IsOptional()
+  @IsEnum(QuoteExpand)
+  quotesExpand?: QuoteExpand;
 
   @ApiPropertyOptional({ nullable: true, maxLength: 150 })
   @IsOptional()

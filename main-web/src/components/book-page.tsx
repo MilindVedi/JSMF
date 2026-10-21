@@ -19,6 +19,7 @@ import { sessionsApi } from "@/lib/api/sessions";
 import type {
   LiveSession,
   NoSessionTestimonials,
+  QuoteExpand,
   QuoteLayout,
 } from "@/lib/api/types";
 import { links } from "@/lib/site-content";
@@ -35,6 +36,7 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
     useState<NoSessionTestimonials | null>(null);
   // The admin's site-wide choice of how replies are laid out.
   const [quotesLayout, setQuotesLayout] = useState<QuoteLayout>("SCROLL");
+  const [quotesExpand, setQuotesExpand] = useState<QuoteExpand>("POPUP");
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const params = useSearchParams();
@@ -51,6 +53,7 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
         setSession(result.upcoming);
         setFallbackTestimonials(result.noSessionTestimonials ?? null);
         setQuotesLayout(result.quotesLayout ?? "SCROLL");
+        setQuotesExpand(result.quotesExpand ?? "POPUP");
         if (!checkoutUrl && resume && result.upcoming?.registrationOpen) {
           setOpen(true);
           router.replace("/prep-kit", { scroll: false });
@@ -211,6 +214,7 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
             <SessionFeedback
               session={session}
               layout={quotesLayout}
+              expand={quotesExpand}
               className="mt-6 lg:col-span-12"
             />
           )}
@@ -236,12 +240,17 @@ export function BookPage({ checkoutUrl }: { checkoutUrl: string | null }) {
       )}
 
       {session ? (
-        <TestimonialsSection session={session} layout={quotesLayout} />
+        <TestimonialsSection
+          session={session}
+          layout={quotesLayout}
+          expand={quotesExpand}
+        />
       ) : (
         fallbackTestimonials && (
           <NoSessionTestimonialsSection
             testimonials={fallbackTestimonials}
             layout={quotesLayout}
+            expand={quotesExpand}
           />
         )
       )}

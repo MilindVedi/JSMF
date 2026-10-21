@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { QuoteLayout, StorageProvider, UserStatus } from '@prisma/client';
+import { QuoteExpand, QuoteLayout, StorageProvider, UserStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
@@ -97,12 +97,13 @@ beforeAll(async () => {
     noSessionTestimonialsSubheading: row.noSessionTestimonialsSubheading,
     noSessionTestimonialsHandPicked: row.noSessionTestimonialsHandPicked,
     quotesLayout: row.quotesLayout,
+    quotesExpand: row.quotesExpand,
   };
   savedScreenshots = await prisma.noSessionScreenshot.findMany({ select: { testimonialId: true, sortOrder: true } });
   // handPicked explicitly off: the row is shared with local development, where
   // it may well be on, and the first test is about the one-session behaviour.
   await service.update(
-    { enabled: true, sessionId: null, handPicked: false, quotesLayout: QuoteLayout.SCROLL, heading: null, subheading: null },
+    { enabled: true, sessionId: null, handPicked: false, quotesLayout: QuoteLayout.SCROLL, quotesExpand: QuoteExpand.POPUP, heading: null, subheading: null },
     admin(),
   );
 });
@@ -199,15 +200,19 @@ describe('testimonials while no session is upcoming', () => {
     const fresh = await service.forAdmin();
     expect(fresh.quotesLayoutOptions).toEqual([QuoteLayout.SCROLL, QuoteLayout.GRID]);
     expect(fresh.quotesLayout).toBe(QuoteLayout.SCROLL);
-    expect(await service.quotesLayout()).toBe(QuoteLayout.SCROLL);
+    expect(await service.quotesDisplay()).toEqual({ quotesLayout: QuoteLayout.SCROLL, quotesExpand: QuoteExpand.POPUP });
+    expect(fresh.quotesExpandOptions).toEqual([QuoteExpand.POPUP, QuoteExpand.INLINE]);
 
     await service.update({ quotesLayout: QuoteLayout.GRID }, admin());
-    expect(await service.quotesLayout()).toBe(QuoteLayout.GRID);
+    expect((await service.quotesDisplay()).quotesLayout).toBe(QuoteLayout.GRID);
+    // The two choices are independent.
+    await service.update({ quotesExpand: QuoteExpand.INLINE }, admin());
+    expect(await service.quotesDisplay()).toEqual({ quotesLayout: QuoteLayout.GRID, quotesExpand: QuoteExpand.INLINE });
     // Changing something else leaves it alone.
     await service.update({ heading: 'Still grid.' }, admin());
     expect((await service.forAdmin()).quotesLayout).toBe(QuoteLayout.GRID);
-    await service.update({ quotesLayout: QuoteLayout.SCROLL, heading: null }, admin());
-    expect(await service.quotesLayout()).toBe(QuoteLayout.SCROLL);
+    await service.update({ quotesLayout: QuoteLayout.SCROLL, quotesExpand: QuoteExpand.POPUP, heading: null }, admin());
+    expect(await service.quotesDisplay()).toEqual({ quotesLayout: QuoteLayout.SCROLL, quotesExpand: QuoteExpand.POPUP });
   });
 
   it('refuses a session with nothing to show', async () => {
