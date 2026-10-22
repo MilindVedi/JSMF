@@ -3,6 +3,7 @@ import { PrismaModule } from '../../shared/prisma/prisma.module';
 import { StorageModule } from '../storage/storage.module';
 import { DownloadService } from './application/download.service';
 import { EntitlementService } from './application/entitlement.service';
+import { LibraryBookmarkService } from './application/library-bookmark.service';
 import { LibraryController } from './http/library.controller';
 
 /**
@@ -17,7 +18,7 @@ import { LibraryController } from './http/library.controller';
 @Module({
   imports: [PrismaModule, StorageModule],
   controllers: [LibraryController],
-  providers: [EntitlementService, DownloadService],
+  providers: [EntitlementService, DownloadService, LibraryBookmarkService],
   exports: [EntitlementService, DownloadService],
 })
 export class EntitlementsModule {}

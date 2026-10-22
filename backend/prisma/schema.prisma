@@ -79,6 +79,7 @@ model User {
   uploads                Upload[]
   orders                 Order[]
   entitlements           Entitlement[]
+  libraryBookmarks       LibraryBookmark[]
   grantedRoles           UserRole[]                @relation("RoleGrantedBy")
   initiatedRefunds       Refund[]
   accessEvents           ContentAccessEvent[]
@@ -463,6 +464,7 @@ model Product {
   taxonomyTerms      ProductTaxonomyTerm[]
   orderItems         OrderItem[]
   entitlements       Entitlement[]         @relation("EntitlementProduct")
+  libraryBookmarks   LibraryBookmark[]
   grantedVia         Entitlement[]         @relation("EntitlementSourceProduct")
   accessEvents       ContentAccessEvent[]
   bundleItems        ProductBundleItem[]   @relation("BundleParent")
@@ -1053,6 +1055,26 @@ model Entitlement {
   @@index([userId, status])
   @@index([productId])
   @@map("entitlements")
+  @@schema("public")
+}
+
+/// A product the reader has bookmarked in their library, so they can find it
+/// again under "Bookmarked". One row per reader and product — bookmarking
+/// twice is a no-op, not a second row. Only a product the reader holds can be
+/// bookmarked (checked in LibraryBookmarkService); if their access later ends
+/// the row stays, but the library only lists what they still hold, so it
+/// simply stops showing.
+model LibraryBookmark {
+  userId    String   @map("user_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([userId, productId])
+  @@index([productId])
+  @@map("library_bookmarks")
   @@schema("public")
 }
 

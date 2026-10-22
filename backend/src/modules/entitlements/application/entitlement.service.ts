@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  AssetKind,
   Entitlement,
   EntitlementSource,
   EntitlementStatus,
@@ -235,6 +236,12 @@ export class EntitlementService {
             // Unlisted products have no store page, so the library shows the
             // title without a link.
             listed: true,
+            // The cover the library card shows, as the store's own cards do.
+            assets: {
+              where: { isCurrent: true, kind: AssetKind.COVER_IMAGE },
+              take: 1,
+              select: { storageProvider: true, bucket: true, objectKey: true },
+            },
           },
         },
         // Where a session handout came from, for the library's label.
@@ -266,6 +273,8 @@ export class EntitlementService {
     // The label names a session by its short name when it has one — the
     // stable name, not the booking card's title, which admins reword daily.
     // Same rule as the emails (events/domain/session-display.ts).
+    // `product.assets` carries the cover's storage address; LibraryController
+    // turns it into a URL, as CatalogController does for the store's cards.
     return rows
       .filter((row) => !insideABundle.has(row.productId))
       .map(({ sourceProduct, ...row }) => ({

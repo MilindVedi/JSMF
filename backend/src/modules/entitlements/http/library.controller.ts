@@ -1,12 +1,15 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, Req } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Query, Req } from '@nestjs/common';
 import { AssetKind } from '@prisma/client';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
 import type { AuthenticatedUser } from '../../identity/application/auth.service';
+import { StorageService } from '../../storage/application/storage.service';
+import { objectRefOf } from '../../storage/domain/storage-provider.port';
 import { DownloadService } from '../application/download.service';
 import { EntitlementService } from '../application/entitlement.service';
+import { LibraryBookmarkService } from '../application/library-bookmark.service';
 
 @ApiTags('library')
 @Controller()
@@ -14,13 +17,49 @@ export class LibraryController {
   constructor(
     private readonly entitlements: EntitlementService,
     private readonly downloads: DownloadService,
+    private readonly storage: StorageService,
+    private readonly bookmarks: LibraryBookmarkService,
   ) {}
 
   @Get('me/purchases')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Everything this user currently has access to' })
-  purchases(@CurrentUser() user: AuthenticatedUser) {
-    return this.entitlements.listForUser(user.id);
+  async purchases(@CurrentUser() user: AuthenticatedUser) {
+    const [rows, bookmarked] = await Promise.all([
+      this.entitlements.listForUser(user.id),
+      this.bookmarks.idsFor(user.id),
+    ]);
+
+    // The cover is stored as an address, never a URL (storage-provider.port);
+    // it becomes one here, exactly as the store's own cards get theirs.
+    return Promise.all(
+      rows.map(async ({ product: { assets, ...product }, ...row }) => ({
+        ...row,
+        bookmarked: bookmarked.has(row.productId),
+        product: {
+          ...product,
+          coverUrl: assets[0]
+            ? await this.storage.getSignedDownloadUrl(objectRefOf(assets[0]), { disposition: 'inline' })
+            : null,
+        },
+      })),
+    );
+  }
+
+  @Put('me/bookmarks/:productId')
+  @HttpCode(204)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Bookmark something in your library' })
+  async bookmark(@CurrentUser() user: AuthenticatedUser, @Param('productId', ParseUUIDPipe) productId: string) {
+    await this.bookmarks.add(user.id, productId);
+  }
+
+  @Delete('me/bookmarks/:productId')
+  @HttpCode(204)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove a bookmark' })
+  async unbookmark(@CurrentUser() user: AuthenticatedUser, @Param('productId', ParseUUIDPipe) productId: string) {
+    await this.bookmarks.remove(user.id, productId);
   }
 
   /**

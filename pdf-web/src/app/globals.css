@@ -988,3 +988,44 @@
   .mentor-photo-frame:hover .mentor-photo { transform: none; }
   .medal, .medal::before { animation: none; }
 }
+
+/* --- My Library -----------------------------------------------------------
+   The reader's own shelf: a quieter page than the storefront, so the covers
+   carry it rather than the chrome. */
+
+@utility library-intro {
+  background: linear-gradient(110deg, var(--background), var(--secondary));
+}
+
+/* The dotted ground a cover sits on, so a tall PDF cover reads as an object
+   on a surface rather than an image floating in a white box. */
+@utility library-cover-stage {
+  background-image: radial-gradient(color-mix(in oklab, var(--primary) 12%, transparent) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+@utility library-book {
+  box-shadow: 8px 12px 20px -8px color-mix(in oklab, var(--brand-deep) 45%, transparent);
+}
+
+@utility library-resource {
+  transition: border-color 250ms ease, box-shadow 250ms ease;
+}
+.library-resource:hover {
+  border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+  box-shadow: var(--shadow-editorial);
+}
+
+@utility library-enter {
+  animation: library-reveal 450ms ease-out both;
+}
+@keyframes library-reveal {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-enter { animation: none; }
+  .library-resource, .library-book { transition: none; }
+  .library-resource:hover .library-book { transform: none; }
+}

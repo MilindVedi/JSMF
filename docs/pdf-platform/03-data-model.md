@@ -264,6 +264,14 @@ Written on every signed-URL mint. This is what makes "download management" and "
 
 **Why `product`/`asset` are `SET NULL` rather than `CASCADE`:** this table's entire purpose is to be a record that outlives the thing it recorded. A *sold* product can never be hard-deleted anyway — `order_items`/`entitlements` restrict that — but a **free** product has nothing else stopping it from being deleted, and an audit log that can be erased by deleting what it was auditing has failed at its one job. `SET NULL` keeps the event row; only its pointer to the now-gone product or asset goes null.
 
+### `library_bookmarks` — what a reader has bookmarked in My Library
+
+`user_id` FK→users **ON DELETE CASCADE**, `product_id` FK→products **ON DELETE CASCADE**, `created_at`. **PK** `(user_id, product_id)`, so bookmarking twice is one row. **Index** `(product_id)`.
+
+`PUT /me/bookmarks/:productId` adds one (idempotent; 403 unless the reader holds an active entitlement to it), `DELETE` removes one (idempotent), and `GET /me/purchases` marks each row `bookmarked`. Cascade, unlike the tables above, because a bookmark is a reader's note to self: it has no value once the reader or the product is gone. Not audited, for the same reason. If access ends, the row stays but the library only lists what the reader still holds, so it simply stops showing.
+
+**Library search is done in the browser, not with Postgres full-text search** (`pdf-web/src/lib/library-search.ts`). A library is a few dozen rows, already loaded in full to draw the page, so a server round trip per keystroke would buy nothing; and Postgres FTS matches whole stemmed words, so a half-typed "anat" would not find "Anatomy". The browser search matches every typed word against the start of words (any order), ignores case and accents, forgives one typo in words of 5+ letters, also searches the PDFs inside a bundle and the session an item came with, and ranks title matches first.
+
 ---
 
 ## 6. `audit_logs` — built

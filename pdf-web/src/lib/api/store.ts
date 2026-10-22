@@ -62,11 +62,15 @@ export interface Entitlement {
     status: string;
     /** False: hidden from the store, so there is no product page to link to. */
     listed: boolean;
+    /** The cover to show on the library card, or null when none was uploaded. */
+    coverUrl: string | null;
   };
   /** For a session handout: the session it came with. */
   sourceProduct: { id: string; title: string; type: string } | null;
   /** For a bundle: the PDFs in it this person can download. Null otherwise. */
   contents: Array<{ id: string; title: string; subtitle: string | null }> | null;
+  /** Whether this reader has bookmarked it. */
+  bookmarked: boolean;
 }
 
 export const storeApi = {
@@ -117,6 +121,8 @@ export const storeApi = {
     ),
 
   purchases: () => api.get<Entitlement[]>("/me/purchases"),
+  bookmark: (productId: string) => api.put<void>(`/me/bookmarks/${productId}`),
+  unbookmark: (productId: string) => api.delete<void>(`/me/bookmarks/${productId}`),
 
   orders: () => api.get<Order[]>("/orders"),
 
