@@ -1,5 +1,18 @@
-import { Body, Controller, Get, Patch, Req } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Patch,
+  Post,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
@@ -8,6 +21,9 @@ import { actorFrom } from '../../catalog/http/actor';
 import type { AuthenticatedUser } from '../../identity/application/auth.service';
 import { SettingsService, type PlatformSettingsDto } from '../application/settings.service';
 import { UpdatePlatformSettingsDto } from './dto/update-settings.dto';
+
+/** A portrait photo, not a print file: a wrong upload fails fast. */
+const MENTOR_PHOTO_MAX_BYTES = 8 * 1024 * 1024;
 
 /**
  * What the admin panel is told, which is the stored toggles **plus** the
@@ -65,6 +81,38 @@ export class AdminSettingsController {
   ): Promise<AdminSettingsResponse> {
     return {
       ...(await this.settings.update(dto, actorFrom(user, request))),
+      refundsEnabled: this.config.get('REFUNDS_ENABLED'),
+    };
+  }
+
+  @Post('mentor-photo')
+  @HttpCode(200)
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: "Replace Dr. Angad's portrait in the site heroes",
+    description: 'JPEG, PNG or WebP, up to 8 MB. Portrait 3:4, ideally 1200 × 1600 px.',
+  })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MENTOR_PHOTO_MAX_BYTES } }))
+  async setMentorPhoto(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<AdminSettingsResponse> {
+    if (!file) throw new BadRequestException('No file was uploaded under the field name "file".');
+    return {
+      ...(await this.settings.setMentorPhoto(file, actorFrom(user, request))),
+      refundsEnabled: this.config.get('REFUNDS_ENABLED'),
+    };
+  }
+
+  @Delete('mentor-photo')
+  @ApiOperation({ summary: 'Go back to the portrait bundled with the websites' })
+  async removeMentorPhoto(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<AdminSettingsResponse> {
+    return {
+      ...(await this.settings.removeMentorPhoto(actorFrom(user, request))),
       refundsEnabled: this.config.get('REFUNDS_ENABLED'),
     };
   }

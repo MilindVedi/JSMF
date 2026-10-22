@@ -77,10 +77,10 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     <div className="flex min-h-dvh flex-col bg-background">
       <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-xl">
         <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 px-5 lg:px-8">
-          <div className="flex items-center gap-8">
+          <div className="flex min-w-0 items-center gap-8">
             <Link
               href="/"
-              className="flex shrink-0 items-center gap-2.5 font-display text-base text-brand-ink"
+              className="flex min-w-0 items-center gap-2.5 font-display text-base text-brand-ink"
               aria-label={`${brand.productName} — Jab Studies Met Fun, home`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- build-time constant from public/ */}
@@ -94,12 +94,12 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
               {/* Name first, then what the initials stand for, divided by a
                   drawn rule rather than a typed "|" so it keeps the border
                   colour and sits at text height. */}
-              <span>
+              <span className="shrink-0">
                 <span className="font-semibold">JSMF</span>
                 <span className="hidden font-normal text-muted-foreground sm:inline"> · Resources</span>
               </span>
-              <span aria-hidden="true" className="hidden h-4 w-px shrink-0 bg-border sm:block" />
-              <span className="hidden font-normal text-muted-foreground sm:inline">Jab Studies Met Fun</span>
+              <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
+              <span className="truncate font-normal text-muted-foreground">Jab Studies Met Fun</span>
             </Link>
 
             <nav className="hidden items-center gap-2 md:flex" aria-label="Main navigation">

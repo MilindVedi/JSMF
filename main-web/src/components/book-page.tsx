@@ -7,7 +7,8 @@ import { SiteLayout } from "@/components/site";
 import { FloatingVideo } from "@/components/floating-video";
 import { TelegramFloat } from "@/components/telegram-float";
 import { RegisterDialog } from "@/components/register-dialog";
-import { DoctorPortrait, SessionCard } from "@/components/landing";
+import { DoctorPortrait } from "@/components/doctor-portrait";
+import { SessionCard } from "@/components/landing";
 import { SessionFeedback } from "@/components/session-feedback";
 import {
   NoSessionTestimonialsSection,

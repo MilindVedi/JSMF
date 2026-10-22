@@ -290,6 +290,27 @@ it; deleting one deletes its images. See [§3e](./README.md#3e-testimonials).
   it, **Book a 1:1 session** (only once a 1:1 offering is published). With no
   session open, only the 1:1 button shows, and the dark "Next session coming
   soon" band shows **Get notified on Telegram**.
+- **Dr. Angad's portrait:** set on **Settings**, in the card **Dr. Angad's
+  portrait**. It applies to the photo at the top of the jsmf.me home page,
+  /prep-kit, and the resources.jsmf.me home page, all at once.
+  - **Look:** **Poster** (the default) is an arched photo with the AIR 925 and
+    AIR 9 medals floating on its edges and the name in purple across the
+    bottom. **Card** is the earlier look: the framed photo with Instagram,
+    YouTube and Telegram on top and a white card below listing the
+    achievements. It saves as soon as you pick.
+  - **Photo:** **Upload a photo** replaces the one that comes with the
+    websites; **Use the original photo** goes back to it. The photo must be:
+    - tall, in a **3:4 shape** — ideally **1200 × 1600 px**, at least
+      900 × 1200 px (a phone photo taken upright is already 3:4);
+    - JPEG, PNG or WebP, up to 8 MB;
+    - with the face in the upper half and a little space above the head (the
+      top strip holds the "Your doctor. Your mentor." label), and nothing
+      important in the bottom third (his name covers it on the poster).
+
+    A photo of the wrong shape or too small is stopped before it is sent, with
+    its size and what to change. The preview beside the button shows where the
+    label and the name fall. Replacing a photo deletes the one uploaded before
+    it; the original photo is never deleted.
 - **How student replies are laid out:** set on **Sessions**, in the card **How
   student replies are laid out**, above the one below. It applies everywhere the
   website shows written replies — the band between sessions, and each session's

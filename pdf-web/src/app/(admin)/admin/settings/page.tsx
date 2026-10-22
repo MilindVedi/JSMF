@@ -5,14 +5,15 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChangePasswordCard } from "@/components/admin/change-password-card";
+import { MentorPortraitCard } from "@/components/admin/mentor-portrait-card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { adminSettingsApi, type PlatformSettings } from "@/lib/api/settings";
+import { adminSettingsApi, type AdminPlatformSettings } from "@/lib/api/settings";
 import { mainWebsiteHost } from "@/lib/site-content";
 
 /** Site-wide toggles that apply across the main website and the PDF store at once. */
 export default function AdminSettingsPage() {
-  const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const [settings, setSettings] = useState<AdminPlatformSettings | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -22,7 +23,7 @@ export default function AdminSettingsPage() {
       .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Could not load settings"));
   }, []);
 
-  async function toggle(key: keyof PlatformSettings, value: boolean) {
+  async function toggle(key: "showSpamFolderNote", value: boolean) {
     if (!settings) return;
     setSettings({ ...settings, [key]: value });
     setSaving(true);
@@ -59,6 +60,8 @@ export default function AdminSettingsPage() {
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
       ) : (
+      <>
+      <MentorPortraitCard settings={settings} onSaved={setSettings} />
       <Card>
         <CardHeader>
           <CardTitle>Email visibility</CardTitle>
@@ -78,6 +81,7 @@ export default function AdminSettingsPage() {
           </p>
         </CardContent>
       </Card>
+      </>
       )}
     </div>
   );

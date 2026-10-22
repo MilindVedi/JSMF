@@ -1604,24 +1604,34 @@ model PlatformSettings {
 
   /// The testimonials band on the home page and /prep-kit while no session
   /// is upcoming (until now that band simply disappeared). Off hides it.
-  noSessionTestimonialsEnabled    Boolean @default(true) @map("no_session_testimonials_enabled")
+  noSessionTestimonialsEnabled    Boolean          @default(true) @map("no_session_testimonials_enabled")
   /// Whose testimonials (the session's original gallery). Null = the most
   /// recent past session that has any. SetNull: deleting that session falls
   /// back to automatic rather than failing.
-  noSessionTestimonialsSessionId  String? @map("no_session_testimonials_session_id") @db.Uuid
+  noSessionTestimonialsSessionId  String?          @map("no_session_testimonials_session_id") @db.Uuid
   /// The band's copy. Null falls back to the defaults in LiveSessionService.
-  noSessionTestimonialsHeading    String? @map("no_session_testimonials_heading") @db.VarChar(150)
-  noSessionTestimonialsSubheading String? @map("no_session_testimonials_subheading") @db.VarChar(300)
+  noSessionTestimonialsHeading    String?          @map("no_session_testimonials_heading") @db.VarChar(150)
+  noSessionTestimonialsSubheading String?          @map("no_session_testimonials_subheading") @db.VarChar(300)
   /// On: the band shows the screenshots and replies picked one by one, from
   /// any sessions (NoSessionScreenshot, NoSessionQuote). Off: the session
   /// chosen above, or the automatic one, as before. Off by default, so the
   /// picks can be prepared before switching over.
-  noSessionTestimonialsHandPicked Boolean @default(false) @map("no_session_testimonials_hand_picked")
+  noSessionTestimonialsHandPicked Boolean          @default(false) @map("no_session_testimonials_hand_picked")
   /// How the written replies are laid out wherever they appear on the website:
   /// a row that scrolls sideways, or a block that wraps onto several lines.
-  quotesLayout                    QuoteLayout @default(SCROLL) @map("feedback_quotes_layout")
+  quotesLayout                    QuoteLayout      @default(SCROLL) @map("feedback_quotes_layout")
   /// What "Read more" on a long reply does, everywhere on the website.
-  quotesExpand                    QuoteExpand @default(POPUP) @map("feedback_quotes_expand")
+  quotesExpand                    QuoteExpand      @default(POPUP) @map("feedback_quotes_expand")
+  /// How Dr. Angad's portrait looks in the hero of the home page, /prep-kit
+  /// and the store's home page: the arched poster with floating rank medals
+  /// (POSTER), or the framed photo with a credential card below it (CARD).
+  mentorCardStyle                 MentorCardStyle  @default(POSTER) @map("mentor_card_style")
+  /// The portrait photo an admin uploaded for the site heroes, in the public
+  /// bucket. All three null = the photo bundled with the websites. Stored as
+  /// provider/bucket/key, never a URL, like every other file column.
+  mentorPhotoStorageProvider      StorageProvider? @map("mentor_photo_storage_provider")
+  mentorPhotoBucket               String?          @map("mentor_photo_bucket") @db.VarChar(255)
+  mentorPhotoObjectKey            String?          @map("mentor_photo_object_key")
 
   noSessionTestimonialsSession LiveSession? @relation(fields: [noSessionTestimonialsSessionId], references: [productId], onDelete: SetNull)
 
@@ -2816,6 +2826,14 @@ model FeedbackHighlight {
 enum QuoteExpand {
   POPUP
   INLINE
+
+  @@schema("public")
+}
+
+/// The two looks for the mentor portrait in the site heroes.
+enum MentorCardStyle {
+  POSTER
+  CARD
 
   @@schema("public")
 }

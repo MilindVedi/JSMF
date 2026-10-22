@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ExternalLink, Play, Sparkles } from "lucide-react";
-import { DoctorPortraitCard } from "@/components/store/doctor-portrait";
+import { DoctorPortraitCard } from "@/components/store/mentor-portrait";
 import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/store/social-icons";
 import { ResourceCard } from "@/components/store/resource-card";
 import { storeButton } from "@/components/store/store-button";
@@ -75,8 +75,10 @@ export default function LandingPage() {
             </div>
             </div>
 
+            {/* Desktop only: the first pick sits beside the photo. Phones get
+                every pick together, before the photo — see below. */}
             {featured && featured.length > 0 && (
-              <div className="mt-12 sm:mt-16">
+              <div className="mt-12 hidden sm:mt-16 lg:block">
                 <div className="mb-6 flex items-center gap-4">
                   <span className="eyebrow shrink-0">FEATURED RESOURCES</span>
                   <div className="h-px flex-1 bg-border" />
@@ -87,6 +89,28 @@ export default function LandingPage() {
               </div>
             )}
           </div>
+
+          {/* Phones and tablets: all the picks in one list, then the photo
+              last, rather than one pick above the photo and the rest below. */}
+          {featured && featured.length > 0 && (
+            <div className="lg:hidden">
+              <div className="mb-6 flex items-center gap-4">
+                <span className="eyebrow shrink-0">FEATURED RESOURCES</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+              <div className="grid gap-6 md:grid-cols-2">
+                {featured.map((product) => (
+                  <ResourceCard key={product.id} product={product} layout="horizontal" />
+                ))}
+              </div>
+              <div className="mt-8 flex justify-center">
+                <Link href="/browse" className={storeButton({ variant: "ghost" })}>
+                  View all resources
+                  <ArrowRight className="size-4" />
+                </Link>
+              </div>
+            </div>
+          )}
 
           {/* Same photo and badges as jsmf.me's hero — the card brings its own
               rank badge, credential chips, social orbs and bottom credential
@@ -100,7 +124,7 @@ export default function LandingPage() {
         </div>
 
         {featured && featured.length > 1 && (
-          <div className="mx-auto max-w-7xl px-5 pb-14 lg:px-8 lg:pb-20">
+          <div className="mx-auto hidden max-w-7xl px-5 pb-14 lg:block lg:px-8 lg:pb-20">
             <div className="grid gap-6 md:grid-cols-2">
               {featured.slice(1).map((product) => (
                 <ResourceCard key={product.id} product={product} layout="horizontal" />
@@ -124,7 +148,9 @@ export default function LandingPage() {
           </blockquote>
           <p className="mt-7 text-sm font-semibold">— {author.quote.attribution}</p>
 
-          <div className="mt-8 flex justify-center gap-3">
+          {/* Wraps on narrow phones: three labelled buttons do not fit one
+              line at 390px and would run off both edges. */}
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
             <a
               href={socials.youtube}
               target="_blank"

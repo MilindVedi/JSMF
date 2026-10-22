@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
-  Award,
   CalendarDays,
   CheckCircle2,
   Clock,
+  ExternalLink,
   FileQuestion,
   FileText,
   Library,
@@ -18,6 +18,7 @@ import {
   Send,
   Stethoscope,
 } from "lucide-react";
+import { DoctorPortrait } from "@/components/doctor-portrait";
 import { FloatingVideo } from "@/components/floating-video";
 import { TelegramFloat } from "@/components/telegram-float";
 import { RegisterDialog } from "@/components/register-dialog";
@@ -31,7 +32,6 @@ import {
 } from "@/components/testimonials-section";
 import {
   InstagramIcon,
-  TelegramIcon,
   YouTubeIcon,
 } from "@/components/social-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -120,14 +120,51 @@ export function Landing({
       <section className="border-b border-border bg-card">
         <div className="mx-auto grid max-w-7xl items-center gap-14 px-5 py-14 lg:grid-cols-12 lg:px-8 lg:py-20">
           <div className="lg:col-span-7">
-            <h1 className="max-w-2xl font-display text-5xl font-semibold leading-[1.08] text-brand-deep md:text-6xl">
+            {/* His name and rank are not repeated here: the portrait card
+                beside this carries both, and the quote below says it in his
+                own voice. */}
+            <h1 className="max-w-2xl font-display text-4xl font-semibold leading-[1.1] text-brand-deep md:text-5xl">
               Prepare smarter, with a doctor who has just done it.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
-              Dr. Angad Rai — NEET-PG 2026, AIR 925. Sharing the revision system
-              behind his preparation — live sessions, high-yield material, and
-              honest guidance through JSMF.
+              The goal is not to teach you everything. The goal is to{" "}
+              <strong className="font-semibold text-brand-deep">
+                build your confidence
+              </strong>
+              ,{" "}
+              <strong className="font-semibold text-brand-deep">
+                strengthen your concepts
+              </strong>
+              , and train you to{" "}
+              <strong className="font-semibold text-brand-deep">
+                tackle even the questions you&apos;re unsure about
+              </strong>{" "}
+              in the examination. In an exam, knowing everything isn&apos;t the
+              only advantage.{" "}
+              <strong className="font-semibold text-brand-deep">
+                Knowing how to think makes all the difference.
+              </strong>
             </p>
+
+            {/* Dr. Angad's line from the session poster, in the brand purple
+                rather than the poster's teal. A <figure> and not a heading, so
+                it does not break the page's one-h1, headings-in-order outline. */}
+            <figure className="mt-7 max-w-xl rounded-2xl border-l-4 border-primary bg-accent/60 py-4 pl-5 pr-5 sm:pl-6">
+              <blockquote className="font-display text-base font-semibold leading-snug text-brand-deep sm:text-lg">
+                <span aria-hidden className="mr-1 text-primary/40">
+                  &ldquo;
+                </span>
+                If you know the <Accent>WHAT</Accent> and the{" "}
+                <Accent>WHY</Accent> behind a concept, you won&apos;t react with{" "}
+                <Accent>WTF</Accent> in the exam!&rdquo;
+              </blockquote>
+              {/* Tucked to the right on its own line rather than left under
+                  the quote: it reads as a signature and costs a shorter line
+                  than a full one of its own. */}
+              <figcaption className="mt-1.5 text-right text-xs font-semibold text-muted-foreground">
+                — Dr. Angad Rai
+              </figcaption>
+            </figure>
 
             <div className="mt-9 flex flex-col items-start">
               {
@@ -433,7 +470,7 @@ export function Landing({
       {/* What's coming */}
       <section className="border-b border-border bg-background py-20">
         <div className="mx-auto max-w-7xl px-5 lg:px-8">
-          <span className="eyebrow">What&apos;s coming to JSMF</span>
+          <span className="eyebrow">More from JSMF</span>
           <h2 className="mt-6 max-w-2xl font-display text-3xl font-semibold leading-tight text-brand-deep md:text-4xl">
             More tools. One preparation ecosystem.
           </h2>
@@ -466,9 +503,17 @@ export function Landing({
                 Curated, doctor-written material to support your revision —
                 growing steadily with each subject we cover.
               </p>
-              <span className="mt-6 inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                Coming soon
-              </span>
+              {/* Live, unlike PYQ Practice beside it: a link to the store
+                  rather than a "Coming soon" tag. A separate site, so it
+                  opens in a new tab and the icon says it leaves this one. */}
+              <a
+                href={links.store}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-accent px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+              >
+                Browse resources <ExternalLink size={12} />
+              </a>
             </article>
           </div>
         </div>
@@ -513,86 +558,12 @@ export function Landing({
   );
 }
 
-/** The portrait card with credentials and social links, shared by the home and /prep-kit pages. */
-export function DoctorPortrait({ className = "" }: { className?: string }) {
-  return (
-    <div className={`relative mx-auto w-full max-w-sm ${className}`}>
-      <div className="absolute -top-3 right-0 z-20 flex items-center gap-2">
-        <a
-          href={links.instagram}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Instagram"
-          className="social-orb"
-        >
-          <InstagramIcon size={16} />
-        </a>
-        <a
-          href={links.youtube}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="YouTube"
-          className="social-orb"
-        >
-          <YouTubeIcon size={16} />
-        </a>
-        <a
-          href={links.telegram}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Telegram"
-          className="social-orb"
-        >
-          <TelegramIcon size={16} />
-        </a>
-      </div>
-
-      <div className="portrait-frame">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/dr-angad-rai-v2.jpg"
-          alt="Dr. Angad Rai"
-          width={800}
-          height={1000}
-          className="h-full w-full object-cover"
-        />
-      </div>
-      <div className="doctor-credential">
-        <div className="credential-chip absolute -top-3 right-4 z-10 flex w-fit items-center gap-2 shadow-md">
-          <MonitorPlay size={13} /> Live sessions
-        </div>
-        <p className="text-[10px] font-bold uppercase text-primary">
-          Founder &amp; mentor
-        </p>
-        <h2 className="mt-1 font-display font-semibold text-brand-deep">
-          Dr. Angad Rai
-        </h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          MBBS — Medical Lead, JSMF
-        </p>
-        <ul className="mt-3 space-y-2 border-t border-border pt-3">
-          <li className="flex items-center gap-2 text-xs font-semibold text-brand-deep">
-            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#FFD700] text-brand-deep">
-              <Award size={12} />
-            </span>
-            AIR 925 · NEET-PG 2026
-          </li>
-          <li className="flex items-center gap-2 text-xs font-semibold text-brand-deep">
-            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-primary">
-              <Award size={12} />
-            </span>
-            AIR 9 · FMGE 2023
-          </li>
-          <li className="flex items-center gap-2 text-xs font-semibold text-brand-deep">
-            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-primary">
-              <Stethoscope size={12} />
-            </span>
-            MBBS · Bronze Medalist
-          </li>
-        </ul>
-      </div>
-    </div>
-  );
+/**
+ * The words the hero's pull quote turns on — WHAT, WHY, WTF — picked out in
+ * the brand purple, as the session poster picks them out in its own colour.
+ */
+function Accent({ children }: { children: React.ReactNode }) {
+  return <span className="text-primary">{children}</span>;
 }
 
 function SeatsLine({

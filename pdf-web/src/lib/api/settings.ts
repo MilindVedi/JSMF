@@ -1,8 +1,14 @@
 import { api } from "./client";
 
 /** The stored toggles — the ones an admin may change. */
+/** How Dr. Angad's portrait looks in the site heroes. */
+export type MentorCardStyle = "POSTER" | "CARD";
+
 export interface PlatformSettings {
   showSpamFolderNote: boolean;
+  mentorCardStyle: MentorCardStyle;
+  /** An uploaded portrait, or null for the photo bundled with the site. Read-only here. */
+  mentorPhotoUrl: string | null;
 }
 
 /**
@@ -20,6 +26,9 @@ export interface AdminPlatformSettings extends PlatformSettings {
   refundsEnabled: boolean;
 }
 
+/** The stored toggles an admin may change through the PATCH. The photo has its own calls. */
+export type PlatformSettingsInput = Pick<PlatformSettings, "showSpamFolderNote" | "mentorCardStyle">;
+
 export const settingsApi = {
   get: () => api.getAnonymous<PlatformSettings>("/settings"),
 };
@@ -27,6 +36,14 @@ export const settingsApi = {
 /** ADMIN only — server-enforced. */
 export const adminSettingsApi = {
   get: () => api.get<AdminPlatformSettings>("/admin/settings"),
-  update: (input: Partial<PlatformSettings>) =>
+  update: (input: Partial<PlatformSettingsInput>) =>
     api.patch<AdminPlatformSettings>("/admin/settings", input),
+  /** Replaces the hero portrait. The admin page checks its shape first. */
+  uploadMentorPhoto: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.upload<AdminPlatformSettings>("/admin/settings/mentor-photo", formData);
+  },
+  /** Back to the photo bundled with the websites. */
+  removeMentorPhoto: () => api.delete<AdminPlatformSettings>("/admin/settings/mentor-photo"),
 };
