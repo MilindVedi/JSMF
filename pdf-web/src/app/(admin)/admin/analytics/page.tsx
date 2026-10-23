@@ -5,6 +5,8 @@ import { BarChart3, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FinanceAnalytics } from "@/components/admin/finance-analytics";
 import { adminAnalyticsApi, type AnalyticsSummary } from "@/lib/api/admin-analytics";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -36,13 +38,37 @@ const percent = (part: number, whole: number) =>
 const shortDay = (day: string) =>
   new Date(`${day}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
 
+/** Two views: money across every app, and main website traffic. */
+export default function AnalyticsPage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
+        <p className="text-sm text-muted-foreground">Days are India time.</p>
+      </div>
+      <Tabs defaultValue="finance">
+        <TabsList>
+          <TabsTrigger value="finance">Finance</TabsTrigger>
+          <TabsTrigger value="traffic">Website traffic</TabsTrigger>
+        </TabsList>
+        <TabsContent value="finance" className="mt-4">
+          <FinanceAnalytics />
+        </TabsContent>
+        <TabsContent value="traffic" className="mt-4">
+          <WebsiteTraffic />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
 /**
  * Main website activity: who visits, where they come from, and how far they
  * get toward a booked seat. Browser events are approximate (ad blockers,
  * closed tabs); the "accounts" and "paid orders" figures come from the
  * database and are exact — the two are shown side by side for that reason.
  */
-export default function AnalyticsPage() {
+function WebsiteTraffic() {
   const [days, setDays] = useState<(typeof RANGES)[number]>(14);
   const [data, setData] = useState<AnalyticsSummary | null>(null);
   /** The range the shown data is for; differs from `days` while a new one loads. */
@@ -70,12 +96,10 @@ export default function AnalyticsPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
-          <p className="text-sm text-muted-foreground">
-            Main website (jsmf.me) activity. Days are India time.
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Main website (jsmf.me) visitors and bookings. Paid orders here are live sessions and one-to-one calls only;
+          see Finance for every app.
+        </p>
         <div className="flex items-center gap-1 rounded-lg border p-1" role="group" aria-label="Date range">
           {RANGES.map((range) => (
             <button
@@ -107,7 +131,7 @@ export default function AnalyticsPage() {
             <Kpi
               label="Paid orders"
               value={number(data.server.ordersPaid)}
-              hint={`${formatMoney(data.server.paidAmountMinor)} · ${number(data.server.ordersCreated)} started`}
+              hint={`${formatMoney(data.server.paidAmountMinor)} · sessions + 1:1, before refunds · ${number(data.server.ordersCreated)} started`}
             />
             <Kpi
               label="Visitor → paid"

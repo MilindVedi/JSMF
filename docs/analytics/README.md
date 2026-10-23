@@ -149,7 +149,13 @@ sources, and the device split.
 - **Visitors** — distinct `visitorId`s with any event. One person on two
   devices counts twice; someone clearing storage counts again.
 - **Visits** — distinct tab sessions.
+The page has two tabs: **Finance** (first) and **Website traffic**. The
+traffic tab is described here; Finance is in §6a.
+
 - **Accounts created / Paid orders** — from `users` and `orders`, exact.
+  On this tab "paid orders" is the main website's only: live sessions and
+  one-to-one calls, counted on the day paid, *including orders later
+  refunded*. Store and PYQ-plan sales are on the Finance tab.
 - **Visitor → paid** — paid orders ÷ visitors, the headline conversion rate.
 - **Booking funnel** — of everyone who visited, how many clicked Book, opened
   registration, opened the payment window, and paid; each percentage is of the
@@ -159,6 +165,43 @@ sources, and the device split.
   Instagram apps often strip the referrer, so share **UTM-tagged links**
   (`https://jsmf.me/?utm_source=telegram&utm_medium=social&utm_campaign=oct-session`)
   to see them under *Campaigns*.
+
+## 6a. The Finance tab
+
+`GET /admin/analytics/finance?from&to` (or `?all=true`), ADMIN only, served by
+`FinanceReportService`. Every app — live sessions, one-to-one calls, the store,
+PYQ plans — read straight from `orders`, `order_items`, `payments`, `refunds`,
+`offline_sales` and `coupons`. No new tables; exact, unlike the traffic tab.
+
+How money is counted (the rules everything else follows):
+
+- **Sales** are what buyers paid (`orders.total_amount_minor`, after coupons)
+  for orders whose `paid_at` falls in the range — including ones refunded
+  later.
+- **Refunds** are every refund that is not `FAILED`, dated by `processed_at`
+  (when the money went back), or by `created_at` while still `PENDING`. A
+  refund therefore lands in the range it was issued, which can be after the
+  sale's. Pending refunds are counted and also shown separately.
+- **Net** = sales − refunds for the range. This is money in minus money out in
+  that period, not "sales that stayed sold".
+- **Source** comes from each order line's `product_type_snapshot`:
+  `LIVE_SESSION`, `MENTORSHIP` (one-to-one), PYQ plans (`COURSE` products with
+  `metadata.pyqSubscription = true`), and everything else as the store. An
+  order with several lines is split by line totals, for refunds too.
+- **How buyers paid**: an `offline_sales` row gives the method (Razorpay
+  payment page, direct UPI, bank transfer, cash, other); otherwise it is the
+  in-app Razorpay checkout. ₹0 orders show as free, and `STUB` payments (dev
+  only) as test payments.
+- **Checkout conversion / failed payments** count in-app checkouts only:
+  offline sales never went through a checkout.
+- **Compared with**: each headline figure shows the change against the
+  equally long period just before. There's no comparison for "All time", or
+  when the earlier period had nothing.
+- Up to 92 days the chart is per day, longer ranges per month. Ranges go up
+  to ten years.
+
+Not shown, because it isn't recorded: Razorpay's fees and GST payable. Every
+amount is before fees.
 
 ## 7. Data model
 
