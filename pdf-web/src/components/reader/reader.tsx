@@ -548,6 +548,7 @@ export function Reader({
               containerRef.current?.focus({ preventScroll: true });
             }}
           >
+            <PageStep side="left" disabled={page <= 1} onClick={() => engine.goToPage(page - 1)} />
             <input
               aria-label="Page number"
               inputMode="numeric"
@@ -557,6 +558,7 @@ export function Reader({
               className="h-7 w-10 rounded-md border bg-transparent text-center text-sm outline-none focus:ring-2 focus:ring-ring"
             />
             <span className="whitespace-nowrap text-muted-foreground">/ {pageCount}</span>
+            <PageStep side="right" disabled={page >= pageCount} onClick={() => engine.goToPage(page + 1)} />
           </form>
         )}
 
@@ -690,7 +692,7 @@ export function Reader({
             <div className="pdfViewer" />
           </div>
 
-          {/* One page at a time on a computer: arrows either side, quiet until the pointer is near. */}
+          {/* One page at a time on a computer: big arrows either side too, quiet until the pointer is near. */}
           {engine && paged && !failure && (
             <>
               <PageArrow side="left" disabled={page <= 1} onClick={() => engine.goToPage(page - 1)} />
@@ -858,11 +860,11 @@ function turnPage(engine: ReaderEngine, container: HTMLElement, forward: boolean
 }
 
 /**
- * The previous / next page arrow beside the page. Shown on computers; on
- * phones it is there for screen readers only (they take over swipes and
- * taps). Never `disabled`: a disabled button drops the keyboard focus.
+ * Previous / next page beside the page number: everywhere, and the one sure
+ * way to turn when zoomed in on a phone, where swipes move around the page.
+ * Never `disabled`: a disabled button drops the keyboard focus.
  */
-function PageArrow({ side, disabled, onClick }: { side: "left" | "right"; disabled: boolean; onClick: () => void }) {
+function PageStep({ side, disabled, onClick }: { side: "left" | "right"; disabled: boolean; onClick: () => void }) {
   const Icon = side === "left" ? ChevronLeft : ChevronRight;
   return (
     <button
@@ -872,8 +874,31 @@ function PageArrow({ side, disabled, onClick }: { side: "left" | "right"; disabl
       aria-disabled={disabled}
       aria-label={side === "left" ? "Previous page" : "Next page"}
       title={side === "left" ? "Previous page" : "Next page"}
+      className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-disabled:pointer-events-none aria-disabled:opacity-40 sm:size-8"
+    >
+      <Icon className="size-4" />
+    </button>
+  );
+}
+
+/**
+ * The big arrow beside the page on a computer, for the mouse. Keyboard and
+ * screen-reader users have the same buttons beside the page number, so this
+ * one stays out of the tab order.
+ */
+function PageArrow({ side, disabled, onClick }: { side: "left" | "right"; disabled: boolean; onClick: () => void }) {
+  const Icon = side === "left" ? ChevronLeft : ChevronRight;
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onClick()}
+      onMouseDown={keepReadingFocus}
+      aria-hidden
+      aria-disabled={disabled}
+      tabIndex={-1}
+      title={side === "left" ? "Previous page" : "Next page"}
       className={cn(
-        "absolute top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border bg-card/90 text-muted-foreground shadow-sm transition-opacity hover:text-foreground max-md:sr-only",
+        "absolute top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border bg-card/90 text-muted-foreground shadow-sm transition-opacity hover:text-foreground max-md:hidden",
         "opacity-40 hover:opacity-100 focus-visible:opacity-100 aria-disabled:pointer-events-none aria-disabled:opacity-0",
         side === "left" ? "left-3" : "right-3",
       )}

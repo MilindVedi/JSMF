@@ -20,8 +20,12 @@ seams below are where the next pieces go.
   - **phone:** the page fits the width (a whole A4 page would be too small to
     read), so you scroll down within it; swipe sideways or tap near the left or
     right edge to turn; a tap in the middle does nothing;
+  - **previous / next buttons beside the page number** in the top bar, in
+    both layouts, on every screen. They are the sure way to turn when zoomed
+    in on a phone, where sideways drags move around the page;
   - zoomed in, scrolling and dragging move around the page, and only a push
-    past its edge turns it. The wheel works per gesture, not per event: a
+    past its edge turns it. Sideways only moves once the page is wider than
+    the screen; until then a sideways swipe turns the page. The wheel works per gesture, not per event: a
     flick and its glide turn at most one page, and only if the gesture
     started at the page's edge (a glide that reaches the bottom stops there).
     Going back by wheel or ↑ lands on the bottom of the previous page;
@@ -31,7 +35,8 @@ seams below are where the next pieces go.
   - a turning tap never clicks what the new page has under the finger;
     swipes from the screen's very edge are left to the phone (iOS "back"),
     and a sideways trackpad swipe never becomes the browser's "back";
-  - the side arrows are on phones too, for screen readers only;
+  - the big side arrows are for the mouse, on computers only; screen
+    readers and the keyboard use the top-bar buttons;
   - the new page slides in a little from the side it came from (off with
     "reduce motion").
 - Only the pages near the screen are drawn, with selectable text and working
