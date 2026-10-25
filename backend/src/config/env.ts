@@ -82,6 +82,11 @@ const schema = z
     /// session is locked to the declared size, so this is enforced by the
     /// provider as well as here. GCS itself allows 5 TB per object.
     MAX_DIRECT_UPLOAD_SIZE_MB: z.coerce.number().int().positive().max(51_200).default(500),
+    /// Largest PDF the server will cut a sample from (ProductSampleService).
+    /// Unlike an upload, a cut holds the whole file in memory and parses it,
+    /// at several times its size — on a 512 MiB instance, 50 MB is the safe
+    /// ceiling. A bigger PDF still gets a sample: the admin uploads one.
+    SAMPLE_CUT_MAX_MB: z.coerce.number().int().positive().max(1_024).default(50),
     /// Size of each piece the browser sends. A multiple of 256 KiB, as GCS
     /// requires; 8 MiB is Google's recommended minimum. Larger means fewer
     /// requests, smaller means less to resend after a dropped connection.

@@ -15,6 +15,8 @@ const MENTOR_PHOTO_KEY_PREFIX = 'site/mentor-photo';
 export interface PlatformSettingsInput {
   showSpamFolderNote: boolean;
   mentorCardStyle: MentorCardStyle;
+  /** Store buyers may download files (else read-only); a product can override it. */
+  downloadsEnabled: boolean;
 }
 
 export interface PlatformSettingsDto extends PlatformSettingsInput {
@@ -151,7 +153,11 @@ export class SettingsService {
   }
 
   private toggles(row: PlatformSettingsInput): PlatformSettingsInput {
-    return { showSpamFolderNote: row.showSpamFolderNote, mentorCardStyle: row.mentorCardStyle };
+    return {
+      showSpamFolderNote: row.showSpamFolderNote,
+      mentorCardStyle: row.mentorCardStyle,
+      downloadsEnabled: row.downloadsEnabled,
+    };
   }
 
   private async toDto(row: PlatformSettings): Promise<PlatformSettingsDto> {

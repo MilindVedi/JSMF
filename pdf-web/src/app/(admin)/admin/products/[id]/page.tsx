@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AssetUpload, type AssetUploadHandle } from "@/components/admin/asset-upload";
+import { SampleCard } from "@/components/admin/sample-card";
 import { BundleContentsCard } from "@/components/admin/bundle-contents-card";
 import {
   CoverPreview,
@@ -74,6 +75,7 @@ export default function ProductEditorPage() {
   const detailsRef = useRef<StepSectionHandle>(null);
   const primaryUploadRef = useRef<AssetUploadHandle>(null);
   const coverUploadRef = useRef<AssetUploadHandle>(null);
+  const sampleUploadRef = useRef<AssetUploadHandle>(null);
   const termsRef = useRef<StepSectionHandle>(null);
   const linksRef = useRef<StepSectionHandle>(null);
 
@@ -116,7 +118,7 @@ export default function ProductEditorPage() {
     if (step === "categories") return termsRef.current ?? INERT_SECTION;
     if (step === "links") return linksRef.current ?? INERT_SECTION;
 
-    const uploads = [primaryUploadRef, coverUploadRef];
+    const uploads = [primaryUploadRef, coverUploadRef, sampleUploadRef];
     return {
       get isDirty() {
         return uploads.some((upload) => upload.current?.hasPending);
@@ -213,6 +215,7 @@ export default function ProductEditorPage() {
       description: values.description || undefined,
       accessType: values.accessType,
       listed: values.listed,
+      ...(values.downloadPolicy ? { downloadPolicy: values.downloadPolicy } : {}),
       priceAmountMinor: values.accessType === "PAID" ? rupeesToMinor(values.price ?? "0") : "0",
       compareAtAmountMinor:
         values.accessType === "PAID" && values.compareAtPrice
@@ -351,6 +354,7 @@ export default function ProductEditorPage() {
                 ref={detailsRef}
                 hideSubmit
                 inBundles={product.inBundles}
+                showDownloadPolicy={!isBundle}
                 submitLabel="Save changes"
                 onSubmit={saveDetails}
                 defaultValues={{
@@ -361,6 +365,7 @@ export default function ProductEditorPage() {
                   price: minorToRupees(product.priceAmountMinor),
                   compareAtPrice: minorToRupees(product.compareAtAmountMinor),
                   listed: product.listed,
+                  downloadPolicy: product.downloadPolicy ?? "INHERIT",
                 }}
               />
             </CardContent>
@@ -376,7 +381,7 @@ export default function ProductEditorPage() {
             <CardHeader>
               <CardTitle>The PDF</CardTitle>
               <CardDescription>
-                What a buyer downloads. Re-uploading creates a new version and keeps the old one,
+                What a buyer reads (and downloads, where downloads are on). Re-uploading creates a new version and keeps the old one,
                 so a mistaken replacement can be rolled back. Nothing here is saved until you press
                 Save below.
               </CardDescription>
@@ -446,6 +451,18 @@ export default function ProductEditorPage() {
               )}
             </CardContent>
           </Card>
+          )}
+
+          {!isBundle && (
+            <SampleCard
+              ref={sampleUploadRef}
+              productId={product.id}
+              sample={currentAsset("SAMPLE_PREVIEW")}
+              hasPdf={Boolean(primary)}
+              pdfPages={primary?.pageCount ?? null}
+              onChanged={() => void load()}
+              onPreview={(assetId) => void previewAsset(assetId)}
+            />
           )}
 
           <Card>

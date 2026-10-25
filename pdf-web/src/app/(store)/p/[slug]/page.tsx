@@ -5,21 +5,23 @@ import type { AuthUser } from "@/lib/api/types";
 import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Download, FileText, Layers, Library, Loader2 } from "lucide-react";
+import { BookOpenText, CheckCircle2, Download, Eye, FileText, Layers, Library, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { DoctorPortrait } from "@/components/store/doctor-portrait";
+import { readHref } from "@/components/store/reading-progress";
 import { LinksSection } from "@/components/store/links-section";
 import { TermGroups } from "@/components/store/term-groups";
 import { ApiError } from "@/lib/api/client";
 import { storeApi, type BundleQuote } from "@/lib/api/store";
-import type { ProductDetail } from "@/lib/api/types";
+import { isDownloadAllowed, type ProductDetail } from "@/lib/api/types";
 import { formatBytes, formatMoney } from "@/lib/money";
 import { author } from "@/lib/site-content";
 import { useCheckout } from "@/lib/use-checkout";
+import { useStoreDownloadsEnabled } from "@/lib/use-platform-settings";
 import { useSessionStore } from "@/store/session-store";
 
 function ProductPageContent() {
@@ -33,6 +35,7 @@ function ProductPageContent() {
   const [owned, setOwned] = useState(false);
   const [ownershipChecked, setOwnershipChecked] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const storeDownloads = useStoreDownloadsEnabled();
   /** A bundle's price for this buyer: the PDFs in it they already have come off. */
   const [quote, setQuote] = useState<BundleQuote | null>(null);
 
@@ -130,7 +133,10 @@ function ProductPageContent() {
   const isBundle = product.type === "BUNDLE";
   const primary = product.assets.find((asset) => asset.kind === "PRIMARY_FILE");
   // A bundle has no file of its own: it is opened from the library.
-  const canDownload = !isBundle && (isFree || owned);
+  const canRead = !isBundle && (isFree || owned) && Boolean(primary);
+  const canDownload = canRead && storeDownloads !== null && isDownloadAllowed(product.downloadPolicy, storeDownloads);
+  const hasSample = product.assets.some((asset) => asset.kind === "SAMPLE_PREVIEW");
+  const here = `/p/${product.slug}`;
   const hasLinks = product.links.length > 0;
   const contents = product.contents ?? [];
   const ownedIds = new Set(quote?.owned.map((o) => o.id));
@@ -298,11 +304,19 @@ function ProductPageContent() {
                   Open my library
                 </Link>
               </>
-            ) : canDownload ? (
-              <Button className="w-full" onClick={download} disabled={downloading}>
-                <Download className="size-4" />
-                {downloading ? "Preparing…" : "Download PDF"}
-              </Button>
+            ) : canRead ? (
+              <div className="space-y-2">
+                <Link href={readHref(product.id, here)} className={buttonVariants({ className: "w-full" })}>
+                  <BookOpenText className="size-4" />
+                  Read now
+                </Link>
+                {canDownload && (
+                  <Button variant="outline" className="w-full" onClick={download} disabled={downloading}>
+                    <Download className="size-4" />
+                    {downloading ? "Preparing…" : "Download PDF"}
+                  </Button>
+                )}
+              </div>
             ) : !ready ? (
               <Button className="w-full" disabled>
                 <Loader2 className="size-4 animate-spin" />
@@ -342,6 +356,17 @@ function ProductPageContent() {
               </>
             )}
 
+            {/* Look inside before buying. Its own short file: reading it gives away only those pages. */}
+            {hasSample && !canRead && !hasEverything && (
+              <Link
+                href={`/read/${product.id}?sample=1&back=${encodeURIComponent(here)}`}
+                className={buttonVariants({ variant: "outline", className: "w-full" })}
+              >
+                <Eye className="size-4" />
+                Read a sample
+              </Link>
+            )}
+
             {isBundle && contents.length > 0 && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Layers className="size-4" />
@@ -362,13 +387,13 @@ function ProductPageContent() {
             {isBundle && !hasEverything && (
               <p className="text-xs text-muted-foreground">
                 Every PDF in the bundle goes straight into your library{isFree ? "" : " after payment"}, as one bundle you can
-                open and download from any time.
+                open and read from any time.
               </p>
             )}
 
-            {!isBundle && !canDownload && (
+            {!isBundle && !canRead && (
               <p className="text-xs text-muted-foreground">
-                Instant download after payment. Yours to keep — it is added straight to your library, so you can come back and re-download it any time without digging through email receipts.
+                Read it here right after payment, on any device, from where you left off. It goes straight into your library, so it is always there without digging through email receipts.
               </p>
             )}
           </CardContent>

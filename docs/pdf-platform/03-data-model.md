@@ -264,6 +264,20 @@ Written on every signed-URL mint. This is what makes "download management" and "
 
 **Why `product`/`asset` are `SET NULL` rather than `CASCADE`:** this table's entire purpose is to be a record that outlives the thing it recorded. A *sold* product can never be hard-deleted anyway — `order_items`/`entitlements` restrict that — but a **free** product has nothing else stopping it from being deleted, and an audit log that can be erased by deleting what it was auditing has failed at its one job. `SET NULL` keeps the event row; only its pointer to the now-gone product or asset goes null.
 
+**`purpose`** (added 2026-10-25): `DOWNLOAD`, `READ` (opened in the reader) or `SAMPLE`. It defaults to `DOWNLOAD`, which is what every earlier row was. A reader renewing an expired link is not logged again (`06-reader.md`).
+
+### `reading_progress` — where each reader is in each product
+
+`user_id` FK→users **ON DELETE CASCADE**, `product_id` FK→products **ON DELETE CASCADE**, `asset_id` FK→product_assets **ON DELETE SET NULL**, `page` int (1-based), `page_count` int, `updated_at`. **PK** `(user_id, product_id)`. **Index** `(user_id, updated_at DESC)`, for "continue reading".
+
+One row per reader and product, overwritten as they read: it is a reading position, not a history. `asset_id` is the file version the page belongs to. If the PDF is replaced, the reader reopens at the same place proportionally, rather than at a page number that now means something else. Saved only for something the reader may read (`PUT /me/reading/:productId`, the same rule as opening it). Visitors without an account keep their place in the browser; nothing of theirs is stored here.
+
+### Reader and download columns (added 2026-10-25)
+
+- `products.download_policy` (`INHERIT` | `ALLOWED` | `BLOCKED`, default `INHERIT`): whether buyers may download, or only read. `INHERIT` follows `platform_settings.downloads_enabled` (default true).
+- `products.sample_page_count` (int, nullable): set when the sample is cut from the first N pages. The sample is then cut again whenever the PDF is replaced. Null for an uploaded sample, or none.
+- `product_assets.derived_from_asset_id` (FK→product_assets, SET NULL): for a cut sample, the PDF version it was cut from. It tells whether the sample still matches the current PDF.
+
 ### `library_bookmarks` — what a reader has bookmarked in My Library
 
 `user_id` FK→users **ON DELETE CASCADE**, `product_id` FK→products **ON DELETE CASCADE**, `created_at`. **PK** `(user_id, product_id)`, so bookmarking twice is one row. **Index** `(product_id)`.

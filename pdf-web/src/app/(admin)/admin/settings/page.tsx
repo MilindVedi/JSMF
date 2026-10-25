@@ -23,7 +23,7 @@ export default function AdminSettingsPage() {
       .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Could not load settings"));
   }, []);
 
-  async function toggle(key: "showSpamFolderNote", value: boolean) {
+  async function toggle(key: "showSpamFolderNote" | "downloadsEnabled", value: boolean) {
     if (!settings) return;
     setSettings({ ...settings, [key]: value });
     setSaving(true);
@@ -78,6 +78,26 @@ export default function AdminSettingsPage() {
           <p className="mt-1 text-xs text-muted-foreground">
             Shown wherever a verification email or Google sign-in is offered — sign up, sign in, and
             registering for a live session — on both {mainWebsiteHost} and this store. Off hides it everywhere at once.
+          </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Store downloads</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={settings.downloadsEnabled}
+              disabled={saving}
+              onCheckedChange={(checked: boolean) => void toggle("downloadsEnabled", checked)}
+            />
+            <Label className="text-sm font-medium">Let buyers download PDFs</Label>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Everyone can always read what they have in the browser reader. Off removes the Download
+            buttons and refuses downloads, so the store becomes read-only — the way the mobile apps
+            will work. A product can override this either way from its own page.
           </p>
         </CardContent>
       </Card>

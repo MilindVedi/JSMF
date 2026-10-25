@@ -21,4 +21,13 @@ export class UpdatePlatformSettingsDto {
   @IsOptional()
   @IsEnum(MentorCardStyle)
   mentorCardStyle?: MentorCardStyle;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether store buyers may download files, or only read them in the browser reader. ' +
+      'A product can override this either way. On until the mobile apps ship.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  downloadsEnabled?: boolean;
 }

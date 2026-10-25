@@ -22,6 +22,7 @@ import {
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { AddMobileCard } from "@/components/store/add-mobile-card";
+import { ContinueReading, ProgressLine, ReadButton } from "@/components/store/reading-progress";
 import { storeApi, type Entitlement } from "@/lib/api/store";
 import { buildIndex, search } from "@/lib/library-search";
 import { author, brand, supportEmail } from "@/lib/site-content";
@@ -172,8 +173,8 @@ function LibraryContent() {
         <Library className="size-8 text-muted-foreground" />
         <h1 className="text-xl font-semibold">Your library</h1>
         <p className="max-w-sm text-muted-foreground">
-          Sign in to see everything you have bought or claimed. Downloads are always available —
-          what you buy is yours to keep.
+          Sign in to see everything you have bought or claimed, and read it on any device — right
+          where you left off.
         </p>
         <Link href="/account/login?next=%2Flibrary" className={buttonVariants()}>
           Sign in
@@ -245,7 +246,7 @@ function LibraryContent() {
             </span>
             <h2 className="mt-5 font-display text-lg font-semibold text-brand-deep">Nothing here yet</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Anything you buy or claim lands here, and stays yours to download.
+              Anything you buy or claim lands here, ready to read.
             </p>
             <Link href="/browse" className={`${buttonVariants({ variant: "link" })} mt-3`}>
               Browse resources <ArrowRight size={15} />
@@ -326,6 +327,12 @@ function LibraryContent() {
                 </div>
               </div>
             </div>
+
+            {filter === "all" && !query && (
+              <div className="mt-7">
+                <ContinueReading items={items} />
+              </div>
+            )}
 
             <div className="mt-7 flex items-center justify-between text-xs text-muted-foreground">
               <h2 className="font-semibold text-foreground">Your collection</h2>
@@ -523,6 +530,8 @@ function ResourceCard({
             )}
         </p>
 
+        {!bundle && <ProgressLine progress={entitlement.progress} className="mt-5 max-w-sm" />}
+
         <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-5 sm:mt-auto">
           {bundle ? (
             // A bundle has no file of its own: it opens to its PDFs.
@@ -531,13 +540,19 @@ function ResourceCard({
               <ChevronDown className={`size-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
             </Button>
           ) : (
-            <Button
-              disabled={downloading === entitlement.productId}
-              onClick={() => onDownload(entitlement.productId)}
-            >
-              <Download size={16} />
-              {downloading === entitlement.productId ? "Preparing…" : "Download PDF"}
-            </Button>
+            <>
+              <ReadButton productId={entitlement.productId} progress={entitlement.progress} />
+              {entitlement.downloadAllowed && (
+                <Button
+                  variant="outline"
+                  disabled={downloading === entitlement.productId}
+                  onClick={() => onDownload(entitlement.productId)}
+                >
+                  <Download size={16} />
+                  {downloading === entitlement.productId ? "Preparing…" : "Download"}
+                </Button>
+              )}
+            </>
           )}
         </div>
 
@@ -553,25 +568,31 @@ function ResourceCard({
                   key={item.id}
                   className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="flex min-w-0 items-start gap-2">
+                  <div className="flex min-w-0 flex-1 items-start gap-2">
                     <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{item.title}</p>
                       {item.subtitle && (
                         <p className="truncate text-xs text-muted-foreground">{item.subtitle}</p>
                       )}
+                      <ProgressLine progress={item.progress} className="mt-2 max-w-xs" />
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="shrink-0"
-                    disabled={downloading === item.id}
-                    onClick={() => onDownload(item.id)}
-                  >
-                    <Download size={15} />
-                    {downloading === item.id ? "Preparing…" : "Download"}
-                  </Button>
+                  <div className="flex shrink-0 gap-2">
+                    <ReadButton productId={item.id} progress={item.progress} size="sm" />
+                    {item.downloadAllowed && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={downloading === item.id}
+                        onClick={() => onDownload(item.id)}
+                        aria-label={`Download ${item.title}`}
+                      >
+                        <Download size={15} />
+                        {downloading === item.id ? "Preparing…" : "Download"}
+                      </Button>
+                    )}
+                  </div>
                 </li>
               ))
             )}

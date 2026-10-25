@@ -4,5 +4,11 @@
     "method": ["PUT", "POST", "DELETE"],
     "responseHeader": ["Content-Type", "Content-Range", "Range", "X-Goog-Resumable"],
     "maxAgeSeconds": 3600
+  },
+  {
+    "origin": ["https://resources.jsmf.me"],
+    "method": ["GET", "HEAD"],
+    "responseHeader": ["Content-Type", "Content-Range", "Content-Length", "Accept-Ranges", "Range"],
+    "maxAgeSeconds": 3600
   }
 ]

@@ -51,7 +51,12 @@ services:
       # account holding Storage Object Admin on the two *dev* buckets and
       # nothing else:
       #
-      #   gcloud auth application-default login       #     --impersonate-service-account=jsmf-local-dev@production-509708.iam.gserviceaccount.com
+      #   gcloud auth application-default login --impersonate-service-account=jsmf-local-dev@production-509708.iam.gserviceaccount.com
+      #
+      # It is also what lets the API sign download and reader links locally:
+      # plain personal credentials have no service-account identity to sign
+      # with, and every link fails with "Cannot sign data without
+      # `client_email`". After logging in again, restart the API container.
       #
       # Without `--impersonate-service-account` this mounts your personal
       # credentials instead, which on this project are Owner — handing a local

@@ -5,6 +5,7 @@ import { PrismaModule } from '../../shared/prisma/prisma.module';
 import { StorageModule } from '../storage/storage.module';
 import { ProductUploadPurposes } from './application/product-upload-purposes';
 import { ProductAssetService } from './application/product-asset.service';
+import { ProductSampleService } from './application/product-sample.service';
 import { ProductService } from './application/product.service';
 import { TaxonomyService } from './application/taxonomy.service';
 import { AdminFeaturedController } from './http/admin-featured.controller';
@@ -29,7 +30,14 @@ import { CatalogController } from './http/catalog.controller';
     AdminTaxonomyController,
     CatalogController,
   ],
-  providers: [ProductService, ProductAssetService, ProductUploadPurposes, TaxonomyService, BundleContentsService],
+  providers: [
+    ProductService,
+    ProductAssetService,
+    ProductSampleService,
+    ProductUploadPurposes,
+    TaxonomyService,
+    BundleContentsService,
+  ],
   exports: [ProductService, ProductAssetService, TaxonomyService],
 })
 export class CatalogModule {}

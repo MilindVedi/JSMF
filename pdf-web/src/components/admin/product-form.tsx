@@ -28,6 +28,7 @@ const schema = z
     price: z.string().optional(),
     compareAtPrice: z.string().optional(),
     listed: z.boolean(),
+    downloadPolicy: z.enum(["INHERIT", "ALLOWED", "BLOCKED"]).optional(),
   })
   .superRefine((values, ctx) => {
     if (values.accessType !== "PAID") return;
@@ -68,10 +69,18 @@ interface Props {
   hideSubmit?: boolean;
   /** Bundles this PDF is in, named beside "Show in store". */
   inBundles?: Array<{ id: string; title: string }>;
+  /** Offers the download choice. Not for a bundle, which has no file of its own. */
+  showDownloadPolicy?: boolean;
 }
 
+const DOWNLOAD_CHOICES = [
+  { value: "INHERIT", label: "Follow the store setting", hint: "The switch in Settings decides." },
+  { value: "ALLOWED", label: "Always allow downloads", hint: "Even when the store is read-only." },
+  { value: "BLOCKED", label: "Read only", hint: "Buyers read it in the browser; no Download button." },
+] as const;
+
 export const ProductForm = forwardRef<StepSectionHandle, Props>(function ProductForm(
-  { defaultValues, onSubmit, submitLabel, hideSubmit, inBundles = [] },
+  { defaultValues, onSubmit, submitLabel, hideSubmit, inBundles = [], showDownloadPolicy = false },
   ref,
 ) {
   const {
@@ -88,6 +97,7 @@ export const ProductForm = forwardRef<StepSectionHandle, Props>(function Product
 
   const accessType = watch("accessType");
   const listed = watch("listed");
+  const downloadPolicy = watch("downloadPolicy") ?? "INHERIT";
 
   /**
    * Saving has to re-baseline the form, not just persist it: react-hook-form
@@ -210,6 +220,30 @@ export const ProductForm = forwardRef<StepSectionHandle, Props>(function Product
           </p>
         )}
       </div>
+
+      {showDownloadPolicy && (
+        <div className="space-y-2">
+          <Label className="font-medium">Downloads</Label>
+          <RadioGroup
+            value={downloadPolicy}
+            onValueChange={(value) =>
+              setValue("downloadPolicy", value as (typeof DOWNLOAD_CHOICES)[number]["value"], { shouldDirty: true })
+            }
+            className="space-y-1.5"
+          >
+            {DOWNLOAD_CHOICES.map((choice) => (
+              <div key={choice.value} className="flex items-start gap-2">
+                <RadioGroupItem value={choice.value} id={`download-${choice.value}`} className="mt-0.5" />
+                <Label htmlFor={`download-${choice.value}`} className="block font-normal leading-snug">
+                  {choice.label}
+                  <span className="block text-xs text-muted-foreground">{choice.hint}</span>
+                </Label>
+              </div>
+            ))}
+          </RadioGroup>
+          <p className="text-xs text-muted-foreground">Everyone who has it can always read it in the browser reader.</p>
+        </div>
+      )}
 
       {!hideSubmit && (
         <Button type="submit" disabled={isSubmitting}>

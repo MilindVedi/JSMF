@@ -126,6 +126,33 @@ export function ensureRefreshed(): Promise<boolean> {
   return refreshInFlight;
 }
 
+/**
+ * Refreshes now if this browser is signed in and the access token is missing
+ * or about to expire.
+ *
+ * For public routes that read a token when one is sent but never ask for one
+ * (opening a free PDF, for instance): the server treats an expired token
+ * there as "anonymous" rather than answering 401, so the automatic
+ * refresh-and-retry in `send` never happens, and a signed-in reader would
+ * quietly be served as a visitor — without their saved page.
+ */
+export async function ensureFreshAccessToken(): Promise<void> {
+  if (!getStoredRefreshToken()) return;
+  if (accessToken && tokenExpiry(accessToken) - Date.now() > 30_000) return;
+  await ensureRefreshed();
+}
+
+/** The `exp` of a JWT, in milliseconds; 0 if it cannot be read (so it counts as expired). */
+function tokenExpiry(token: string): number {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const { exp } = JSON.parse(atob(payload)) as { exp?: number };
+    return typeof exp === "number" ? exp * 1000 : 0;
+  } catch {
+    return 0;
+  }
+}
+
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -134,6 +161,8 @@ interface RequestOptions {
   /** Skips the bearer header — for login/register. */
   anonymous?: boolean;
   signal?: AbortSignal;
+  /** Lets the request finish after the page closes (a last save on the way out). */
+  keepalive?: boolean;
 }
 
 async function send<T>(path: string, options: RequestOptions, isRetry = false): Promise<T> {
@@ -153,6 +182,7 @@ async function send<T>(path: string, options: RequestOptions, isRetry = false): 
     headers,
     body: options.formData ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
     signal: options.signal,
+    keepalive: options.keepalive,
   });
 
   if (response.status === 401 && !options.anonymous && !isRetry) {
@@ -218,7 +248,8 @@ export const api = {
   get: <T>(path: string, signal?: AbortSignal) => send<T>(path, { signal }),
   post: <T>(path: string, body?: unknown) => send<T>(path, { method: "POST", body }),
   patch: <T>(path: string, body?: unknown) => send<T>(path, { method: "PATCH", body }),
-  put: <T>(path: string, body?: unknown) => send<T>(path, { method: "PUT", body }),
+  put: <T>(path: string, body?: unknown, options?: { keepalive?: boolean }) =>
+    send<T>(path, { method: "PUT", body, keepalive: options?.keepalive }),
   delete: <T>(path: string) => send<T>(path, { method: "DELETE" }),
   postAnonymous: <T>(path: string, body: unknown) =>
     send<T>(path, { method: "POST", body, anonymous: true }),

@@ -92,6 +92,15 @@ export interface ProductTaxonomyTerm {
   term: TaxonomyTerm & { taxonomy: Omit<Taxonomy, "terms"> };
 }
 
+export type DownloadPolicy = "INHERIT" | "ALLOWED" | "BLOCKED";
+
+/** Whether buyers may download, given a product's policy and the store-wide switch. */
+export function isDownloadAllowed(policy: DownloadPolicy | undefined, storeWide: boolean): boolean {
+  if (policy === "ALLOWED") return true;
+  if (policy === "BLOCKED") return false;
+  return storeWide;
+}
+
 export interface Product {
   id: string;
   type: ProductType;
@@ -113,6 +122,10 @@ export interface Product {
   featuredOrder: number | null;
   /** "Show in store". False: not browsable, buyable or claimable; holders keep it. */
   listed: boolean;
+  /** Download or read-only. INHERIT follows the store-wide switch in Settings. */
+  downloadPolicy: DownloadPolicy;
+  /** Set when the sample is cut from the first N pages of the PDF. */
+  samplePageCount: number | null;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;

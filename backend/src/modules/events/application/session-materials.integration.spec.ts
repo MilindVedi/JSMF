@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   AccessType,
   AssetKind,
+  ContentAccessPurpose,
   EntitlementSource,
   EntitlementStatus,
   ProductType,
@@ -13,7 +14,7 @@ import { AuditService } from '../../../shared/audit/audit.service';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { SweepRegistry } from '../../../shared/scheduling/sweep-registry';
 import { ProductService } from '../../catalog/application/product.service';
-import { DownloadService } from '../../entitlements/application/download.service';
+import { ContentAccessService } from '../../entitlements/application/content-access.service';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import { OfflineSaleHandlers } from '../../orders/application/offline-sale-handlers';
 import { OfflineSaleService } from '../../orders/application/offline-sale.service';
@@ -58,7 +59,9 @@ const events = new OrderEvents();
 const products = new ProductService(prisma, audit);
 const orders = new OrderService(prisma, provider, entitlements);
 const sessions = new LiveSessionService(prisma, products, orders, entitlements, audit, storage, config);
-const downloads = new DownloadService(prisma, entitlements, storage);
+const access = new ContentAccessService(prisma, entitlements, storage, config);
+const download = (request: { productId: string; userId: string | null }) =>
+  access.grant({ ...request, purpose: ContentAccessPurpose.DOWNLOAD });
 const materials = new SessionMaterialsService(prisma, entitlements, mail, config, audit, events, new SweepRegistry());
 const handlers = new OfflineSaleHandlers();
 new SessionOfflineSaleHandler(prisma, handlers, config, materials).onModuleInit();
@@ -405,11 +408,11 @@ describe('show in store', () => {
     await expect(
       orders.checkout({ userId: stranger.id, productId: hidden.id, customerEmail: stranger.email }),
     ).rejects.toMatchObject({ status: 404 });
-    await expect(downloads.authorize({ productId: hidden.id, userId: null })).rejects.toThrow(/not found/i);
-    await expect(downloads.authorize({ productId: hidden.id, userId: holder.id })).resolves.toMatchObject({
+    await expect(download({ productId: hidden.id, userId: null })).rejects.toThrow(/not found/i);
+    await expect(download({ productId: hidden.id, userId: holder.id })).resolves.toMatchObject({
       url: 'https://example.test/file.pdf',
     });
     // A free listed product still downloads without an account, as before.
-    await expect(downloads.authorize({ productId: visible.id, userId: null })).resolves.toBeDefined();
+    await expect(download({ productId: visible.id, userId: null })).resolves.toBeDefined();
   });
 });

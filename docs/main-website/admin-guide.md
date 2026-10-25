@@ -247,6 +247,28 @@ who bought it on its own keeps it.
 In a buyer's library the bundle is one card; **Show N PDFs** opens it to download
 each one. A refund of the bundle takes all its PDFs back.
 
+## Reading in the browser, samples and downloads
+
+Buyers read their PDFs in the store's reader (**Read** in My Library, **Read now** on the product page). It reopens where they left off, on any device. How it works: [docs/pdf-platform/06-reader.md](../pdf-platform/06-reader.md).
+
+**Give a product a sample** (Products → the product → **Files** → **Sample**):
+
+1. To show the first pages, type how many in **First … pages** and press **Cut sample**. It has to be fewer pages than the PDF. When you later replace the PDF, the sample is cut again by itself.
+2. For a sample that is not the first pages, use **Or upload a sample PDF** and press **Save**. This stops the automatic cutting.
+3. **Open** shows what visitors will see. **Remove** stops offering a sample.
+
+The product page then shows **Read a sample** to anyone who does not have the product. If the card says the sample is out of date, the new PDF was too short to cut it from: cut it again with fewer pages.
+
+Cutting does not work for every PDF. Upload a sample instead when the card says:
+
+- **password-protected**: the PDF is locked, so its pages cannot be copied;
+- **over 50 MB**: too large to cut on the server (the limit is `SAMPLE_CUT_MAX_MB`);
+- **links its first pages to later ones in a way that cannot be cut safely**: cutting would have hidden later pages inside the sample.
+
+A cut sample keeps links to websites but not links between pages (a clickable table of contents). Those links could carry later pages into the sample.
+
+**Turn downloads off** (for example when the apps launch): Settings → **Store downloads** → off. People can still read everything; the Download buttons go away and the server refuses to download the PDF. Extra files that cannot be read in the reader (a zip, images) stay downloadable. To make one product different, open it → **Details** → **Downloads** → **Always allow downloads** or **Read only**, then **Save**. Turning downloads off makes taking a copy harder, not impossible: a reader still receives the pages to show them.
+
 ## Refunds (admin only)
 
 Open **Orders**, find the order (search by order number or email), click **Refund**.

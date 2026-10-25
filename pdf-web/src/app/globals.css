@@ -2,7 +2,11 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* The reader's light and sepia pages stay light inside a dark site (globals'
+   reader section), so they opt their controls out of dark: here too. The
+   opt-out is in :where(), which weighs nothing: every dark: style elsewhere
+   keeps exactly the specificity it had with plain `&:is(.dark *)`. */
+@custom-variant dark (&:is(.dark *):not(:where(.dark .reader-theme-light *, .dark .reader-theme-sepia *)));
 
 @theme inline {
   --color-background: var(--background);
@@ -85,7 +89,11 @@
   --radius-3xl: calc(var(--radius) * 2.2);
 }
 
-:root {
+/* The reader picks its own page colour (light / sepia / dark), whatever the
+   site's theme, so its controls take these tokens from it rather than <html>. */
+:root,
+.reader-theme-light,
+.reader-theme-sepia {
   /* "Paper" background — warm off-white, not stark white. */
   --background: oklch(0.985 0.006 295);
   --foreground: oklch(0.22 0.035 294);
@@ -175,7 +183,8 @@
   --overlay-foreground: oklch(1 0 0);
 }
 
-.dark {
+.dark,
+.reader-theme-dark {
   --background: oklch(0.17 0.022 294);
   --foreground: oklch(0.96 0.008 295);
 
@@ -1028,4 +1037,64 @@
   .library-enter { animation: none; }
   .library-resource, .library-book { transition: none; }
   .library-resource:hover .library-book { transform: none; }
+}
+
+/* --- The reader (components/reader) -----------------------------------------
+   Each page colour carries the site's tokens (light, or dark — see the token
+   blocks above), so the controls match the page. Sepia warms the neutrals and
+   keeps the brand violet for the few brand marks (progress, Sample chip).
+
+   Tints are filters on the page images only: selectable text and search
+   highlights are untouched. --reader-page is what a page (or a thumbnail)
+   shows before it is drawn, so a dark reader does not flash white pages; it
+   feeds pdf.js's own --page-bg-color. */
+.reader {
+  --reader-canvas: var(--muted);
+  --reader-page: oklch(1 0 0);
+  --reader-page-shadow: 0 1px 3px color-mix(in oklab, var(--brand-deep) 22%, transparent);
+  color-scheme: light;
+}
+.reader-theme-sepia {
+  --background: oklch(0.955 0.022 82);
+  --card: oklch(0.97 0.018 82);
+  --popover: oklch(0.97 0.018 82);
+  --foreground: oklch(0.29 0.035 60);
+  --card-foreground: oklch(0.29 0.035 60);
+  --popover-foreground: oklch(0.29 0.035 60);
+  --secondary: oklch(0.9 0.035 80);
+  --secondary-foreground: oklch(0.32 0.05 60);
+  --muted: oklch(0.92 0.03 80);
+  --muted-foreground: oklch(0.47 0.04 65);
+  --border: oklch(0.86 0.03 78);
+  --input: oklch(0.86 0.03 78);
+  --reader-canvas: oklch(0.89 0.035 80);
+  --reader-page: oklch(0.955 0.035 85);
+}
+.reader-theme-dark {
+  --reader-canvas: oklch(0.13 0.018 294);
+  /* White after the page filter below: invert(0.92) leaves 8% of it. */
+  --reader-page: oklch(0.19 0 0);
+  --reader-page-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
+.reader .reader-canvas {
+  background: var(--reader-canvas);
+}
+.reader .pdfViewer {
+  --page-bg-color: var(--reader-page);
+}
+.reader .pdfViewer .page {
+  margin: 12px auto;
+  border: 0;
+  box-shadow: var(--reader-page-shadow);
+}
+/* Multiplied over the warm --reader-page: white paper takes its colour and
+   ink stays black. (A sepia() filter leaves white almost white.) */
+.reader-theme-sepia .pdfViewer .page canvas,
+.reader-theme-sepia .reader-page-image {
+  mix-blend-mode: multiply;
+}
+.reader-theme-dark .pdfViewer .page canvas,
+.reader-theme-dark .reader-page-image {
+  filter: invert(0.92) hue-rotate(180deg);
 }

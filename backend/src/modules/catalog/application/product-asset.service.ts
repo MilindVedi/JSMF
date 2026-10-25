@@ -38,7 +38,17 @@ export interface StoredAssetVersion {
   checksumSha256: string | null;
   checksumMd5: string | null;
   pageCount?: number;
+  /** A sample cut by the server: the file it was cut from (ProductSampleService). */
+  derivedFromAssetId?: string;
 }
+
+/**
+ * Told after a product's current file of some kind has changed and the change
+ * is committed — a new version uploaded or an old one restored. How a sample
+ * cut from the first pages follows its file without the upload code knowing
+ * samples exist.
+ */
+export type CurrentAssetListener = (change: { productId: string; kind: AssetKind; actor: Actor }) => Promise<void>;
 
 /**
  * What each asset kind is allowed to be, and where it lives.
@@ -80,6 +90,7 @@ export function isSameFile(
 @Injectable()
 export class ProductAssetService {
   private readonly logger = new Logger(ProductAssetService.name);
+  private readonly listeners: CurrentAssetListener[] = [];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -137,8 +148,9 @@ export class ProductAssetService {
       keyPrefix: `products/${input.productId}`,
     });
 
+    let asset: ProductAsset;
     try {
-      return await this.prisma.$transaction((tx) =>
+      asset = await this.prisma.$transaction((tx) =>
         this.recordVersion(
           tx,
           {
@@ -167,6 +179,28 @@ export class ProductAssetService {
 
       throw error;
     }
+
+    await this.notifyCurrentChanged(input.productId, input.kind, actor);
+    return asset;
+  }
+
+  /** Registers something that follows a product's current files (see CurrentAssetListener). */
+  onCurrentChanged(listener: CurrentAssetListener): void {
+    this.listeners.push(listener);
+  }
+
+  /**
+   * Runs the listeners once a change is committed. Awaited, so the work is
+   * done before the admin's request returns (a server that idles after
+   * responding may never finish it otherwise), but never allowed to fail the
+   * change itself: the file is already the current version.
+   */
+  async notifyCurrentChanged(productId: string, kind: AssetKind, actor: Actor): Promise<void> {
+    for (const listener of this.listeners) {
+      await listener({ productId, kind, actor }).catch((error: unknown) => {
+        this.logger.error(`After ${kind} changed on product ${productId}: ${String(error)}`);
+      });
+    }
   }
 
   /**
@@ -179,6 +213,7 @@ export class ProductAssetService {
     version: StoredAssetVersion,
     actor: Actor,
   ): Promise<ProductAsset> {
+    await this.lockFiles(tx, version.productId);
     const current = await tx.productAsset.findFirst({
       where: { productId: version.productId, kind: version.kind, isCurrent: true },
     });
@@ -203,6 +238,7 @@ export class ProductAssetService {
         checksumSha256: version.checksumSha256,
         checksumMd5: version.checksumMd5,
         pageCount: version.pageCount,
+        derivedFromAssetId: version.derivedFromAssetId,
         version: (current?.version ?? 0) + 1,
         isCurrent: true,
         uploadedById: actor.id,
@@ -229,7 +265,26 @@ export class ProductAssetService {
       tx,
     );
 
+    // An uploaded sample replaces one cut from the first pages, and stops the
+    // cutting: the admin chose this file.
+    if (version.kind === AssetKind.SAMPLE_PREVIEW && !version.derivedFromAssetId) {
+      await tx.product.update({ where: { id: version.productId }, data: { samplePageCount: null } });
+    }
+
     return asset;
+  }
+
+  /**
+   * Holds one product's files still until the caller's transaction ends.
+   *
+   * Two changes at once — two uploads, or a replaced PDF's automatic sample
+   * re-cut racing an admin's "Cut sample" — would otherwise both demote the
+   * same current row and then collide on `product_assets_current_unique` (a
+   * 500), or quietly undo each other. Locking the product row makes them take
+   * turns; anything that must re-check the state first does so after this.
+   */
+  async lockFiles(tx: Prisma.TransactionClient, productId: string): Promise<void> {
+    await tx.$queryRaw`SELECT id FROM products WHERE id = ${productId}::uuid FOR UPDATE`;
   }
 
   /** The version buyers get now, or null. */
@@ -269,7 +324,8 @@ export class ProductAssetService {
     if (!asset) throw new NotFoundException('Asset not found');
     if (asset.isCurrent) return asset;
 
-    return this.prisma.$transaction(async (tx) => {
+    const promoted = await this.prisma.$transaction(async (tx) => {
+      await this.lockFiles(tx, asset.productId);
       await tx.productAsset.updateMany({
         where: { productId: asset.productId, kind: asset.kind, isCurrent: true },
         data: { isCurrent: false },
@@ -279,6 +335,15 @@ export class ProductAssetService {
         where: { id: assetId },
         data: { isCurrent: true },
       });
+
+      // Restoring a sample restores how it was made: a cut one keeps being
+      // re-cut from its page count, an uploaded one stops that.
+      if (asset.kind === AssetKind.SAMPLE_PREVIEW) {
+        await tx.product.update({
+          where: { id: asset.productId },
+          data: { samplePageCount: asset.derivedFromAssetId ? asset.pageCount : null },
+        });
+      }
 
       await this.audit.record(
         {
@@ -294,5 +359,8 @@ export class ProductAssetService {
 
       return promoted;
     });
+
+    await this.notifyCurrentChanged(asset.productId, asset.kind, actor);
+    return promoted;
   }
 }

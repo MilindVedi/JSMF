@@ -15,7 +15,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { AccessType, AssetKind, LinkKind, ProductStatus, ProductType } from '@prisma/client';
+import { AccessType, AssetKind, DownloadPolicy, LinkKind, ProductStatus, ProductType } from '@prisma/client';
 
 /** Query strings arrive as text; `?flag` and `?flag=true` both mean true. */
 const toBoolean = ({ value }: { value: unknown }): unknown =>
@@ -109,9 +109,28 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   listed?: boolean;
+
+  @ApiPropertyOptional({
+    enum: DownloadPolicy,
+    default: DownloadPolicy.INHERIT,
+    description:
+      'Whether buyers may download the file or only read it in the browser. INHERIT follows ' +
+      'the store-wide switch in Settings.',
+  })
+  @IsOptional()
+  @IsEnum(DownloadPolicy)
+  downloadPolicy?: DownloadPolicy;
 }
 
 export class UpdateProductDto extends PartialType(CreateProductDto) {}
+
+export class CutSampleDto {
+  @ApiProperty({ example: 10, description: 'How many of the first pages the sample shows' })
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  pageCount!: number;
+}
 
 export class AdminProductQueryDto {
   @ApiPropertyOptional({ enum: ProductStatus })

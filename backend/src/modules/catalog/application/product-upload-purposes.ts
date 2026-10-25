@@ -91,6 +91,9 @@ export class ProductUploadPurposes implements OnModuleInit {
           actor,
         ),
 
+      // The file is current now: what follows it (a sample cut from it) catches up.
+      committed: ({ upload, actor }) => this.assets.notifyCurrentChanged(upload.targetId!, kind, actor),
+
       present: (resultId) => this.prisma.productAsset.findUniqueOrThrow({ where: { id: resultId } }),
     };
   }

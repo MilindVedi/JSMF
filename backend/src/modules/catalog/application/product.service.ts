@@ -8,6 +8,7 @@ import {
 import {
   AccessType,
   AssetKind,
+  DownloadPolicy,
   LinkKind,
   Prisma,
   Product,
@@ -73,6 +74,8 @@ export interface CreateProductInput {
   metadata?: Prisma.InputJsonValue;
   /** Show in store. Defaults to true; see Product.listed. */
   listed?: boolean;
+  /** Download or read-only; see Product.downloadPolicy. */
+  downloadPolicy?: DownloadPolicy;
 }
 
 export type UpdateProductInput = Partial<CreateProductInput>;
@@ -156,6 +159,7 @@ export class ProductService {
           authorUserId: input.authorUserId,
           metadata: input.metadata ?? {},
           listed: input.listed ?? true,
+          downloadPolicy: input.downloadPolicy,
           createdById: actor.id,
           updatedById: actor.id,
         },
@@ -219,6 +223,7 @@ export class ProductService {
           authorUserId: input.authorUserId,
           metadata: input.metadata,
           listed: input.listed,
+          downloadPolicy: input.downloadPolicy,
           updatedById: actor.id,
         },
       });

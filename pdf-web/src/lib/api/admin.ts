@@ -33,8 +33,18 @@ export interface ProductInput {
   language?: string;
   /** "Show in store". Omitted on create = shown. */
   listed?: boolean;
+  /** Download or read-only; INHERIT follows the store-wide switch. */
+  downloadPolicy?: "INHERIT" | "ALLOWED" | "BLOCKED";
   /** Set once, on create. Omitted = a single PDF. */
   type?: "PDF" | "BUNDLE";
+}
+
+/** Whether the product has a "Read sample" file, how it was made, and whether it still matches the PDF. */
+export interface SampleStatus {
+  source: "CUT" | "UPLOADED" | null;
+  pageCount: number | null;
+  /** False: the PDF was replaced and the sample could not be cut again from it. */
+  upToDate: boolean;
 }
 
 export interface BundleItem {
@@ -128,6 +138,14 @@ export const adminApi = {
 
   makeAssetCurrent: (assetId: string) =>
     api.post<ProductAsset>(`/admin/products/assets/${assetId}/make-current`),
+
+  sampleStatus: (productId: string) => api.get<SampleStatus>(`/admin/products/${productId}/sample`),
+
+  /** Cuts the "Read sample" PDF from the first `pageCount` pages; re-cut automatically when the PDF changes. */
+  cutSample: (productId: string, pageCount: number) =>
+    api.post<SampleStatus>(`/admin/products/${productId}/sample`, { pageCount }),
+
+  removeSample: (productId: string) => api.delete<SampleStatus>(`/admin/products/${productId}/sample`),
 
   setTerms: (productId: string, termIds: string[]) =>
     api.put<void>(`/admin/products/${productId}/terms`, { termIds }),

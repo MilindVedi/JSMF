@@ -69,8 +69,11 @@ This document provides a reference for all environment variables, flags, and sec
 > list Cloud Run services (denied).
 >
 > ```bash
-> gcloud auth application-default login >   --impersonate-service-account=jsmf-local-dev@production-509708.iam.gserviceaccount.com
+> gcloud auth application-default login --impersonate-service-account=jsmf-local-dev@production-509708.iam.gserviceaccount.com
 > ```
+>
+> Without the flag, the API cannot sign download or reader links either:
+> every one fails with 503 "Cannot sign data without `client_email`".
 >
 > Then set `GCLOUD_CONFIG_DIR` in the repo-root `.env` so
 > `docker-compose.dev.yml` can mount the credentials read-only.
@@ -135,6 +138,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `WHATSAPP_RECEIPT_TEMPLATE_NAME` | String | `jsmf_purchase_receipt` | Cloud Run Env Var | Optional. An approved **Utility** template for purchase receipts to buyers with no email. Without it those buyers get no receipt; the purchase is unaffected. |
 | `WHATSAPP_RECEIPT_TEMPLATE_LANGUAGE` | String | `en` | Cloud Run Env Var | Must match that template's language. |
 | `MAX_DIRECT_UPLOAD_SIZE_MB` | Integer | `500` | Cloud Run Env Var (optional) | Largest PDF/attachment the admin can upload straight to storage. Not bound by Cloud Run's 32 MiB cap; GCS allows 5 TB. |
+| `SAMPLE_CUT_MAX_MB` | Integer | `50` | Cloud Run Env Var (optional) | Largest PDF the server cuts a "Read a sample" file from. The cut holds the whole PDF in memory at several times its size, so raise it only with the instance's memory. Bigger PDFs: the admin uploads a sample instead. |
 | `DIRECT_UPLOAD_CHUNK_MB` | Integer | `8` | Cloud Run Env Var (optional) | Size of each piece the browser sends. |
 | `DIRECT_UPLOAD_EXPIRY_HOURS` | Integer | `24` | Cloud Run Env Var (optional) | Time to finish an upload before the sweep removes it. |
 | `MAX_IMAGE_UPLOAD_SIZE_MB` | Integer | `8` | Cloud Run Env Var (optional) | Largest cover or session screenshot uploaded straight to storage. |

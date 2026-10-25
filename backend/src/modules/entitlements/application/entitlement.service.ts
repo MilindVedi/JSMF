@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   AssetKind,
+  DownloadPolicy,
   Entitlement,
   EntitlementSource,
   EntitlementStatus,
@@ -236,6 +237,8 @@ export class EntitlementService {
             // Unlisted products have no store page, so the library shows the
             // title without a link.
             listed: true,
+            // Whether the card offers Download beside Read.
+            downloadPolicy: true,
             // The cover the library card shows, as the store's own cards do.
             assets: {
               where: { isCurrent: true, kind: AssetKind.COVER_IMAGE },
@@ -257,11 +260,17 @@ export class EntitlementService {
       ? await this.prisma.productBundleItem.findMany({
           where: { bundleProductId: { in: bundleIds }, child: { deletedAt: null } },
           orderBy: { sortOrder: 'asc' },
-          select: { bundleProductId: true, child: { select: { id: true, title: true, subtitle: true } } },
+          select: {
+            bundleProductId: true,
+            child: { select: { id: true, title: true, subtitle: true, downloadPolicy: true } },
+          },
         })
       : [];
     const held = new Set(rows.map((r) => r.productId));
-    const contentsOf = new Map<string, Array<{ id: string; title: string; subtitle: string | null }>>();
+    const contentsOf = new Map<
+      string,
+      Array<{ id: string; title: string; subtitle: string | null; downloadPolicy: DownloadPolicy }>
+    >();
     for (const item of items) {
       if (!held.has(item.child.id)) continue;
       const list = contentsOf.get(item.bundleProductId) ?? [];
@@ -284,7 +293,7 @@ export class EntitlementService {
           type: sourceProduct.type,
           title: sourceProduct.liveSession?.shortName?.trim() || sourceProduct.title,
         },
-        /** For a bundle: the PDFs in it that this person can download. Null otherwise. */
+        /** For a bundle: the PDFs in it that this person can read. Null otherwise. */
         contents: row.product.type === ProductType.BUNDLE ? (contentsOf.get(row.productId) ?? []) : null,
       }));
   }

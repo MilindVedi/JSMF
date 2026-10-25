@@ -72,3 +72,25 @@ export function useMentorPortrait(): MentorPortrait | null {
 
   return portrait;
 }
+
+/**
+ * Whether the store lets buyers download (else they read in the browser).
+ * Null until known, so a Download button is not shown and then taken away.
+ * A failed read assumes on — the setting's own default; the server refuses a
+ * download that is not allowed either way.
+ */
+export function useStoreDownloadsEnabled(): boolean | null {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSettings()
+      .then((settings) => !cancelled && setEnabled(settings.downloadsEnabled))
+      .catch(() => !cancelled && setEnabled(true));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return enabled;
+}

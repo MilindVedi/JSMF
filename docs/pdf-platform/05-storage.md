@@ -304,16 +304,30 @@ received" rather than hanging. Set it once:
 gcloud storage buckets update gs://jsmf-private-509708 \
   --cors-file=docs/gcp/gcs-private-bucket-cors.json
 
-# Dev bucket, for http://localhost:3001 (already applied 2026-10-20)
-gcloud storage buckets update gs://jsmf-dev-private-509708 --cors-file=<a copy with origin http://localhost:3001>
+# Dev bucket, for http://localhost:3001 and http://localhost:3000
+gcloud storage buckets update gs://jsmf-dev-private-509708 \
+  --cors-file=docs/gcp/gcs-dev-private-bucket-cors.json
 
 # Check
 gcloud storage buckets describe gs://jsmf-private-509708 --format="json(cors_config)"
+gcloud storage buckets describe gs://jsmf-dev-private-509708 --format="json(cors_config)"
 ```
 
 Uploading from another web origin (a second domain, the raw `run.app` URL)
 needs it added to that file, to `CORS_ORIGINS`, and re-applying. The public
 bucket needs no rule.
+
+**The reader needs the second rule in the same file** (added 2026-10-25):
+`GET`/`HEAD` from the store, exposing `Content-Range`, `Content-Length` and
+`Accept-Ranges`. The reader fetches PDFs from the private bucket a piece at a
+time, from the browser (`06-reader.md`). Without the rule, the reader shows
+"Could not open the PDF" in production while downloads keep working, because a
+download is a navigation, which CORS does not apply to. Re-run the same
+`gcloud storage buckets update` command above, and do the same for the dev
+bucket with `http://localhost:3001`.
+
+The local driver serves byte ranges as well (`206`, `Content-Range`), so the
+reader behaves the same in development.
 
 ### Local driver
 

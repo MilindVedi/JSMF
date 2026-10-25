@@ -47,6 +47,14 @@ export interface CheckoutPaid {
 
 export type CheckoutResult = CheckoutFree | CheckoutPaid;
 
+/** Where the reader stopped in a product, from any device. Pages are 1-based. */
+export interface ReadingProgressSummary {
+  page: number;
+  pageCount: number;
+  assetId: string | null;
+  updatedAt: string;
+}
+
 export interface Entitlement {
   id: string;
   productId: string;
@@ -67,10 +75,20 @@ export interface Entitlement {
   };
   /** For a session handout: the session it came with. */
   sourceProduct: { id: string; title: string; type: string } | null;
-  /** For a bundle: the PDFs in it this person can download. Null otherwise. */
-  contents: Array<{ id: string; title: string; subtitle: string | null }> | null;
+  /** For a bundle: the PDFs in it this person can read. Null otherwise. */
+  contents: Array<{
+    id: string;
+    title: string;
+    subtitle: string | null;
+    progress: ReadingProgressSummary | null;
+    downloadAllowed: boolean;
+  }> | null;
   /** Whether this reader has bookmarked it. */
   bookmarked: boolean;
+  /** Where they stopped reading, or null if never opened in the reader. */
+  progress: ReadingProgressSummary | null;
+  /** False when downloads are turned off (store-wide or for this product): read only. */
+  downloadAllowed: boolean;
 }
 
 export const storeApi = {

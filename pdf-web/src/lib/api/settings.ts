@@ -7,6 +7,8 @@ export type MentorCardStyle = "POSTER" | "CARD";
 export interface PlatformSettings {
   showSpamFolderNote: boolean;
   mentorCardStyle: MentorCardStyle;
+  /** Store buyers may download files; off makes the store read-only (a product can override). */
+  downloadsEnabled: boolean;
   /** An uploaded portrait, or null for the photo bundled with the site. Read-only here. */
   mentorPhotoUrl: string | null;
 }
@@ -27,7 +29,10 @@ export interface AdminPlatformSettings extends PlatformSettings {
 }
 
 /** The stored toggles an admin may change through the PATCH. The photo has its own calls. */
-export type PlatformSettingsInput = Pick<PlatformSettings, "showSpamFolderNote" | "mentorCardStyle">;
+export type PlatformSettingsInput = Pick<
+  PlatformSettings,
+  "showSpamFolderNote" | "mentorCardStyle" | "downloadsEnabled"
+>;
 
 export const settingsApi = {
   get: () => api.getAnonymous<PlatformSettings>("/settings"),

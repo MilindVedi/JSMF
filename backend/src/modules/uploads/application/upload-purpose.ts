@@ -67,6 +67,12 @@ export interface UploadPurpose<TContext = unknown, TResult = unknown> {
     tx: Prisma.TransactionClient,
     args: { upload: Upload; context: TContext; ref: ObjectRef; info: StoredObjectInfo; actor: UploadActor },
   ): Promise<{ id: string }>;
+  /**
+   * After the completing transaction has committed, once: work that must not
+   * run inside it (it reads or writes storage) or that should not undo the
+   * upload if it fails. Errors are logged, never returned to the uploader.
+   */
+  committed?(args: { resultId: string; upload: Upload; actor: UploadActor }): Promise<void>;
   /** What the uploader gets back — also for a repeated completion of the same upload. */
   present(resultId: string): Promise<TResult>;
 }

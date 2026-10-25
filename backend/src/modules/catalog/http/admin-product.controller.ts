@@ -23,6 +23,7 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../identity/application/auth.service';
 import { BundleContentsService } from '../application/bundle-contents.service';
 import { ProductAssetService } from '../application/product-asset.service';
+import { ProductSampleService } from '../application/product-sample.service';
 import { ProductService } from '../application/product.service';
 import { TaxonomyService } from '../application/taxonomy.service';
 import { actorFrom } from './actor';
@@ -32,6 +33,7 @@ import {
   CreateProductDto,
   ProductLinkDto,
   ReorderBundleDto,
+  CutSampleDto,
   UpdateProductDto,
   UploadAssetDto,
 } from './dto/product.dto';
@@ -54,6 +56,7 @@ export class AdminProductController {
     private readonly assets: ProductAssetService,
     private readonly taxonomy: TaxonomyService,
     private readonly bundles: BundleContentsService,
+    private readonly samples: ProductSampleService,
   ) {}
 
   @Get(':id/bundle-items')
@@ -231,6 +234,43 @@ export class AdminProductController {
     @Req() request: Request,
   ) {
     return this.assets.makeCurrent(assetId, actorFrom(user, request));
+  }
+
+  // --- sample ("Read sample" in the store) --------------------------------
+
+  @Get(':id/sample')
+  @ApiOperation({ summary: 'Whether the product has a sample, how it was made, and whether it is up to date' })
+  sampleStatus(@Param('id', ParseUUIDPipe) id: string) {
+    return this.samples.status(id);
+  }
+
+  @Post(':id/sample')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Cut the sample from the first N pages of the product’s PDF',
+    description:
+      'A separate, shorter file, so a visitor reading it holds only those pages. Cut again ' +
+      'automatically whenever the PDF is replaced. Uploading a sample file instead stops this.',
+  })
+  async cutSample(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CutSampleDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    await this.samples.cutFromFirstPages(id, dto.pageCount, actorFrom(user, request));
+    return this.samples.status(id);
+  }
+
+  @Delete(':id/sample')
+  @ApiOperation({ summary: 'Stop offering a sample (the file is kept as a past version)' })
+  async removeSample(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    await this.samples.remove(id, actorFrom(user, request));
+    return this.samples.status(id);
   }
 
   // --- taxonomy + links ---------------------------------------------------

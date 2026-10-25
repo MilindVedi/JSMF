@@ -243,6 +243,9 @@ export class UploadService implements OnModuleInit {
 
     if (upload.staged) await this.deleteQuietly(sent);
     this.logger.log(`Upload ${upload.id} (${upload.purpose}) recorded as ${resultId}, ${info.sizeBytes} bytes`);
+    await purpose.committed?.({ resultId, upload, actor }).catch((error: unknown) => {
+      this.logger.error(`After upload ${upload.id} (${upload.purpose}) was recorded: ${String(error)}`);
+    });
     return purpose.present(resultId);
   }
 

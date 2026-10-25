@@ -35,10 +35,15 @@ This document outlines upcoming architectural enhancements and migration milesto
 
 ---
 
-## 4. Storage & Asset Delivery (Cloudinary to GCS / CDN)
+## 4. Storage & Asset Delivery (GCS, Direct Uploads & In-Browser Reader)
 
-- [ ] **Short Term:** Monitor Cloudinary bandwidth and transformation quota.
-- [ ] **Long Term:** For large raw PDF storage and downloads, consider migrating the private asset store to **Google Cloud Storage (GCS)** with **Cloud CDN** and signed URL generation to optimize bandwidth cost.
+- [x] **Done — GCS & Direct Uploads:** Migrated private asset storage to **Google Cloud Storage (GCS)** with direct browser-to-bucket chunked uploads (up to 500 MB) and byte-range downloads.
+- [x] **Done — In-Browser PDF Reader:** Built Kindle-like reader fetching 256 KB pieces directly from GCS with background position tracking.
+- [ ] **Reader Signed URL Signing Quota at Massive Scale (10,000+ Concurrent Readers):**
+  - Private reader links expire every 5 minutes and auto-renew in the background. On Cloud Run, each signed link invokes Google's IAM credentials signing service. At ~10,000 active concurrent readers, that translates to ~2,000 signing requests/minute.
+  - **Why you don't need to worry today:**
+    - This only becomes a factor when you reach thousands of simultaneous active readers at the exact same second.
+    - If and when you reach that scale, the solution is effortless: you can simply increase the link duration (e.g., from 5 minutes to 30 or 60 minutes via `STORAGE_SIGNED_URL_TTL_SECONDS`), which immediately cuts the requests by 85–90%, or use Cloud CDN signed cookies.
 
 ---
 
