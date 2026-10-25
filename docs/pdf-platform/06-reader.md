@@ -11,8 +11,31 @@ seams below are where the next pieces go.
 
 ## What a reader gets
 
-- Pages drawn as you scroll (only the pages near the screen), with selectable
-  text and working links inside the PDF.
+- **One page at a time, turned sideways** (the default, as on Kindle), or one
+  continuous scroll; the reader picks with the layout button in the top bar
+  and it is remembered in the browser. One page at a time:
+  - **computer:** the whole page fits the screen; turn with the arrows either
+    side, ← / →, Space, or the wheel / a sideways trackpad swipe (one flick is
+    one page);
+  - **phone:** the page fits the width (a whole A4 page would be too small to
+    read), so you scroll down within it; swipe sideways or tap near the left or
+    right edge to turn; a tap in the middle does nothing;
+  - zoomed in, scrolling and dragging move around the page, and only a push
+    past its edge turns it. The wheel works per gesture, not per event: a
+    flick and its glide turn at most one page, and only if the gesture
+    started at the page's edge (a glide that reaches the bottom stops there).
+    Going back by wheel or ↑ lands on the bottom of the previous page;
+  - a held key turns one page, not the book; Space and the arrows are left to
+    a focused button, the tabs and the side panel; a mouse click on a reader
+    button leaves the keyboard on the pages;
+  - a turning tap never clicks what the new page has under the finger;
+    swipes from the screen's very edge are left to the phone (iOS "back"),
+    and a sideways trackpad swipe never becomes the browser's "back";
+  - the side arrows are on phones too, for screen readers only;
+  - the new page slides in a little from the side it came from (off with
+    "reduce motion").
+- Only the pages near the screen are drawn, with selectable text and working
+  links inside the PDF.
 - A page box (type a number), arrow keys / Page Up / Page Down / Home / End
   (left and right pan instead once zoomed past the screen), and zoom: − / + /
   fit to width, pinch on a phone, Ctrl + wheel or a trackpad pinch on a

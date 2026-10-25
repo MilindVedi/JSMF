@@ -1098,3 +1098,32 @@
 .reader-theme-dark .reader-page-image {
   filter: invert(0.92) hue-rotate(180deg);
 }
+
+/* One page at a time, the whole page fits the screen: pdf.js's "page-fit"
+   leaves only a few pixels around the page, so the scrolling layout's margin
+   would push it past the bottom. (overscroll-contain on the container keeps a
+   sideways trackpad swipe from becoming the browser's "back".) */
+.reader [data-layout="paged"] .pdfViewer .page {
+  margin: 2px auto;
+}
+
+/* One page at a time: the new page slides in a little from the side it came
+   from (pdf-engine sets data-turn as it goes in). Short and small on purpose:
+   it says "turned", it does not perform. */
+@keyframes reader-turn-next {
+  from { opacity: 0.35; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes reader-turn-prev {
+  from { opacity: 0.35; transform: translateX(-24px); }
+  to { opacity: 1; transform: none; }
+}
+.reader [data-layout="paged"][data-turn="next"] .pdfViewer .page {
+  animation: reader-turn-next 180ms ease-out;
+}
+.reader [data-layout="paged"][data-turn="prev"] .pdfViewer .page {
+  animation: reader-turn-prev 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reader [data-layout="paged"] .pdfViewer .page { animation: none; }
+}

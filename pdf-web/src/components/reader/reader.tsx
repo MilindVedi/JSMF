@@ -6,14 +6,18 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Download,
+  GalleryHorizontalEnd,
   Loader2,
   Maximize,
   Minimize,
   Minus,
   PanelLeft,
   Plus,
+  Rows3,
   Search,
   X,
 } from "lucide-react";
@@ -24,7 +28,7 @@ import { storeApi } from "@/lib/api/store";
 import { debouncedSaver, localProgressStore, resumePage, serverProgressStore } from "@/lib/reader/progress";
 import { loadPreferences, savePreferences, type ReaderPreferences, type ReaderTheme } from "@/lib/reader/preferences";
 import { FileChangedError } from "@/lib/reader/signed-range-loader";
-import type { FindResult, ReaderEngine, ReaderGrant, ReaderSource } from "@/lib/reader/types";
+import type { FindResult, ReaderEngine, ReaderGrant, ReaderLayout, ReaderSource } from "@/lib/reader/types";
 import { cn } from "@/lib/utils";
 import { ReaderSidebar, type SidebarTab } from "./reader-sidebar";
 
@@ -39,12 +43,23 @@ const THEMES: Array<{ key: ReaderTheme; label: string }> = [
 
 /** Below this width the side panel lies over the page instead of beside it. */
 const WIDE = 1024;
+/** A swipe: at least this far sideways, and mostly sideways. */
+const SWIPE_PX = 50;
+/** On touch, a tap this close to the left or right edge turns the page, as on an e-reader. */
+const TAP_ZONE = 0.22;
+/** Wheel events closer together than this are one gesture (a flick, a spin, a trackpad's glide). */
+const WHEEL_GESTURE_GAP_MS = 150;
+/** A sideways trackpad swipe: this far sideways in total, and mostly sideways. */
+const WHEEL_SWIPE_PX = 40;
+/** Swipes starting this close to the screen's own edge belong to the phone (iOS "back"). */
+const SCREEN_EDGE_PX = 16;
 
 /**
  * The in-browser reader: one file, full screen, with the controls people
- * expect from an e-reader — page jumps, zoom (buttons, pinch, Ctrl + wheel),
- * search, contents, page strip, light/sepia/dark, and reopening where they
- * left off on any device.
+ * expect from an e-reader — one page at a time turned sideways (or one long
+ * scroll, if the reader prefers), page jumps, zoom (buttons, pinch, Ctrl +
+ * wheel), search, contents, page strip, light/sepia/dark, and reopening where
+ * they left off on any device.
  *
  * It knows nothing about pdf.js (see ReaderEngine) or which API route the
  * file comes from (see ReaderSource).
@@ -74,7 +89,7 @@ export function Reader({
   // The reader only ever renders in the browser (the route waits for the
   // session first), so preferences can be read up front: no light flash.
   const [preferences, setPreferences] = useState<ReaderPreferences>(() =>
-    typeof window === "undefined" ? { theme: "light", sidebar: false } : loadPreferences(),
+    typeof window === "undefined" ? { theme: "light", layout: "paged", sidebar: false } : loadPreferences(),
   );
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window !== "undefined" && preferences.sidebar && window.innerWidth >= WIDE,
@@ -93,6 +108,12 @@ export function Reader({
   useEffect(() => {
     signedInRef.current = signedIn;
   }, [signedIn]);
+  // The layout the file opens in; switching later happens in place (below).
+  const layoutRef = useRef<ReaderLayout>(preferences.layout);
+  useEffect(() => {
+    layoutRef.current = preferences.layout;
+  }, [preferences.layout]);
+  const paged = preferences.layout === "paged";
 
   const isSample = source.kind === "sample";
   const productPage = grant?.product.slug ? `/p/${grant.product.slug}` : null;
@@ -140,6 +161,7 @@ export function Reader({
           source,
           grant: first,
           initialPage: 1,
+          layout: layoutRef.current,
           signal: closing.signal,
           onGrant: (fresh) => !closing.signal.aborted && setGrant(fresh),
           onOpen: (pageCount) => resumePage(saved, first.asset.id, pageCount),
@@ -212,26 +234,95 @@ export function Reader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, isSample, signedIn, source.productId]);
 
-  // --- zoom by pinch and Ctrl + wheel ---------------------------------------------
+  // --- layout ----------------------------------------------------------------------
+  useEffect(() => {
+    engine?.setLayout(preferences.layout);
+  }, [engine, preferences.layout]);
+
+  // --- turning pages and zooming by touch, wheel and trackpad ---------------------
   useEffect(() => {
     const container = containerRef.current;
     if (!engine || !container) return;
+    const turns = engine.layout === "paged";
+
+    const atEdge = (forward: boolean) => pageAtEdge(container, forward);
+    const pansSideways = () => container.scrollWidth > container.clientWidth + 1;
+    const turn = (forward: boolean, options?: { toBottom?: boolean }) =>
+      turnPage(engine, container, forward, options);
+
+    // A sideways trackpad swipe is the browser's "back" in Chrome; while
+    // reading one page at a time it turns the page instead.
+    const root = document.documentElement;
+    const overscrollBefore = root.style.overscrollBehaviorX;
+    if (turns) root.style.overscrollBehaviorX = "none";
 
     // A trackpad pinch arrives as Ctrl + wheel. Without this it zooms the
     // whole browser page, controls and all.
+    //
+    // One page at a time, the wheel turns pages per gesture, not per event:
+    // events close together (a flick and its glide, a fast spin) are one
+    // gesture and turn at most one page. A gesture turns the page only if it
+    // starts with the page already at that edge — a glide that reaches the
+    // bottom mid-way stops there, and the next flick turns.
+    let gesture = { last: 0, dx: 0, dy: 0, startedAtEdge: false, turned: false };
     const onWheel = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        engine.zoomBy(Math.exp(-event.deltaY / 300), [event.clientX, event.clientY]);
+        return;
+      }
+      if (!turns) return;
+      const now = performance.now();
+      const vertical = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
+      if (now - gesture.last > WHEEL_GESTURE_GAP_MS) {
+        gesture = {
+          last: now,
+          dx: 0,
+          dy: 0,
+          startedAtEdge: vertical && event.deltaY !== 0 && atEdge(event.deltaY > 0),
+          turned: false,
+        };
+      }
+      gesture.last = now;
+      gesture.dx += event.deltaX;
+      gesture.dy += event.deltaY;
+
+      if (gesture.turned) {
+        event.preventDefault(); // the rest of the glide must not scroll the new page
+        return;
+      }
+      if (!vertical) {
+        if (pansSideways()) return;
+        event.preventDefault();
+        if (Math.abs(gesture.dx) >= WHEEL_SWIPE_PX && Math.abs(gesture.dx) > 2 * Math.abs(gesture.dy)) {
+          gesture.turned = true;
+          turn(gesture.dx > 0);
+        }
+        return;
+      }
+      const forward = event.deltaY > 0;
+      if (!gesture.startedAtEdge || !atEdge(forward)) return;
       event.preventDefault();
-      engine.zoomBy(Math.exp(-event.deltaY / 300), [event.clientX, event.clientY]);
+      gesture.turned = true;
+      // Back by wheel continues reading upwards: the bottom of the previous page.
+      turn(forward, { toBottom: !forward });
     };
 
-    // Two fingers on a phone. The container's touch-action keeps the browser
-    // from zooming the page itself; one finger still scrolls as usual.
+    // Two fingers on a phone zoom. The container's touch-action keeps the
+    // browser from zooming the page itself; one finger scrolls as usual, and,
+    // one page at a time, a sideways swipe or a tap near an edge turns it.
     let lastDistance = 0;
+    let start: { x: number; y: number; time: number; multi: boolean } | null = null;
     const distance = (touches: TouchList) =>
       Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
     const onTouchStart = (event: TouchEvent) => {
-      if (event.touches.length === 2) lastDistance = distance(event.touches);
+      if (event.touches.length === 2) {
+        lastDistance = distance(event.touches);
+        if (start) start.multi = true;
+      } else if (event.touches.length === 1) {
+        const touch = event.touches[0];
+        start = { x: touch.clientX, y: touch.clientY, time: performance.now(), multi: false };
+      }
     };
     const onTouchMove = (event: TouchEvent) => {
       if (event.touches.length !== 2 || !lastDistance) return;
@@ -245,19 +336,49 @@ export function Reader({
     };
     const onTouchEnd = (event: TouchEvent) => {
       if (event.touches.length < 2) lastDistance = 0;
+      if (!turns || !start || start.multi || event.touches.length > 0) return;
+      const touch = event.changedTouches[0];
+      const began = start;
+      start = null;
+      if (!touch || performance.now() - began.time >= 600 || pansSideways()) return;
+      const dx = touch.clientX - began.x;
+      const dy = touch.clientY - began.y;
+      // Selecting text by dragging is not a swipe, and a tap that ends a
+      // selection is not a page turn.
+      if (window.getSelection()?.toString()) return;
+
+      const fromScreenEdge = began.x < SCREEN_EDGE_PX || began.x > window.innerWidth - SCREEN_EDGE_PX;
+      if (Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        if (fromScreenEdge) return;
+        event.preventDefault();
+        turn(dx < 0); // the page follows the finger: swipe left for the next one
+        return;
+      }
+      const tap = Math.abs(dx) < 10 && Math.abs(dy) < 10;
+      const onControl = (event.target as HTMLElement | null)?.closest(
+        "a, button, input, select, textarea, [role=button], .annotationLayer section",
+      );
+      if (!tap || onControl) return;
+      const box = container.getBoundingClientRect();
+      const at = (touch.clientX - box.left) / box.width;
+      if (at >= TAP_ZONE && at <= 1 - TAP_ZONE) return;
+      // No click after the turn: it would land on whatever the new page has there (a link).
+      event.preventDefault();
+      turn(at > 1 - TAP_ZONE);
     };
 
     container.addEventListener("wheel", onWheel, { passive: false });
     container.addEventListener("touchstart", onTouchStart, { passive: true });
     container.addEventListener("touchmove", onTouchMove, { passive: false });
-    container.addEventListener("touchend", onTouchEnd, { passive: true });
+    container.addEventListener("touchend", onTouchEnd, { passive: false });
     return () => {
+      root.style.overscrollBehaviorX = overscrollBefore;
       container.removeEventListener("wheel", onWheel);
       container.removeEventListener("touchstart", onTouchStart);
       container.removeEventListener("touchmove", onTouchMove);
       container.removeEventListener("touchend", onTouchEnd);
     };
-  }, [engine]);
+  }, [engine, preferences.layout]);
 
   // --- keyboard --------------------------------------------------------------------
   const openSearch = useCallback(() => {
@@ -270,7 +391,9 @@ export function Reader({
     const onKey = (event: KeyboardEvent) => {
       // A dialog (the terms prompt) has the keyboard while it is open.
       if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
-      const typing = (event.target as HTMLElement | null)?.closest("input, textarea, [contenteditable]");
+      // Usually an element; the window or document when nothing has focus.
+      const target = event.target instanceof Element ? event.target : null;
+      const typing = target?.closest("input, textarea, [contenteditable]");
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
         event.preventDefault();
         openSearch();
@@ -283,9 +406,30 @@ export function Reader({
         return;
       }
       if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
+      // Keys that belong to what has focus: Space and Enter press a button or
+      // follow a link; arrows move between tabs; the side panel scrolls itself.
+      if (event.key === " " && target?.closest("button, a, [role=button], select, summary")) return;
+      if (target?.closest("aside, [role=tablist], select, [role=listbox], [role=slider]")) return;
+      // Holding a key down is not reading: one page per press.
+      const turnKey = [" ", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key);
+      if (event.repeat && turnKey && engine.layout === "paged") {
+        event.preventDefault();
+        return;
+      }
       const container = containerRef.current;
       // Zoomed in past the screen's width, left and right pan instead.
       const pansSideways = container ? container.scrollWidth > container.clientWidth + 1 : false;
+      // One page at a time, down/up and Space scroll within the page, then
+      // turn it at the edge.
+      if (engine.layout === "paged" && container && ["ArrowDown", "ArrowUp", " "].includes(event.key)) {
+        const forward = event.key !== "ArrowUp" && !(event.key === " " && event.shiftKey);
+        if (pageAtEdge(container, forward)) {
+          event.preventDefault();
+          // Back by ↑ continues reading upwards: the bottom of the previous page.
+          turnPage(engine, container, forward, { toBottom: !forward });
+        }
+        return;
+      }
       if (event.key === "PageDown" || (event.key === "ArrowRight" && !pansSideways)) {
         event.preventDefault();
         engine.goToPage(engine.currentPage + 1);
@@ -438,6 +582,13 @@ export function Reader({
         <IconButton label="Search in this PDF" onClick={openSearch} pressed={searchOpen} disabled={!engine}>
           <Search className="size-4" />
         </IconButton>
+        <IconButton
+          label={paged ? "One page at a time — switch to scrolling" : "Scrolling — switch to one page at a time"}
+          onClick={() => updatePreferences({ layout: paged ? "scroll" : "paged" })}
+          disabled={!engine}
+        >
+          {paged ? <GalleryHorizontalEnd className="size-4" /> : <Rows3 className="size-4" />}
+        </IconButton>
         <ThemeButton theme={preferences.theme} onChange={(theme) => updatePreferences({ theme })} />
         <span className="hidden sm:contents">
           <IconButton label={fullscreen ? "Exit full screen" : "Full screen"} onClick={toggleFullscreen}>
@@ -532,12 +683,20 @@ export function Reader({
         <div className="reader-canvas relative min-w-0 flex-1">
           <div
             ref={containerRef}
-            className="absolute inset-0 touch-pan-x touch-pan-y overflow-auto outline-none"
+            className="absolute inset-0 touch-pan-x touch-pan-y overflow-auto overscroll-contain outline-none"
             tabIndex={0}
             aria-label="Document"
           >
             <div className="pdfViewer" />
           </div>
+
+          {/* One page at a time on a computer: arrows either side, quiet until the pointer is near. */}
+          {engine && paged && !failure && (
+            <>
+              <PageArrow side="left" disabled={page <= 1} onClick={() => engine.goToPage(page - 1)} />
+              <PageArrow side="right" disabled={page >= pageCount} onClick={() => engine.goToPage(page + 1)} />
+            </>
+          )}
 
           {!engine && !failure && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -650,6 +809,7 @@ function IconButton({
     <button
       type="button"
       onClick={onClick}
+      onMouseDown={keepReadingFocus}
       disabled={disabled}
       aria-label={label}
       title={label}
@@ -660,6 +820,65 @@ function IconButton({
       )}
     >
       {children}
+    </button>
+  );
+}
+
+/**
+ * One page at a time: whether the page's own bottom (or top) is in view, so a
+ * further push turns the page. Until then — zoomed in, or a phone reading a
+ * tall page at full width — scrolling scrolls. Measured on the page, not the
+ * scroll offset, which includes the page's margin.
+ */
+function pageAtEdge(container: HTMLElement, forward: boolean): boolean {
+  const page = container.querySelector(".pdfViewer .page")?.getBoundingClientRect();
+  if (!page) return true;
+  const box = container.getBoundingClientRect();
+  return forward ? page.bottom <= box.bottom + 2 : page.top >= box.top - 2;
+}
+
+/**
+ * A mouse click on a reader control leaves the keyboard where it was — on the
+ * pages — so Space and the arrows keep turning them instead of pressing the
+ * button again. Tabbing to a control still focuses it as usual.
+ */
+function keepReadingFocus(event: React.MouseEvent) {
+  event.preventDefault();
+}
+
+/**
+ * Turns one page. `toBottom` lands on the bottom of the new page — for going
+ * back by wheel or ↑, which continues reading upwards rather than jumping to
+ * the top of the previous page (and straight past it on the next push).
+ */
+function turnPage(engine: ReaderEngine, container: HTMLElement, forward: boolean, options?: { toBottom?: boolean }) {
+  const before = engine.currentPage;
+  engine.goToPage(before + (forward ? 1 : -1));
+  if (options?.toBottom && engine.currentPage !== before) container.scrollTop = container.scrollHeight;
+}
+
+/**
+ * The previous / next page arrow beside the page. Shown on computers; on
+ * phones it is there for screen readers only (they take over swipes and
+ * taps). Never `disabled`: a disabled button drops the keyboard focus.
+ */
+function PageArrow({ side, disabled, onClick }: { side: "left" | "right"; disabled: boolean; onClick: () => void }) {
+  const Icon = side === "left" ? ChevronLeft : ChevronRight;
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onClick()}
+      onMouseDown={keepReadingFocus}
+      aria-disabled={disabled}
+      aria-label={side === "left" ? "Previous page" : "Next page"}
+      title={side === "left" ? "Previous page" : "Next page"}
+      className={cn(
+        "absolute top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border bg-card/90 text-muted-foreground shadow-sm transition-opacity hover:text-foreground max-md:sr-only",
+        "opacity-40 hover:opacity-100 focus-visible:opacity-100 aria-disabled:pointer-events-none aria-disabled:opacity-0",
+        side === "left" ? "left-3" : "right-3",
+      )}
+    >
+      <Icon className="size-5" />
     </button>
   );
 }

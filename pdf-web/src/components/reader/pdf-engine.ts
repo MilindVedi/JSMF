@@ -4,6 +4,7 @@ import type {
   ReaderEngine,
   ReaderEvents,
   ReaderGrant,
+  ReaderLayout,
   ReaderSource,
   ZoomMode,
 } from "@/lib/reader/types";
@@ -29,6 +30,17 @@ const RANGE_CHUNK_BYTES = 256 * 1024;
 /** Zoom presets that depend on the reading area's size, re-fitted when it changes. */
 const FITTED: readonly string[] = ["auto", "page-width", "page-fit"];
 
+/**
+ * How a page fits each layout. One page at a time shows the whole page on a
+ * computer; on a phone a whole page is too small to read, so it fits the
+ * width and the reader scrolls down within the page before turning it.
+ */
+function fitFor(layout: ReaderLayout): ZoomMode {
+  const phone = window.innerWidth < 768;
+  if (layout === "paged") return phone ? "page-width" : "page-fit";
+  return phone ? "page-width" : "auto";
+}
+
 const FIND_STATES: Record<number, FindResult["state"]> = { 0: "found", 1: "not-found", 2: "wrapped", 3: "pending" };
 
 /** Thrown when the reader closed before the document finished opening. */
@@ -44,6 +56,7 @@ export async function openPdfEngine(options: {
   source: ReaderSource;
   grant: ReaderGrant;
   initialPage: number;
+  layout: ReaderLayout;
   /** Closing the reader mid-open: everything started so far is torn down. */
   signal?: AbortSignal;
   onGrant?: (grant: ReaderGrant) => void;
@@ -139,6 +152,44 @@ export async function openPdfEngine(options: {
   const viewer = new viewerModule.PDFViewer(viewerOptions);
   linkService.setViewer(viewer);
 
+  let layout = options.layout;
+  // Until the reader zooms by hand, the fit follows the layout and the screen
+  // (a window narrowed to phone width, a phone turned sideways). After that,
+  // their choice is kept.
+  let autoFit = true;
+  // The scale is being set here, not by the reader or by pdf.js itself (a
+  // chapter link with its own zoom): only those count as zooming by hand.
+  let fitting = false;
+  const fit = (value: string) => {
+    fitting = true;
+    try {
+      viewer.currentScaleValue = value;
+    } finally {
+      fitting = false;
+    }
+  };
+  // pdf.js builds its pages a moment after the document is set; until then
+  // a layout change is only recorded (switching modes then would throw).
+  let pagesReady = false;
+  const scrollModeFor = (next: ReaderLayout) =>
+    next === "paged" ? viewerModule.ScrollMode.PAGE : viewerModule.ScrollMode.VERTICAL;
+  /** Puts the viewer in `layout`, and reads back what it really is: pdf.js
+   *  keeps documents over 15,000 pages one page at a time, whatever is asked. */
+  const applyLayout = () => {
+    viewer.scrollMode = scrollModeFor(layout);
+    layout = viewer.scrollMode === viewerModule.ScrollMode.PAGE ? "paged" : "scroll";
+    // Read by the reader's CSS: the page-turn slide is for one page at a time only.
+    container.dataset.layout = layout;
+  };
+  applyLayout();
+
+  // The slide plays once per real page turn. Cleared when it ends, because
+  // one page at a time pdf.js puts the page back into the page for every zoom
+  // step too, which would otherwise replay it.
+  const endTurn = () => delete container.dataset.turn;
+  container.addEventListener("animationend", endTurn, { signal: teardown.signal });
+  container.addEventListener("animationcancel", endTurn, { signal: teardown.signal });
+
   const startPage = Math.min(
     Math.max(1, (options.onOpen?.(document.numPages) as number | undefined) ?? options.initialPage),
     document.numPages,
@@ -160,7 +211,9 @@ export async function openPdfEngine(options: {
     container.addEventListener(type, () => (userMoved = true), { once: true, passive: true, signal: teardown.signal });
   }
   eventBus.on("pagesinit", () => {
-    viewer.currentScaleValue = window.innerWidth < 768 ? "page-width" : "auto";
+    pagesReady = true;
+    applyLayout();
+    fit(fitFor(layout));
     if (startPage > 1) viewer.currentPageNumber = startPage;
   });
   // Until every page's real size is known, pages are laid out at the first
@@ -169,8 +222,29 @@ export async function openPdfEngine(options: {
   eventBus.on("pagesloaded", () => {
     if (startPage > 1 && !userMoved) viewer.currentPageNumber = startPage;
   });
-  eventBus.on("pagechanging", ({ pageNumber }: { pageNumber: number }) => emit("pageChange", pageNumber));
-  eventBus.on("scalechanging", ({ scale }: { scale: number }) => emit("zoomChange", Math.round(scale * 100)));
+  // Which way the page turned, for the slide in (CSS). Set as the new page
+  // goes in — before the browser styles it — so it slides from the right side.
+  let shownPage = startPage;
+  /** A page's own size (unscaled), to notice a landscape page in a portrait book. */
+  const sizeOf = (page: number) => {
+    const viewport = viewer.getPageView(page - 1)?.viewport;
+    return viewport ? `${Math.round(viewport.width / viewport.scale)}x${Math.round(viewport.height / viewport.scale)}` : "";
+  };
+  eventBus.on("pagechanging", ({ pageNumber }: { pageNumber: number }) => {
+    if (layout === "paged" && pageNumber !== shownPage) {
+      container.dataset.turn = pageNumber > shownPage ? "next" : "prev";
+    }
+    // One page at a time, a page of another size is fitted on its own.
+    if (layout === "paged" && autoFit && pagesReady && sizeOf(pageNumber) !== sizeOf(shownPage)) {
+      requestAnimationFrame(() => fit(fitFor(layout)));
+    }
+    shownPage = pageNumber;
+    emit("pageChange", pageNumber);
+  });
+  eventBus.on("scalechanging", ({ scale }: { scale: number }) => {
+    if (!fitting) autoFit = false;
+    emit("zoomChange", Math.round(scale * 100));
+  });
   eventBus.on(
     "updatefindcontrolstate",
     ({ state, matchesCount }: { state: number; matchesCount: { current: number; total: number } }) =>
@@ -189,8 +263,10 @@ export async function openPdfEngine(options: {
   const resize = new ResizeObserver(() => {
     cancelAnimationFrame(refit);
     refit = requestAnimationFrame(() => {
+      if (!pagesReady) return;
       const preset = viewer.currentScaleValue;
-      if (FITTED.includes(preset)) viewer.currentScaleValue = preset;
+      if (autoFit) fit(fitFor(layout));
+      else if (FITTED.includes(preset)) fit(preset);
     });
   });
   resize.observe(container);
@@ -212,22 +288,44 @@ export async function openPdfEngine(options: {
     get zoomPercent() {
       return Math.round(viewer.currentScale * 100);
     },
+    get layout() {
+      return layout;
+    },
+    setLayout(next) {
+      if (next === layout) return;
+      layout = next;
+      autoFit = true;
+      delete container.dataset.turn;
+      // Not set up yet: pagesinit applies it.
+      if (!pagesReady) {
+        container.dataset.layout = next;
+        return;
+      }
+      const page = viewer.currentPageNumber;
+      applyLayout();
+      fit(fitFor(layout));
+      viewer.currentPageNumber = page;
+    },
     goToPage(page) {
       userMoved = true;
       viewer.currentPageNumber = Math.min(Math.max(1, Math.round(page)), document.numPages);
     },
     zoomIn() {
+      autoFit = false;
       viewer.increaseScale();
     },
     zoomOut() {
+      autoFit = false;
       viewer.decreaseScale();
     },
     zoomBy(factor, origin) {
+      autoFit = false;
       // Pages are stretched at once and redrawn sharp when the gesture pauses,
       // not on every finger movement.
       viewer.updateScale({ scaleFactor: factor, origin, drawingDelay: 300 });
     },
     setZoom(mode: ZoomMode) {
+      autoFit = false;
       viewer.currentScaleValue = mode;
     },
     find(query, findOptions = {}) {

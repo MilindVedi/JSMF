@@ -56,6 +56,9 @@ export interface OutlineItem {
 
 export type ZoomMode = "page-width" | "page-fit" | "auto";
 
+/** One page at a time (turned sideways), or one continuous vertical scroll. */
+export type ReaderLayout = "paged" | "scroll";
+
 export interface FindResult {
   current: number;
   total: number;
@@ -78,6 +81,9 @@ export interface ReaderEngine {
   readonly currentPage: number;
   /** Current zoom, in percent. */
   readonly zoomPercent: number;
+  readonly layout: ReaderLayout;
+  /** Switches layout in place, keeping the page, and fits the page to the new layout. */
+  setLayout(layout: ReaderLayout): void;
   goToPage(page: number): void;
   zoomIn(): void;
   zoomOut(): void;
