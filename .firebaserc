@@ -10,6 +10,9 @@
         ],
         "store": [
           "production-509708"
+        ],
+        "pyqs": [
+          "jsmf-web-pyqs-569375141363-asia-south1"
         ]
       }
     }

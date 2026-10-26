@@ -53,7 +53,7 @@ github:
   name: JSMF
   owner: MilindVedi
   push:
-    branch: ^main$
+    branch: main
 includedFiles:
 - web/**
 - packages/core/**
