@@ -365,10 +365,342 @@
 }
 
 /* Doctor portrait, social orbs and contact dialog — copied from main-web/src/app/globals.css so the three sites match. */
-@utility credential-chip { border-radius: 999px; background: var(--accent); padding: 0.35rem 0.55rem; color: var(--primary); font-size: 0.65rem; font-weight: 700; }
-@utility doctor-credential { position: absolute; right: -1rem; bottom: -1.5rem; width: min(19rem, 88%); border: 1px solid var(--border); border-radius: 1rem; background: var(--card); padding: 1.25rem; box-shadow: 0 18px 50px -28px color-mix(in oklab, var(--primary) 35%, transparent); }
-@utility portrait-frame { position: relative; aspect-ratio: 3 / 4; overflow: hidden; border: 1px solid var(--border); border-radius: 1.5rem; background: var(--muted); box-shadow: 0 18px 50px -28px color-mix(in oklab, var(--primary) 35%, transparent); &::after { content: ""; position: absolute; inset: auto 0 0 0; height: 32%; background: linear-gradient(to top, color-mix(in oklab, var(--brand-deep) 55%, transparent), transparent); } }
-@utility rank-badge { position: absolute; left: 1.5rem; top: -1.25rem; z-index: 1; display: inline-flex; align-items: center; gap: 0.4rem; border-radius: 999px; background: #FFD700; color: var(--brand-deep); padding: 0.5rem 0.85rem; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.03em; box-shadow: 0 18px 50px -28px color-mix(in oklab, var(--primary) 35%, transparent); }
+/* The three channel buttons under the team card's photo
+   (components/marketing/doctor-social-links.tsx).
+
+   Each carries its own colour in `--social-brand`: at rest the icon is in it
+   over a faint wash of the same, so the row is recognisably Instagram, YouTube
+   and Telegram at a glance without three saturated logos shouting over the
+   card's name. On hover or keyboard focus the circle fills with that colour
+   from the middle, the icon turns white and grows, and the button lifts on a
+   shadow tinted to match. Instagram's fill is a gradient, so it rides in its
+   own `--social-fill` layer; the flat colour is still wanted for the icon, the
+   border and the shadow.
+
+   A staggered pulse runs across the row left to right and comes round again
+   shortly after, so it reads as one live row rather than three blinking
+   buttons. Everything here stops under prefers-reduced-motion. */
+@utility social-brand {
+  --social-brand: var(--primary);
+  --social-fill: var(--social-brand);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--social-brand) 35%, transparent);
+  background: color-mix(in oklab, var(--social-brand) 10%, var(--background));
+  color: var(--social-brand);
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent);
+  transition:
+    color 200ms ease,
+    border-color 200ms ease,
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 200ms ease;
+  animation: social-breath 2s ease-in-out infinite;
+}
+
+/* The colour grows out of the middle, under the icon. */
+.social-brand::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 999px;
+  background: var(--social-fill);
+  transform: scale(0.4);
+  opacity: 0;
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease;
+}
+
+.social-brand > svg {
+  position: relative;
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.social-brand:hover,
+.social-brand:focus-visible {
+  color: white;
+  border-color: transparent;
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px -8px color-mix(in oklab, var(--social-brand) 75%, transparent);
+  animation: none; /* the breath would fight the lift */
+}
+
+.social-brand:hover::before,
+.social-brand:focus-visible::before {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.social-brand:hover > svg,
+.social-brand:focus-visible > svg {
+  transform: scale(1.14);
+}
+
+/* Telegram's plane darts off and comes back, as it does on the floating pill. */
+.social-brand[data-channel="Telegram"]:hover > svg,
+.social-brand[data-channel="Telegram"]:focus-visible > svg {
+  animation: social-dart 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.social-brand:active {
+  transform: translateY(-1px) scale(0.95);
+}
+
+/* The ring swells and fades; with the per-button delay below, the three read
+   as one pulse crossing the row. Short enough that the next one follows on. */
+@keyframes social-breath {
+  0%, 55%, 100% { box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent), 0 0 0 0 color-mix(in oklab, var(--social-brand) 40%, transparent); }
+  62% { box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent), 0 0 0 2px color-mix(in oklab, var(--social-brand) 28%, transparent); }
+  75% { box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent), 0 0 0 5px color-mix(in oklab, var(--social-brand) 0%, transparent); }
+}
+
+@keyframes social-dart {
+  0% { transform: scale(1.14) translate(0, 0) rotate(0deg); }
+  40% { transform: scale(1.14) translate(7px, -7px) rotate(-14deg); }
+  65% { transform: scale(1.14) translate(-3px, 3px) rotate(6deg); }
+  100% { transform: scale(1.14) translate(0, 0) rotate(0deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .social-brand,
+  .social-brand::before,
+  .social-brand > svg,
+  .social-brand[data-channel="Telegram"]:hover > svg {
+    animation: none;
+    transition: color 200ms ease, border-color 200ms ease;
+  }
+  .social-brand:hover,
+  .social-brand:focus-visible,
+  .social-brand:active { transform: none; }
+  /* Without the grow there would be no colour at all, so it simply appears. */
+  .social-brand:hover::before,
+  .social-brand:focus-visible::before { transform: scale(1); opacity: 1; }
+}
+
+/* The centre-right "Join us on Telegram" float (components/marketing/telegram-float.tsx).
+   Copied character for character from main-web and the store, like the poster below. */
+/* pill leans out from the screen edge, springs back, settles */
+@keyframes tg-peek {
+  0%, 56% { transform: translateX(0); }
+  64% { transform: translateX(-13px); }
+  71% { transform: translateX(5px); }
+  78% { transform: translateX(-3px); }
+  85%, 100% { transform: translateX(0); }
+}
+
+/* light sheen sweeps across the pill */
+@keyframes tg-shine {
+  0%, 50% { transform: translateX(-170%) skewX(-18deg); opacity: 0; }
+  56% { opacity: 0.95; }
+  72%, 100% { transform: translateX(270%) skewX(-18deg); opacity: 0; }
+}
+
+/* paper plane darts forward and snaps back */
+@keyframes tg-plane {
+  0%, 54% { transform: translate(0, 0) rotate(0deg); }
+  63% { transform: translate(8px, -8px) rotate(-12deg); }
+  70% { transform: translate(-4px, 4px) rotate(6deg); }
+  79%, 100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+/* small dot pulses */
+@keyframes tg-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.45; }
+}
+
+@utility telegram-float {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: var(--shadow-editorial);
+  animation: tg-peek 3.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -40% -6%;
+    background: linear-gradient(100deg, transparent 40%, color-mix(in oklab, white 85%, transparent) 50%, transparent 60%);
+    transform: translateX(-170%) skewX(-18deg);
+    pointer-events: none;
+    animation: tg-shine 3.8s ease-in-out infinite;
+  }
+}
+
+.tg-plane { animation: tg-plane 3.8s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+.tg-dot { animation: tg-dot 1.8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .telegram-float, .telegram-float::before, .tg-plane, .tg-dot { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   The mentor poster: the arched photo with the two rank medals leaning out of
+   its edges and the name melting out of the bottom in brand purple.
+
+   Copied character for character from main-web's DoctorPortrait and pdf-web's
+   DoctorPortraitCard, so all three sites show the same hero. Keep them in
+   step: a change here belongs in both of those too.
+   --------------------------------------------------------------------------- */
+
+:root {
+  /* Deeper than --shadow-editorial: the poster is the one thing on the page
+     that should look lifted off it. */
+  --mentor-shadow: 0 30px 70px -36px color-mix(in oklab, var(--brand-deep) 70%, transparent);
+  /* The sheen across the top-left of a medal, under its colour gradient. */
+  --mentor-highlight: radial-gradient(
+    120% 120% at 18% 12%,
+    color-mix(in oklab, white 38%, transparent),
+    transparent 60%
+  );
+  /* The bronze of the Medalist pill — the site's own chart-4. */
+  --mentor-bronze: var(--chart-4);
+}
+
+@utility mentor-photo-frame {
+  position: relative;
+  isolation: isolate;
+  height: 640px;
+  border-radius: 200px 200px 26px 26px; /* arch top */
+  background: var(--muted);
+  box-shadow: var(--mentor-shadow);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+@utility mentor-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+  transition: transform 700ms ease;
+}
+
+.mentor-photo-frame:hover .mentor-photo {
+  transform: scale(1.045);
+}
+
+/* The purple that rises out of the bottom of the photo and carries the name,
+   so the picture ends in the brand rather than in a hard edge. */
+@utility mentor-melt {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 64px 26px 24px;
+  background: linear-gradient(
+    to top,
+    color-mix(in oklab, var(--brand-deep) 94%, transparent) 52%,
+    color-mix(in oklab, var(--brand-deep) 55%, transparent) 80%,
+    transparent
+  );
+}
+
+/* A glossy rank medal that leans out past the photo's edge. Not clickable —
+   it is a label, and it must never swallow a tap meant for the page. */
+@utility medal {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.8rem 1.1rem;
+  border-radius: 999px;
+  color: var(--brand-on-deep);
+  background: var(--mentor-highlight), /* soft top-left sheen */
+    linear-gradient(
+      125deg,
+      color-mix(in oklab, var(--primary) 68%, white) 0%,
+      var(--primary) 45%,
+      var(--brand-deep) 100%
+    );
+  border: 1px solid color-mix(in oklab, white 45%, transparent);
+  box-shadow: var(--shadow-editorial), inset 0 1px 0 color-mix(in oklab, white 55%, transparent);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* The light sweep that crosses the medal. */
+.medal::before {
+  content: "";
+  position: absolute;
+  inset: -30% -10%;
+  background: linear-gradient(
+    100deg,
+    transparent 42%,
+    color-mix(in oklab, white 70%, transparent) 50%,
+    transparent 58%
+  );
+  transform: translateX(-170%) skewX(-18deg);
+  pointer-events: none;
+  animation: medal-shine 4.6s ease-in-out infinite;
+}
+
+@utility medal-right {
+  right: -14px;
+  top: 11%;
+  animation: medal-float-r 4.5s ease-in-out infinite;
+}
+
+@utility medal-left {
+  left: -14px;
+  top: 49%;
+  animation: medal-float-l 5.2s ease-in-out 0.8s infinite;
+}
+
+@keyframes medal-float-r {
+  0%, 100% { transform: rotate(3deg) translateY(0); }
+  50% { transform: rotate(3deg) translateY(-9px); }
+}
+
+@keyframes medal-float-l {
+  0%, 100% { transform: rotate(-3deg) translateY(0); }
+  50% { transform: rotate(-3deg) translateY(-9px); }
+}
+
+@keyframes medal-shine {
+  0%, 62% { transform: translateX(-170%) skewX(-18deg); opacity: 0; }
+  68% { opacity: 0.9; }
+  82%, 100% { transform: translateX(270%) skewX(-18deg); opacity: 0; }
+}
+
+/* The bronze pill inside the melt: the one warm note on the poster, so it
+   reads as a different kind of honour from the two ranks. */
+@utility medal-bronze {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid color-mix(in oklab, var(--mentor-bronze) 60%, transparent);
+  background: linear-gradient(120deg, color-mix(in oklab, var(--mentor-bronze) 30%, transparent), transparent 70%);
+  color: var(--brand-on-deep);
+  font-size: 0.75rem;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--mentor-bronze) 35%, transparent);
+}
+
+@media (max-width: 639px) {
+  .mentor-photo-frame { height: 570px; }
+  .mentor-melt { padding: 52px 20px 20px; }
+  .medal-right { right: -10px; top: 22%; }
+  .medal-left { left: -10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mentor-photo { transition: none; }
+  .mentor-photo-frame:hover .mentor-photo { transform: none; }
+  .medal, .medal::before { animation: none; }
+}
+
 @utility social-orb {
   display: inline-flex;
   align-items: center;

@@ -9,6 +9,7 @@ import { RevisionFlowSection } from "@/components/marketing/revision-flow-sectio
 import { ComingSoonStrip } from "@/components/marketing/coming-soon-strip";
 import { CtaSection } from "@/components/marketing/cta-section";
 import { FaqAccordion } from "@/components/marketing/faq-accordion";
+import { TelegramFloat } from "@/components/marketing/telegram-float";
 
 // Static, refreshed in the background with the plans it shows.
 export const revalidate = 300;
@@ -27,6 +28,7 @@ export default function MarketingHomePage() {
       <ComingSoonStrip />
       <CtaSection />
       <FaqAccordion />
+      <TelegramFloat />
     </>
   );
 }

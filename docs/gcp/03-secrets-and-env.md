@@ -156,6 +156,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `BACKEND_API_URL` | URL of the NestJS backend API. Resolved at **runtime** by `middleware.ts` to dynamically reverse proxy requests. | `https://jsmf-backend-67890.a.run.app` |
 | `NEXT_PUBLIC_SITE_URL` | The one public address the site is published at. Drives `<link rel="canonical">` and absolute metadata URLs. **Must be set on every deployed environment** — see the note below. | `https://resources.jsmf.me` |
 | `NEXT_PUBLIC_MAIN_SITE_URL` | The main JSMF website (jsmf.me). The storefront's "Visit our main website" link and the footer's legal links (About / Privacy / Terms / Refund / Digital Delivery / Disclaimer — all canonically hosted on jsmf.me, so pdf-web links out to avoid duplicating and letting them drift) both read from this. Unset falls back to `https://jsmf.me`. | `https://jsmf.me` |
+| `NEXT_PUBLIC_MED_PREP_URL` | The Med Prep site (PYQ practice). The header's **Med Prep** link points here on both this app and main-web, while `medPrepLinkEnabled` is on under Admin → Settings. Unset falls back to `https://medprep.jsmf.me`. | `https://medprep.jsmf.me` |
 | `NEXT_PUBLIC_MAX_UPLOAD_MB`| Fallback only: the multipart limit shown if the backend cannot say. The admin site reads every real limit from `GET /api/uploads/options`. Keep it at or below the backend's `MAX_UPLOAD_SIZE_MB` | `25`, then `5` once both are deployed |
 | `PORT` | Listening Port | `3001` |
 | `NODE_ENV` | Production Environment | `production` |

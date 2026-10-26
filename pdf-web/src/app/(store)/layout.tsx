@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BookOpen,
   ExternalLink,
+  GraduationCap,
   Home,
   Library,
   LogIn,
@@ -19,7 +20,8 @@ import { LegalGate } from "@/components/legal/legal-gate";
 import { storeButton } from "@/components/store/store-button";
 import { StoreFooter } from "@/components/store/store-footer";
 import { cn } from "@/lib/utils";
-import { brand, mainWebsiteUrl } from "@/lib/site-content";
+import { brand, mainWebsiteUrl, medPrepUrl } from "@/lib/site-content";
+import { useMedPrepLink } from "@/lib/use-platform-settings";
 import { isAdmin, useSessionStore } from "@/store/session-store";
 
 /**
@@ -34,6 +36,9 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const { user, ready, restore, logout } = useSessionStore();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Both switches live in Admin -> Settings, so the link and its "New" badge
+  // can each be turned off without a deploy. Null until they arrive.
+  const medPrepLink = useMedPrepLink();
 
   useEffect(() => {
     void restore();
@@ -73,6 +78,22 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     </a>
   );
 
+  // The practice site, behind its own switch — and, while it is still new,
+  // wearing a badge that says so. Rendered in the same two places as the
+  // main-site link, so the two crossovers always travel together.
+  const medPrepSiteLink = medPrepLink?.enabled ? (
+    <a
+      href={medPrepUrl}
+      target="_blank"
+      rel="noreferrer"
+      className={cn("nav-link", medPrepLink.highlight && "nav-new")}
+      aria-label="Visit JSMF Med Prep, the question practice site, in a new tab"
+    >
+      <GraduationCap className="size-4" /> Med Prep
+      {medPrepLink.highlight && <span className="nav-new-badge">New</span>}
+    </a>
+  ) : null;
+
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-xl">
@@ -102,7 +123,10 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
               <span className="truncate font-normal text-muted-foreground">Jab Studies Met Fun</span>
             </Link>
 
-            <nav className="hidden items-center gap-2 md:flex" aria-label="Main navigation">
+            {/* Not `md`: with the Med Prep crossover the row runs over at
+                768 and at 1024, so the ☰ menu holds until 1240. A measured
+                width — the content decides this, not the device sizes. */}
+            <nav className="hidden items-center gap-2 min-[1240px]:flex" aria-label="Main navigation">
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
@@ -113,6 +137,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                   {link.label}
                 </Link>
               ))}
+              {medPrepSiteLink}
               {mainSiteLink}
             </nav>
           </div>
@@ -120,7 +145,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
           {/* `ready` gates this so the header does not flash "Sign in" for a
               buyer who is in fact still signed in from a previous visit. */}
           {ready && !isAccountPage && (
-            <div className="hidden items-center gap-2 md:flex">
+            <div className="hidden shrink-0 items-center gap-2 whitespace-nowrap md:flex">
               {user ? (
                 <>
                   <span className="text-sm text-muted-foreground">{user.name}</span>
@@ -163,7 +188,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
 
           <button
             type="button"
-            className="grid size-10 place-items-center rounded-full text-foreground md:hidden"
+            className="grid size-10 place-items-center rounded-full text-foreground min-[1240px]:hidden"
             onClick={() => setMenuOpen((open) => !open)}
             aria-label="Toggle navigation"
             aria-expanded={menuOpen}
@@ -176,7 +201,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             open over the page just navigated to, which reads as a failed tap. */}
         {menuOpen && (
           <nav
-            className="flex flex-col gap-2 border-t border-border bg-background p-4 md:hidden"
+            className="flex flex-col gap-2 border-t border-border bg-background p-4 min-[1240px]:hidden"
             onClick={() => setMenuOpen(false)}
           >
             {navLinks.map((link) => (
@@ -189,6 +214,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                 {link.label}
               </Link>
             ))}
+            {medPrepSiteLink}
             {mainSiteLink}
 
             {ready && !isAccountPage && (

@@ -487,6 +487,10 @@
   color: var(--muted-foreground);
   font-size: 0.875rem;
   font-weight: 600;
+  /* One line each: the labels used to break inside their own pills rather
+     than the row admitting it was tight. */
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: 160ms ease;
   &:hover {
     background: var(--accent);
@@ -1126,4 +1130,44 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .reader [data-layout="paged"] .pdfViewer .page { animation: none; }
+}
+
+/* The "Med Prep" crossover in the header, while it is still being announced
+   as new (the `medPrepLinkHighlight` setting). Shared, character for
+   character, by main-web's site.tsx and pdf-web's store layout.
+
+   Three quiet signals rather than one loud one: the link keeps a faint brand
+   wash so the eye finds it among plain text links, a small "New" pill names
+   why, and a ring breathes out of it every few seconds. Nothing moves the
+   link itself — a nav item that jumps is a nav item that gets mis-clicked. */
+@utility nav-new {
+  position: relative;
+  background: color-mix(in oklab, var(--primary) 9%, transparent);
+  color: var(--primary);
+  animation: nav-new-ring 3.4s ease-out infinite;
+}
+
+@utility nav-new-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 0.05rem 0.35rem;
+  font-size: 0.5625rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.45;
+}
+
+@keyframes nav-new-ring {
+  0%, 70%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 45%, transparent); }
+  80% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 22%, transparent); }
+  92% { box-shadow: 0 0 0 7px color-mix(in oklab, var(--primary) 0%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The wash and the pill still say "new"; only the ring goes. */
+  .nav-new { animation: none; }
 }

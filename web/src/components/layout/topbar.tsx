@@ -48,7 +48,8 @@ export function Topbar() {
         <SheetContent side="left" className="w-fit min-w-[200px] max-w-[85vw] p-0">
           <SheetHeader className="h-14 flex-row items-center justify-start gap-2 border-b border-border p-0 px-4">
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            <Logo />
+            {/* The panel is sized to its widest nav row, not to the lockup. */}
+            <Logo tagline={false} />
           </SheetHeader>
           {/* Extra right padding beyond SidebarNav's own so the panel (sized
               to its widest row, e.g. "Question Bank") reads as a considered
@@ -64,6 +65,14 @@ export function Topbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
+        {/* What the initials stand for. It lives here rather than beside the
+            mark, because the sidebar holding the mark is 260px wide at every
+            window size and the full lockup wrapped out of its header. From
+            lg up only: below that this row already carries the menu button,
+            the lockup, the streak chip and the avatar. */}
+        <span className="mr-1 hidden font-display text-sm whitespace-nowrap text-muted-foreground lg:inline">
+          Jab Studies Met Fun
+        </span>
         {/* No streak established yet — an empty "0-day streak" pill reads as
             a failed achievement rather than an invitation; the dashboard's
             streak card already carries that invitation instead. */}

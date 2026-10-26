@@ -23,7 +23,10 @@ export default function AdminSettingsPage() {
       .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Could not load settings"));
   }, []);
 
-  async function toggle(key: "showSpamFolderNote" | "downloadsEnabled", value: boolean) {
+  async function toggle(
+    key: "showSpamFolderNote" | "downloadsEnabled" | "medPrepLinkEnabled" | "medPrepLinkHighlight",
+    value: boolean,
+  ) {
     if (!settings) return;
     setSettings({ ...settings, [key]: value });
     setSaving(true);
@@ -69,11 +72,14 @@ export default function AdminSettingsPage() {
         <CardContent>
           <div className="flex items-center gap-3">
             <Switch
+              id="show-spam-folder-note"
               checked={settings.showSpamFolderNote}
               disabled={saving}
               onCheckedChange={(checked: boolean) => void toggle("showSpamFolderNote", checked)}
             />
-            <Label className="text-sm font-medium">Show the &ldquo;check your spam folder&rdquo; note</Label>
+            <Label htmlFor="show-spam-folder-note" className="text-sm font-medium">
+              Show the &ldquo;check your spam folder&rdquo; note
+            </Label>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             Shown wherever a verification email or Google sign-in is offered — sign up, sign in, and
@@ -88,17 +94,61 @@ export default function AdminSettingsPage() {
         <CardContent>
           <div className="flex items-center gap-3">
             <Switch
+              id="downloads-enabled"
               checked={settings.downloadsEnabled}
               disabled={saving}
               onCheckedChange={(checked: boolean) => void toggle("downloadsEnabled", checked)}
             />
-            <Label className="text-sm font-medium">Let buyers download PDFs</Label>
+            <Label htmlFor="downloads-enabled" className="text-sm font-medium">Let buyers download PDFs</Label>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             Everyone can always read what they have in the browser reader. Off removes the Download
             buttons and refuses downloads, so the store becomes read-only — the way the mobile apps
             will work. A product can override this either way from its own page.
           </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Med Prep link</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3">
+            <Switch
+              id="med-prep-link-enabled"
+              checked={settings.medPrepLinkEnabled}
+              disabled={saving}
+              onCheckedChange={(checked: boolean) => void toggle("medPrepLinkEnabled", checked)}
+            />
+            <Label htmlFor="med-prep-link-enabled" className="text-sm font-medium">
+              Show the &ldquo;Med Prep&rdquo; link in the header
+            </Label>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            A link to the question-practice site, in the header of both {mainWebsiteHost} and this
+            store. Off removes it from both at once — so it can go the moment that site has a
+            problem, without waiting for a deploy.
+          </p>
+
+          {/* Indented under the switch it depends on, and disabled while that
+              one is off, so it never looks like a setting that is doing
+              nothing. The server ignores it in that state too. */}
+          <div className="mt-4 border-l-2 border-border pl-4">
+            <div className="flex items-center gap-3">
+              <Switch
+                id="med-prep-link-highlight"
+                checked={settings.medPrepLinkHighlight}
+                disabled={saving || !settings.medPrepLinkEnabled}
+                onCheckedChange={(checked: boolean) => void toggle("medPrepLinkHighlight", checked)}
+              />
+              <Label htmlFor="med-prep-link-highlight" className="text-sm font-medium">Mark it as new</Label>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Gives the link a &ldquo;New&rdquo; badge, a faint brand tint and a slow pulse, so
+              people who already know the header notice something was added. Turn it off once it
+              has stopped being news — the link stays. Has no effect while the link is hidden.
+            </p>
+          </div>
         </CardContent>
       </Card>
       </>

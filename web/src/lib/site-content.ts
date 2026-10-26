@@ -18,3 +18,11 @@ export const links = {
 
 /** jsmf.me — linked from the header, the same crossover the store has. */
 export const mainWebsiteUrl = process.env.NEXT_PUBLIC_MAIN_WEBSITE_URL ?? "https://jsmf.me";
+
+/**
+ * The PDF store, where the study resources live — the same crossover jsmf.me
+ * carries, worded "Study Resources" on both. (The store's own name is still
+ * "JSMF Resources"; that is its title, not the way in.) Kept in step with
+ * main-web's `links.store`.
+ */
+export const storeUrl = process.env.NEXT_PUBLIC_STORE_URL ?? "https://resources.jsmf.me";

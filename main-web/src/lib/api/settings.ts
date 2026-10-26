@@ -8,6 +8,10 @@ export interface PlatformSettings {
   mentorCardStyle: MentorCardStyle;
   /** An uploaded portrait, or null for the photo bundled with the site. Read-only here. */
   mentorPhotoUrl: string | null;
+  /** The "Med Prep" header link to the PYQ site. */
+  medPrepLinkEnabled: boolean;
+  /** Whether that link wears its "New" badge. Ignored while the link is off. */
+  medPrepLinkHighlight: boolean;
 }
 
 export const settingsApi = {

@@ -20,7 +20,9 @@ export function TeamSection() {
             initials="AR"
             name="Dr. Angad Rai"
             title="Founder & Medical Lead"
-            photoSrc="/dr-angad-rai-v2.jpg"
+            // The earlier studio portrait, not the v2 one in the hero poster:
+            // two of the same photo on one page made the page look thin.
+            photoSrc="/dr-angad-rai.jpg"
             badges={[
               { icon: Trophy, label: "AIR 925 · NEET-PG 2026" },
               { icon: Trophy, label: "AIR 9 · FMGE 2023" },

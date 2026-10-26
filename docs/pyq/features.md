@@ -25,6 +25,35 @@ Every `(app)` route is behind the app shell; `practice/*` has its own full-scree
 | `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/auth/callback` | The shared JSMF account, including Google sign-in | `useAuthStore` | identity module | Yes |
 | `/`, `/about`, `/contact`, `/pricing`, `/privacy`, `/terms`, `/roadmap` | Marketing and static pages | — | `GET pyq/plans`, fetched on the server ([`marketing-plans.ts`](../../web/src/lib/server/marketing-plans.ts)) | Yes — `/pricing` and the home page's plan cards show real plans, cached 5 min, with no request from the browser |
 
+The header carries two crossovers, **Study Resources** (the PDF store,
+`NEXT_PUBLIC_STORE_URL`) and **Visit our main website** (`NEXT_PUBLIC_MAIN_WEBSITE_URL`),
+each in a new tab, in that order. jsmf.me has the same pair worded the same
+way. Both the brand's "· Med Prep" suffix and the nav are width-dependent:
+below `xl` the ☰ menu takes over, and between 1280 and 1400 the suffix steps
+aside, because seven links plus the lockup and two buttons do not fit a capped
+row any narrower.
+
+The home page's hero shows the same mentor poster as jsmf.me and the store —
+the arched photo with the two rank medals leaning out of its edges and the
+name melting out of the bottom ([`doctor-portrait.tsx`](../../web/src/components/marketing/doctor-portrait.tsx),
+and the `mentor-*` / `medal-*` utilities in `globals.css`). The composition is
+redrawn in each app rather than shared, so none of the three depends on
+another's source; a change to it belongs in all three. Those other two let an
+admin swap it for an older framed-photo card (`mentorCardStyle`); this site has
+no settings plumbing and always shows the poster, which is that setting's
+default. Dr. Angad's social links and his three credentials also appear further
+down the page, in the team section — on a card using the earlier studio
+portrait, so the page does not show the same photograph twice, with the three
+channel buttons under it in their own colours (`social-brand` in
+`globals.css`): a quiet wash at rest with a pulse crossing the row, filling
+with the channel's colour on hover or keyboard focus.
+
+A draggable **"Join us on Telegram"** pill floats at the right edge of the
+home page, the same one jsmf.me and the store carry
+([`telegram-float.tsx`](../../web/src/components/marketing/telegram-float.tsx)).
+It is on the home page only, sits at `z-40` so dialogs and the sticky header
+cover it, and where a visitor drags it is remembered in their browser.
+
 Capabilities are declared on the data source and read by screens through `pyqCapabilities`; both adapters now support all of `{search, sort, collections, sessionOrdering}`. Screens hide any control an adapter declares unsupported rather than failing silently.
 
 ## 2. Access and subscriptions

@@ -1723,6 +1723,17 @@ model PlatformSettings {
   mentorPhotoBucket               String?          @map("mentor_photo_bucket") @db.VarChar(255)
   mentorPhotoObjectKey            String?          @map("mentor_photo_object_key")
 
+  /// The "Med Prep" link in the header of the main website and the PDF store,
+  /// pointing at the PYQ practice site. Off removes it from both at once —
+  /// so it can be hidden again the moment that site has a problem, without a
+  /// deploy.
+  medPrepLinkEnabled   Boolean @default(true) @map("med_prep_link_enabled")
+  /// Whether that link wears its "New" badge and the pulse that goes with it.
+  /// Its own switch because a new thing stops being new long before it stops
+  /// being worth linking to, and nothing else should have to change then.
+  /// Ignored while the link is off.
+  medPrepLinkHighlight Boolean @default(true) @map("med_prep_link_highlight")
+
   noSessionTestimonialsSession LiveSession? @relation(fields: [noSessionTestimonialsSessionId], references: [productId], onDelete: SetNull)
 
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)

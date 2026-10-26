@@ -25,6 +25,12 @@ export const links = {
   interviewEmbed: "https://www.youtube.com/embed/MMLKjFlV1tA",
   /** The PDF store, where the planner that comes with a seat appears. */
   store: process.env.NEXT_PUBLIC_STORE_URL ?? "https://resources.jsmf.me",
+  /**
+   * The Med Prep site (PYQ practice). Linked from the header, behind the
+   * `medPrepLinkEnabled` setting. Configurable so a staging deploy points at a
+   * staging Med Prep rather than the live one.
+   */
+  medPrep: process.env.NEXT_PUBLIC_MED_PREP_URL ?? "https://medprep.jsmf.me",
 };
 
 export const credentials = [

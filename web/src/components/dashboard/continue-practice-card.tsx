@@ -63,7 +63,7 @@ export function ContinuePracticeCard({
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex h-full flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Start practising
@@ -81,11 +81,16 @@ export function ContinuePracticeCard({
           </p>
         )}
       </div>
-      <div className="flex flex-wrap gap-2">
+      {/* `shrink-0` so the two sit side by side: without it the long "Last
+          session…" line squeezed this group until the second wrapped under
+          the first. `secondary` rather than `outline` for the quieter of the
+          two — an outline button is bg-card on a bg-card surface, which left
+          Custom Test reading as a line of bold text rather than a button. */}
+      <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
         <Link href="/question-bank" className={buttonVariants({ size: "sm" })}>
           Question Bank
         </Link>
-        <Link href="/custom-test/new" className={buttonVariants({ size: "sm", variant: "outline" })}>
+        <Link href="/custom-test/new" className={buttonVariants({ size: "sm", variant: "secondary" })}>
           Custom Test
         </Link>
       </div>

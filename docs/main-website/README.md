@@ -815,9 +815,25 @@ offering is published, and shares the request the bottom banner makes. Both
 buttons use the `.cta-spot` style in `globals.css`.
 
 **Header** (`site.tsx`): Home, Live Session, About, Reserve a Seat, Book 1:1
-(when published) and **JSMF Resources**, which opens `links.store` in a new
-tab. Desktop labels are text only with `nowrap`; below `xl` (1280px) the ☰ menu
-is used, because seven links do not fit on one line any narrower.
+(when published), **Study Resources** (`links.store`) and **Med Prep**
+(`links.medPrep`), the last two in a new tab. Desktop labels are text only
+with `nowrap` (`.nav-compact` hides each link's leading icon); below **1400px**
+the ☰ menu is used, because eight links do not fit on one capped line any
+narrower. That width is measured, not a Tailwind step — the content decides it.
+The two crossovers are the exception to the icon hiding: `.nav-keep-icon` keeps
+their marks, so Study Resources carries the same shelf icon and the same words
+as the Med Prep site's header and a visitor recognises the same destination on
+both. The store's own name stays **JSMF Resources**; only the word used to
+point at it from elsewhere changed.
+
+**Med Prep** is behind two admin switches read from `GET /settings`
+(`useMedPrepLink`): `medPrepLinkEnabled` shows it at all, and
+`medPrepLinkHighlight` gives it a "New" badge, a faint brand tint and a slow
+pulse (`.nav-new` / `.nav-new-badge` in `globals.css`, shared character for
+character with the store). Null until the settings arrive, so the header holds
+its place rather than popping a link in; a failed read shows nothing, because a
+link to a site we could not confirm is worse than no link. Both switches live
+under Admin → Settings in the store, so either can go without a deploy.
 
 ---
 

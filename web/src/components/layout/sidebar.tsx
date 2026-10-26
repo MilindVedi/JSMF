@@ -18,8 +18,10 @@ export function Sidebar() {
       )}
     >
       <div className={cn("flex h-14 items-center border-b border-sidebar-border px-4", collapsed && "justify-center px-0")}>
+        {/* No tagline: the rail is 260px at every window size, and the
+            full lockup wrapped over three lines out of this 56px header. */}
         <Link href="/dashboard" className={cn(collapsed && "hidden")}>
-          <Logo />
+          <Logo tagline={false} />
         </Link>
         {collapsed && (
           <span className="flex size-7 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">

@@ -269,6 +269,16 @@ A cut sample keeps links to websites but not links between pages (a clickable ta
 
 **Turn downloads off** (for example when the apps launch): Settings → **Store downloads** → off. People can still read everything; the Download buttons go away and the server refuses to download the PDF. Extra files that cannot be read in the reader (a zip, images) stay downloadable. To make one product different, open it → **Details** → **Downloads** → **Always allow downloads** or **Read only**, then **Save**. Turning downloads off makes taking a copy harder, not impossible: a reader still receives the pages to show them.
 
+**Show or hide the Med Prep link**: Settings → **Med Prep link**. This is the link to the
+question-practice site that sits in the header of both jsmf.me and the store. Turning it off
+removes it from both at once, without waiting for a deploy — use that the moment that site has a
+problem.
+
+Underneath it, **Mark it as new** gives the link a "New" badge, a faint purple tint and a slow
+pulse, so people who already know the header notice something was added. Turn that off once it has
+stopped being news; the link itself stays. It has no effect while the link is hidden, and the
+switch is greyed out then to say so.
+
 ## Refunds (admin only)
 
 Open **Orders**, find the order (search by order number or email), click **Refund**.

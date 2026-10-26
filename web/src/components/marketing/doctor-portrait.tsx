@@ -1,32 +1,86 @@
-import { Award, MonitorPlay, Stethoscope } from "lucide-react";
-import { InstagramIcon, TelegramIcon, YouTubeIcon } from "@/components/marketing/social-icons";
-import { links } from "@/lib/site-content";
+import { Award, Medal, Stethoscope } from "lucide-react";
 
-/** Dr. Angad Rai's portrait with his credentials — the same card as on jsmf.me. */
+/** Bundled with the site, and the same file the other two sites ship. */
+const PHOTO = "/dr-angad-rai-v2.jpg";
+const PHOTO_ALT = "Dr. Angad Rai wearing his white coat and stethoscope";
+
+/**
+ * Dr. Angad's portrait in the hero: an arched photo with the two rank medals
+ * leaning out of its edges and floating gently, and the name melting out of
+ * the bottom in brand purple. The float is switched off under
+ * prefers-reduced-motion (globals.css, `medal`).
+ *
+ * One composition shared with jsmf.me (main-web's DoctorPortrait) and the
+ * store (pdf-web's DoctorPortraitCard), redrawn in each app so none of them
+ * depends on another's source. A change here belongs in both of those too.
+ *
+ * Those two let an admin swap this for the older framed-photo card
+ * (`mentorCardStyle`); this site has no settings plumbing, so it always shows
+ * the poster — which is that setting's default. Dr. Angad's social links and
+ * his three credentials are on the page already, in the team section.
+ */
 export function DoctorPortrait({ className = "" }: { className?: string }) {
   return (
-    <div className={`relative mx-auto w-full max-w-sm ${className}`}>
-      <div className="absolute -top-3 right-0 z-20 flex items-center gap-2">
-        <a href={links.instagram} target="_blank" rel="noreferrer" aria-label="Instagram" className="social-orb"><InstagramIcon size={16} /></a>
-        <a href={links.youtube} target="_blank" rel="noreferrer" aria-label="YouTube" className="social-orb"><YouTubeIcon size={16} /></a>
-        <a href={links.telegram} target="_blank" rel="noreferrer" aria-label="Telegram" className="social-orb"><TelegramIcon size={16} /></a>
+    <div className={`relative mx-auto w-full max-w-md ${className}`}>
+      {/* AIR 925 — leans out of the top-right edge */}
+      <div className="medal medal-right">
+        <span className="grid size-11 shrink-0 place-items-center rounded-full border border-white/40 bg-white/15">
+          <Award size={20} />
+        </span>
+        <span className="leading-tight">
+          <span className="block text-[10px] font-bold uppercase tracking-widest text-brand-on-deep/80">
+            NEET-PG 2026
+          </span>
+          <span className="block font-display text-2xl font-bold">
+            <span className="mr-1 text-xs font-semibold opacity-80">AIR</span>925
+          </span>
+        </span>
       </div>
-      <div className="rank-badge"><Award size={13} /> AIR 925 · NEET-PG 2026</div>
 
-      <div className="absolute top-36 -right-6 z-10 hidden flex-col items-end gap-3 sm:flex">
-        <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Award size={13} /> AIR 9 · FMGE 2023</div>
-        <div className="credential-chip flex w-fit items-center gap-2 shadow-md"><Stethoscope size={13} /> MBBS · Bronze Medalist</div>
+      {/* AIR 9 — leans out of the left edge */}
+      <div className="medal medal-left">
+        <span className="grid size-11 shrink-0 place-items-center rounded-full border border-white/40 bg-white/15">
+          <Award size={20} />
+        </span>
+        <span className="leading-tight">
+          <span className="block text-[10px] font-bold uppercase tracking-widest text-brand-on-deep/80">
+            FMGE 2023
+          </span>
+          <span className="block font-display text-2xl font-bold">
+            <span className="mr-1 text-xs font-semibold opacity-80">AIR</span>9
+          </span>
+        </span>
       </div>
 
-      <div className="portrait-frame">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/dr-angad-rai-v2.jpg" alt="Dr. Angad Rai" width={800} height={1000} className="h-full w-full object-cover" />
-      </div>
-      <div className="doctor-credential">
-        <div className="credential-chip absolute -top-3 right-4 z-10 flex w-fit items-center gap-2 shadow-md"><MonitorPlay size={13} /> Live sessions</div>
-        <p className="text-[10px] font-bold uppercase text-primary">Founder &amp; mentor</p>
-        <h2 className="mt-1 font-display font-semibold text-brand-deep dark:text-foreground">Dr. Angad Rai</h2>
-        <p className="mt-1 text-xs text-muted-foreground">MBBS — Medical Lead, JSMF</p>
+      {/* The arch portrait */}
+      <div className="mentor-photo-frame">
+        {/* eslint-disable-next-line @next/next/no-img-element -- bundled with the site */}
+        <img
+          src={PHOTO}
+          alt={PHOTO_ALT}
+          width={768}
+          height={1024}
+          loading="eager"
+          className="mentor-photo"
+        />
+
+        <div className="absolute left-1/2 top-6 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-primary-foreground/40 bg-card/85 px-2.5 py-2 text-[9px] font-bold uppercase text-primary backdrop-blur-md sm:px-3 sm:text-[10px]">
+          <Stethoscope size={14} /> Your doctor. Your mentor.
+        </div>
+
+        {/* The purple glow that melts the photo into the page */}
+        <div className="mentor-melt">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-brand-on-deep/75">
+            Founder &amp; mentor
+          </p>
+          <h2 className="mt-1 font-display text-2xl font-semibold text-brand-on-deep">
+            Dr. Angad Rai
+          </h2>
+          <p className="mt-1 text-xs text-brand-on-deep/75">MBBS · Medical Lead, JSMF</p>
+          <span className="medal-bronze mt-4">
+            <Medal size={16} className="text-[var(--mentor-bronze)]" /> MBBS · Bronze Medalist
+          </span>
+        </div>
       </div>
     </div>
   );

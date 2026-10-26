@@ -9,13 +9,25 @@ export function Hero() {
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent" />
 
       <div className="relative mx-auto w-full max-w-[1280px] px-4 pt-10 pb-20 sm:px-6 sm:pt-14 sm:pb-28">
-        <div className="grid gap-14 lg:grid-cols-2 lg:items-center lg:gap-10">
+        {/* The words get a little more than half the row from lg up. At an even
+            split the headline broke over four short lines against a tall
+            poster; the extra tenth lets it settle into three without the
+            poster losing anything (its own column is capped at max-w-md and
+            pushed right, so the gap absorbs the difference). Below lg the two
+            stack and the ratio does not apply. */}
+        <div className="grid gap-14 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-10">
           <div className="flex flex-col items-start gap-8">
             <span className="eyebrow">
               <Stethoscope size={13} /> Built for NEET-PG, FMGE & INI-CET
             </span>
 
-            <h1 className="max-w-xl font-display text-4xl font-semibold leading-[1.08] text-brand-deep dark:text-foreground sm:text-5xl lg:text-[3.25rem]">
+            {/* A step down from 3.25rem: at the old size it still wrapped four
+                ways in the wider column, which reads as a stack of fragments
+                rather than a sentence. lg is the narrowest the column ever
+                gets — the two have just split but the window is still only
+                ~1024px — so it steps back down there and takes the largest
+                size only at xl. */}
+            <h1 className="max-w-2xl font-display text-4xl font-semibold leading-[1.08] text-brand-deep dark:text-foreground sm:text-[2.75rem] lg:text-4xl xl:text-5xl">
               Practice the questions that actually show up in your exam.
             </h1>
 
@@ -46,20 +58,10 @@ export function Hero() {
             </div>
           </div>
 
-          {/* Right column: the person behind it, the same portrait as on jsmf.me. */}
-          <div className="w-full pb-8 sm:pr-6 lg:ml-auto lg:max-w-sm">
+          {/* Right column: the person behind it, the same poster as on jsmf.me. */}
+          <div className="w-full pb-8 sm:pr-6 lg:ml-auto lg:max-w-md">
             <DoctorPortrait />
           </div>
-        </div>
-
-        <div className="mt-14 max-w-2xl border-t border-border pt-8 lg:mt-20">
-          <p className="prose-reading text-muted-foreground">
-            JSMF is a focused practice platform for MBBS graduates preparing for postgraduate and
-            licensing exams. Every question is written by a licensed medical professional around a
-            concept independently identified from real recall patterns, then reviewed for accuracy
-            before publishing. No paraphrased question banks, no copied content — just original
-            questions, clear explanations, and a distraction-free way to study.
-          </p>
         </div>
       </div>
     </section>

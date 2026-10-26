@@ -274,6 +274,11 @@ One row per reader and product, overwritten as they read: it is a reading positi
 
 ### Reader and download columns (added 2026-10-25)
 
+- `platform_settings.med_prep_link_enabled` / `med_prep_link_highlight` (both default true):
+  whether the header of jsmf.me and the store carries the **Med Prep** link to the PYQ
+  practice site, and whether it still wears its "New" badge. Two switches rather than one
+  because a new thing stops being new long before it stops being worth linking to. The
+  highlight is ignored while the link is off.
 - `products.download_policy` (`INHERIT` | `ALLOWED` | `BLOCKED`, default `INHERIT`): whether buyers may download, or only read. `INHERIT` follows `platform_settings.downloads_enabled` (default true).
 - `products.sample_page_count` (int, nullable): set when the sample is cut from the first N pages. The sample is then cut again whenever the PDF is replaced. Null for an uploaded sample, or none.
 - `product_assets.derived_from_asset_id` (FK→product_assets, SET NULL): for a cut sample, the PDF version it was cut from. It tells whether the sample still matches the current PDF.

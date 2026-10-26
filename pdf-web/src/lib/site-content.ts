@@ -47,6 +47,13 @@ export const mainWebsiteUrl =
   process.env.NEXT_PUBLIC_MAIN_SITE_URL?.replace(/\/$/, "") ?? "https://jsmf.me";
 
 /**
+ * The Med Prep site (PYQ practice). Linked from the store header, behind the
+ * `medPrepLinkEnabled` setting. Configurable for the same reason as above.
+ */
+export const medPrepUrl =
+  process.env.NEXT_PUBLIC_MED_PREP_URL?.replace(/\/$/, "") ?? "https://medprep.jsmf.me";
+
+/**
  * The main website's hostname — "jsmf.me", "staging.jsmf.me", "localhost:3000"
  * — for user-visible copy that would otherwise hardcode the domain ("live on
  * jsmf.me"). Derived from `mainWebsiteUrl` so a staging deploy says the right

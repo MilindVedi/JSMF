@@ -30,4 +30,22 @@ export class UpdatePlatformSettingsDto {
   @IsOptional()
   @IsBoolean()
   downloadsEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'The "Med Prep" link in the header of the main website and the PDF store, pointing at ' +
+      'the PYQ practice site. Off removes it from both at once.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  medPrepLinkEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether that link wears its "New" badge and pulse. Its own switch, because a new thing ' +
+      'stops being new long before it stops being worth linking to. Ignored while the link is off.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  medPrepLinkHighlight?: boolean;
 }

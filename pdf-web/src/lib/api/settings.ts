@@ -11,6 +11,10 @@ export interface PlatformSettings {
   downloadsEnabled: boolean;
   /** An uploaded portrait, or null for the photo bundled with the site. Read-only here. */
   mentorPhotoUrl: string | null;
+  /** The "Med Prep" header link to the PYQ site, on this store and jsmf.me. */
+  medPrepLinkEnabled: boolean;
+  /** Whether that link wears its "New" badge. Ignored while the link is off. */
+  medPrepLinkHighlight: boolean;
 }
 
 /**
@@ -31,7 +35,7 @@ export interface AdminPlatformSettings extends PlatformSettings {
 /** The stored toggles an admin may change through the PATCH. The photo has its own calls. */
 export type PlatformSettingsInput = Pick<
   PlatformSettings,
-  "showSpamFolderNote" | "mentorCardStyle" | "downloadsEnabled"
+  "showSpamFolderNote" | "mentorCardStyle" | "downloadsEnabled" | "medPrepLinkEnabled" | "medPrepLinkHighlight"
 >;
 
 export const settingsApi = {

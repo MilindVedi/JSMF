@@ -2,12 +2,13 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { BookOpen, ExternalLink, Home, Library, LogIn, LogOut, Mail, Menu, Users, Video, X } from "lucide-react";
+import { BookOpen, ExternalLink, GraduationCap, Home, Library, LogIn, LogOut, Mail, Menu, Users, Video, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { buttonVariants } from "@/components/ui/button";
 import { ContactDialog } from "@/components/contact-dialog";
 import { currentOffering } from "@/lib/api/mentorship";
 import { links } from "@/lib/site-content";
+import { useMedPrepLink } from "@/lib/use-platform-settings";
 import { useSessionStore } from "@/store/session-store";
 
 /**
@@ -92,6 +93,10 @@ function SiteHeader() {
   // The link for where the visitor is stays highlighted: the page, or on the
   // home page the section in view.
   const section = useActiveSection(atHome);
+  // Both switches live in Admin -> Settings, so the link and its "New" badge
+  // can each be turned off without a deploy. Null until they arrive.
+  const medPrepLink = useMedPrepLink();
+
   const navClass = (active: boolean) => (active ? "nav-link nav-link-active" : "nav-link");
 
   useEffect(() => {
@@ -125,7 +130,10 @@ function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-5 lg:px-8">
         <div className="flex items-center gap-6">
           <Brand />
-          <nav className="nav-compact hidden items-center gap-0.5 xl:flex" aria-label="Main navigation">
+          {/* Not `xl`: with both crossovers the row is 4px over at 1280, so
+              the ☰ menu holds until 1400, where it fits. A measured width,
+              because the content decides this, not the device sizes. */}
+          <nav className="nav-compact hidden items-center gap-0.5 min-[1400px]:flex" aria-label="Main navigation">
             <Link href="/" className={navClass(section === "home")}>
               <Home size={16} /> Home
             </Link>
@@ -143,15 +151,33 @@ function SiteHeader() {
               </Link>
             )}
             {/* The study resources live on the store, a separate site: opened
-                in a new tab, and the icon says it leaves this one. */}
-            <a href={links.store} target="_blank" rel="noreferrer" className={navClass(false)}>
-              <Library size={16} /> JSMF Resources <ExternalLink size={12} className="opacity-60" />
+                in a new tab, and the trailing icon says it leaves this one.
+                `nav-keep-icon` exempts it from the compact nav's icon hiding,
+                so it carries the same shelf icon as the Med Prep site's header
+                and a visitor recognises the same destination on both. */}
+            <a href={links.store} target="_blank" rel="noreferrer" className={`${navClass(false)} nav-keep-icon`}>
+              <Library size={16} /> Study Resources <ExternalLink size={12} className="opacity-60" />
             </a>
+            {medPrepLink?.enabled && (
+              <a
+                href={links.medPrep}
+                target="_blank"
+                rel="noreferrer"
+                className={`${navClass(false)} nav-keep-icon ${medPrepLink.highlight ? "nav-new" : ""}`}
+              >
+                <GraduationCap size={16} /> Med Prep
+                {medPrepLink.highlight && <span className="nav-new-badge">New</span>}
+                <ExternalLink size={12} className="opacity-60" />
+              </a>
+            )}
           </nav>
         </div>
-        <div className="hidden items-center gap-2 md:flex">{account}</div>
+        {/* `shrink-0` and nowrap: the nav grew a seventh link and the row
+            took the space out of these instead, wrapping "Sign in" and
+            "Create account" over two lines each. */}
+        <div className="hidden shrink-0 items-center gap-2 whitespace-nowrap md:flex">{account}</div>
         <button
-          className="grid size-10 place-items-center rounded-full text-foreground xl:hidden"
+          className="grid size-10 place-items-center rounded-full text-foreground min-[1400px]:hidden"
           onClick={() => setOpen(!open)}
           aria-label="Toggle navigation"
           aria-expanded={open}
@@ -163,7 +189,7 @@ function SiteHeader() {
           just navigated to, which reads as a failed tap. */}
       {open && (
         <nav
-          className="flex flex-col gap-2 border-t border-border bg-background p-4 xl:hidden"
+          className="flex flex-col gap-2 border-t border-border bg-background p-4 min-[1400px]:hidden"
           onClick={() => setOpen(false)}
         >
           <Link href="/" className={navClass(section === "home")}>
@@ -183,8 +209,20 @@ function SiteHeader() {
             </Link>
           )}
           <a href={links.store} target="_blank" rel="noreferrer" className={navClass(false)}>
-            <Library size={16} /> JSMF Resources <ExternalLink size={12} className="opacity-60" />
+            <Library size={16} /> Study Resources <ExternalLink size={12} className="opacity-60" />
           </a>
+          {medPrepLink?.enabled && (
+            <a
+              href={links.medPrep}
+              target="_blank"
+              rel="noreferrer"
+              className={`${navClass(false)} ${medPrepLink.highlight ? "nav-new" : ""}`}
+            >
+              <GraduationCap size={16} /> Med Prep
+              {medPrepLink.highlight && <span className="nav-new-badge">New</span>}
+              <ExternalLink size={12} className="opacity-60" />
+            </a>
+          )}
           <div className="mt-1 flex flex-col gap-2 border-t border-border pt-3 md:hidden">
             {ready && user ? (
               <button onClick={() => void logout()} className="nav-link">

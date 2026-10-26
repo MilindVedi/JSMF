@@ -72,3 +72,44 @@ export function useMentorPortrait(): MentorPortrait | null {
 
   return portrait;
 }
+
+export interface MedPrepLink {
+  /** Whether to show it at all. */
+  enabled: boolean;
+  /** Whether it wears its "New" badge and pulse. Always false while off. */
+  highlight: boolean;
+}
+
+/**
+ * The "Med Prep" crossover in the header, and whether it is still being
+ * announced as new. Both are admin switches, so they can be turned off
+ * without a deploy — the first the moment that site has a problem, the second
+ * once it has stopped being news.
+ *
+ * Null until the settings arrive, so the header holds its place rather than
+ * popping a link in beside the ones already there. A failed read shows
+ * nothing: a link to a site we could not confirm is worse than no link.
+ */
+export function useMedPrepLink(): MedPrepLink | null {
+  const [link, setLink] = useState<MedPrepLink | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        setLink({
+          enabled: settings.medPrepLinkEnabled,
+          highlight: settings.medPrepLinkEnabled && settings.medPrepLinkHighlight,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setLink({ enabled: false, highlight: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return link;
+}

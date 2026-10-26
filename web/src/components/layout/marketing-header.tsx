@@ -7,6 +7,7 @@ import {
   ExternalLink,
   GraduationCap,
   LayoutDashboard,
+  Library,
   ListChecks,
   LogIn,
   Menu,
@@ -15,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { mainWebsiteUrl } from "@/lib/site-content";
+import { mainWebsiteUrl, storeUrl } from "@/lib/site-content";
 import { cn } from "@/lib/utils";
 import { storeButton } from "@/components/ui/store-button";
 import { useAuthStore } from "@/store/auth-store";
@@ -29,27 +30,52 @@ const NAV_LINKS = [
 ];
 
 /**
- * The cross-site link, as in the store's header: jsmf.me in a new tab.
+ * The two cross-site links, the same pair jsmf.me carries: the main website
+ * and the PDF store, each in a new tab.
  *
  * `label` because the header and the mobile sheet have different room. The row
- * is capped at `max-w-7xl` however wide the window is, and this header already
- * carries five section links, the brand lockup and two buttons — at the full
- * sentence they overrun that cap and the nav runs under the buttons. The sheet
- * is one item per line, so it says the whole thing. The accessible name is the
- * long one either way.
+ * is capped however wide the window is, and this header already carries five
+ * section links, the brand lockup and two buttons — at the full sentence these
+ * overrun that cap and the nav runs under the buttons. The sheet is one item
+ * per line, so it says the whole thing. The accessible name is the long one
+ * either way.
  */
-function MainSiteLink({ onClick, label = "Main website" }: { onClick?: () => void; label?: string }) {
+const CROSS_SITE = [
+  {
+    key: "store",
+    href: storeUrl,
+    icon: Library,
+    short: "Study Resources",
+    long: "Study Resources",
+    describe: "Visit JSMF Study Resources, the PDF store, in a new tab",
+  },
+  {
+    key: "main",
+    href: mainWebsiteUrl,
+    icon: ExternalLink,
+    short: "Visit our main website",
+    long: "Visit our main website",
+    describe: "Visit the main JSMF website in a new tab",
+  },
+] as const;
+
+function CrossSiteLinks({ onClick, long = false }: { onClick?: () => void; long?: boolean }) {
   return (
-    <a
-      href={mainWebsiteUrl}
-      target="_blank"
-      rel="noreferrer"
-      onClick={onClick}
-      className="nav-link"
-      aria-label="Visit the main JSMF website in a new tab"
-    >
-      <ExternalLink className="size-4" /> {label}
-    </a>
+    <>
+      {CROSS_SITE.map((site) => (
+        <a
+          key={site.key}
+          href={site.href}
+          target="_blank"
+          rel="noreferrer"
+          onClick={onClick}
+          className="nav-link"
+          aria-label={site.describe}
+        >
+          <site.icon className="size-4" /> {long ? site.long : site.short}
+        </a>
+      ))}
+    </>
   );
 }
 
@@ -84,15 +110,22 @@ export function MarketingHeader() {
                 sits at text height. */}
             <span>
               <span className="font-semibold">JSMF</span>
-              <span className="hidden font-normal text-muted-foreground sm:inline"> · Med Prep</span>
+              {/* Stands aside in the narrow band where the nav has just
+                  appeared but the row is still tight: with both crossovers in
+                  the nav, keeping it at 1280 pushed "Study Resources" under
+                  the Sign in button. 1400 is where it fits again — measured,
+                  not a Tailwind step, because the content decides this, not
+                  the device sizes. */}
+              <span className="hidden font-normal text-muted-foreground sm:inline xl:hidden min-[1400px]:inline"> · Med Prep</span>
             </span>
-            {/* The full form shows before the nav crowds in (sm–lg) and again
-                once the window is wide enough for both (2xl); in the tight band
-                where the nav has just appeared it steps aside so nothing
-                collides. The row is capped, so past 2xl there is no more room
-                to gain — that is the one width where everything fits at once. */}
-            <span aria-hidden="true" className="hidden h-4 w-px shrink-0 bg-border sm:block xl:hidden 2xl:block" />
-            <span className="hidden font-normal text-muted-foreground sm:inline xl:hidden 2xl:inline">
+            {/* The full form shows only before the nav crowds in (sm–lg).
+                It used to come back at 2xl, when the row was one link shorter;
+                with both crossovers in the nav there is no width where the two
+                fit together, because the row is capped however wide the window
+                is — past the cap, showing it again only pushed "Resources"
+                under the Sign in button. */}
+            <span aria-hidden="true" className="hidden h-4 w-px shrink-0 bg-border sm:block xl:hidden" />
+            <span className="hidden font-normal text-muted-foreground sm:inline xl:hidden">
               Jab Studies Met Fun
             </span>
           </Link>
@@ -108,7 +141,7 @@ export function MarketingHeader() {
                 {link.label}
               </Link>
             ))}
-            <MainSiteLink />
+            <CrossSiteLinks />
           </nav>
         </div>
 
@@ -149,7 +182,7 @@ export function MarketingHeader() {
               {link.label}
             </Link>
           ))}
-          <MainSiteLink onClick={close} label="Visit our main website" />
+          <CrossSiteLinks onClick={close} long />
           <div className="mt-1 flex flex-col gap-2 border-t border-border pt-3 md:hidden">
             {isAuthenticated ? (
               <Link href="/dashboard" onClick={close} className={storeButton({ size: "sm" })}>

@@ -17,6 +17,10 @@ export interface PlatformSettingsInput {
   mentorCardStyle: MentorCardStyle;
   /** Store buyers may download files (else read-only); a product can override it. */
   downloadsEnabled: boolean;
+  /** The "Med Prep" header link to the PYQ site, on the main website and the store. */
+  medPrepLinkEnabled: boolean;
+  /** Whether that link wears its "New" badge. Ignored while the link is off. */
+  medPrepLinkHighlight: boolean;
 }
 
 export interface PlatformSettingsDto extends PlatformSettingsInput {
@@ -157,6 +161,8 @@ export class SettingsService {
       showSpamFolderNote: row.showSpamFolderNote,
       mentorCardStyle: row.mentorCardStyle,
       downloadsEnabled: row.downloadsEnabled,
+      medPrepLinkEnabled: row.medPrepLinkEnabled,
+      medPrepLinkHighlight: row.medPrepLinkHighlight,
     };
   }
 
