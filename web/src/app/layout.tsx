@@ -21,7 +21,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 // The public address, so the share-preview image and other absolute URLs
 // point at the live site rather than wherever the build ran.
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://pyqs.jsmf.me";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://prep.jsmf.me";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

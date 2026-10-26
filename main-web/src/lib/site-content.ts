@@ -30,7 +30,7 @@ export const links = {
    * `medPrepLinkEnabled` setting. Configurable so a staging deploy points at a
    * staging Med Prep rather than the live one.
    */
-  medPrep: process.env.NEXT_PUBLIC_MED_PREP_URL ?? "https://medprep.jsmf.me",
+  medPrep: process.env.NEXT_PUBLIC_MED_PREP_URL ?? "https://prep.jsmf.me",
 };
 
 export const credentials = [

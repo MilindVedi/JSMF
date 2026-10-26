@@ -156,7 +156,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `BACKEND_API_URL` | URL of the NestJS backend API. Resolved at **runtime** by `middleware.ts` to dynamically reverse proxy requests. | `https://jsmf-backend-67890.a.run.app` |
 | `NEXT_PUBLIC_SITE_URL` | The one public address the site is published at. Drives `<link rel="canonical">` and absolute metadata URLs. **Must be set on every deployed environment** — see the note below. | `https://resources.jsmf.me` |
 | `NEXT_PUBLIC_MAIN_SITE_URL` | The main JSMF website (jsmf.me). The storefront's "Visit our main website" link and the footer's legal links (About / Privacy / Terms / Refund / Digital Delivery / Disclaimer — all canonically hosted on jsmf.me, so pdf-web links out to avoid duplicating and letting them drift) both read from this. Unset falls back to `https://jsmf.me`. | `https://jsmf.me` |
-| `NEXT_PUBLIC_MED_PREP_URL` | The Med Prep site (PYQ practice). The header's **Med Prep** link points here on both this app and main-web, while `medPrepLinkEnabled` is on under Admin → Settings. Unset falls back to `https://medprep.jsmf.me`. | `https://medprep.jsmf.me` |
+| `NEXT_PUBLIC_MED_PREP_URL` | The Med Prep site (PYQ practice). The header's **Med Prep** link points here on both this app and main-web, while `medPrepLinkEnabled` is on under Admin → Settings. Unset falls back to `https://prep.jsmf.me`. | `https://prep.jsmf.me` |
 | `NEXT_PUBLIC_MAX_UPLOAD_MB`| Fallback only: the multipart limit shown if the backend cannot say. The admin site reads every real limit from `GET /api/uploads/options`. Keep it at or below the backend's `MAX_UPLOAD_SIZE_MB` | `25`, then `5` once both are deployed |
 | `PORT` | Listening Port | `3001` |
 | `NODE_ENV` | Production Environment | `production` |
@@ -213,8 +213,12 @@ This document provides a reference for all environment variables, flags, and sec
 | Environment Variable | Description | Example Production Value |
 | :--- | :--- | :--- |
 | `BACKEND_API_URL` | Same as the other frontends — runtime proxy target. | `https://jsmf-backend-67890.a.run.app` |
-| `NEXT_PUBLIC_SITE_URL` | Canonical address. | `https://pyq.jsmf.me` |
-| `NEXT_PUBLIC_DATA_SOURCE` | `mock` (default) uses hardcoded data; `api` uses the real backend. | `api` |
+| `NEXT_PUBLIC_SITE_URL` | Canonical address. | `https://prep.jsmf.me` |
+| `NEXT_PUBLIC_DATA_SOURCE` | **Build time** (a `--build-arg` in `web/Dockerfile`, default `api`). `mock` uses hardcoded demo data; `api` uses the real backend. Setting it only on the Cloud Run service does nothing: it is inlined into the bundle by `next build`. | `api` |
+| `NEXT_PUBLIC_MAIN_WEBSITE_URL` | jsmf.me, for the header's "Visit our main website" link. Unset falls back to `https://jsmf.me`. | `https://jsmf.me` |
+| `NEXT_PUBLIC_STORE_URL` | The PDF store, for the header's "Study Resources" link. Unset falls back to `https://resources.jsmf.me`. | `https://resources.jsmf.me` |
+| `NEXT_PUBLIC_SUPPORT_EMAIL` | Where "Contact us" and mailto links reach. Unset falls back to `support@jsmf.me`. | `support@jsmf.me` |
+| `MOCK_UI_BASIC_AUTH_USER` / `MOCK_UI_BASIC_AUTH_PASSWORD` | Optional pre-launch Basic Auth gate on every page except `/api`. **Leave both unset on a public launch**, or every visitor gets a password prompt. | *(unset)* |
 | `PORT` | Listening port. | `3003` |
 | `NODE_ENV` | Production environment. | `production` |
 

@@ -51,7 +51,7 @@ export const mainWebsiteUrl =
  * `medPrepLinkEnabled` setting. Configurable for the same reason as above.
  */
 export const medPrepUrl =
-  process.env.NEXT_PUBLIC_MED_PREP_URL?.replace(/\/$/, "") ?? "https://medprep.jsmf.me";
+  process.env.NEXT_PUBLIC_MED_PREP_URL?.replace(/\/$/, "") ?? "https://prep.jsmf.me";
 
 /**
  * The main website's hostname — "jsmf.me", "staging.jsmf.me", "localhost:3000"

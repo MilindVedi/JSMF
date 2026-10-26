@@ -45,7 +45,7 @@ Status as of 11 October 2026. Nothing below is committed yet.
 ## Known follow-ups
 
 - **Two React versions.** Web pins React 19.2.8, while Expo needs 19.2.3. Metro forces one copy into the app bundle, so it works. `expo-doctor` still flags it (17/18). It goes away once both use the same version.
-- **Android security.** Another installed app could claim the `jsmfmedprep://` sign-in address. The proper fix is verified App Links on `pyqs.jsmf.me`.
+- **Android security.** Another installed app could claim the `jsmfmedprep://` sign-in address. The proper fix is verified App Links on `prep.jsmf.me`.
 - **Left out on phones for now:**
   - custom date ranges in Revision and History (presets only);
   - sliders in Custom test (steppers instead);

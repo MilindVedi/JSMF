@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
- * The streak stages the PYQ app (pyqs.jsmf.me) shows, for reference: which
+ * The streak stages the PYQ app (prep.jsmf.me) shows, for reference: which
  * colour a student's streak box takes at each length. Read-only — the stages
  * are defined in web/src/lib/streak-config.ts (STREAK_LEVELS) and the colours
  * in web/src/app/globals.css (--streak-*). Apps never import each other's
