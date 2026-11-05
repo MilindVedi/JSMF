@@ -23,6 +23,7 @@ import { Card, Chip } from "@/components/ui/primitives";
 import { Dialog } from "@/components/ui/sheet";
 import { StackScreen } from "@/components/ui/screen";
 import { cn, Heading, Txt } from "@/components/ui/text";
+import { FullMockCard } from "@/components/exam/full-mock-card";
 import { ActiveFilterChips, EMPTY_QUESTION_FILTERS, FilterBar, filtersToQuery, type QuestionFiltersState } from "@/components/filters/filters";
 
 type PoolMode = "all" | "unattempted";
@@ -97,6 +98,8 @@ export default function CustomTestScreen() {
         </View>
       }
     >
+      <FullMockCard />
+
       <Card className="gap-3">
         <View>
           <Heading className="text-base">Filters</Heading>

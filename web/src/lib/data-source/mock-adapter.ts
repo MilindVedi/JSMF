@@ -232,7 +232,8 @@ const REVISION_STALE_DAYS = 30;
 
 export const mockDataSource: PyqDataSource = {
   kind: "mock",
-  capabilities: { search: true, sort: true, collections: true, sessionOrdering: true },
+  // The demo bank is far too small to fill any exam's paper, so it offers no full mocks.
+  capabilities: { search: true, sort: true, collections: true, sessionOrdering: true, mocks: false },
 
   async getTaxonomy() {
     const counts = new Map<string, number>();
@@ -246,7 +247,20 @@ export const mockDataSource: PyqDataSource = {
   },
 
   async getAccess() {
-    return { subscribed: true, dailyLimit: null, usedToday: 0, remainingToday: null, plan: null };
+    return {
+      subscribed: true,
+      dailyLimit: null,
+      usedToday: 0,
+      remainingToday: null,
+      plan: null,
+      trial: null,
+      trialOffer: null,
+    };
+  },
+
+  // Mock mode is already unlimited; there is no trial to start.
+  async startTrial() {
+    return mockDataSource.getAccess();
   },
 
   // Plans in mock mode are the illustrative PLANS; "buying" one just relabels
@@ -257,7 +271,9 @@ export const mockDataSource: PyqDataSource = {
       name: p.name,
       tagline: p.tagline,
       price: p.priceMonthly,
+      compareAtPrice: null,
       currency: "INR",
+      durationMonths: 1,
       durationDays: 30,
       period: "month",
       popular: Boolean(p.highlight),
@@ -359,6 +375,20 @@ export const mockDataSource: PyqDataSource = {
   async getSession(sessionId) {
     await ready();
     return toDetail(requireSession(sessionId));
+  },
+
+  // Demo tests start their clock when created, so there is nothing to begin.
+  async beginSession(sessionId) {
+    await ready();
+    return toDetail(requireSession(sessionId));
+  },
+
+  async listMocks() {
+    return [];
+  },
+
+  async startMock() {
+    throw new Error("Full mocks need the real question bank.");
   },
 
   async answer(sessionId, questionId, optionId, timeSpentMs) {

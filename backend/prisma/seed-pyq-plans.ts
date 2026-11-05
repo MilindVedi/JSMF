@@ -2,10 +2,13 @@ import { AccessType, Prisma, ProductStatus, ProductType } from '@prisma/client';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 
 /**
- * PYQ subscription plans as ordinary products (COURSE type, metadata
- * `{"pyqSubscription": true, "durationDays": N}`). Prices follow
- * web/src/data/mock/plans.ts (All Access Pro). Upserted by slug, so re-running
- * updates in place. Usage: `npm run db:seed:pyq-plans`.
+ * Starter PYQ subscription plans for a fresh database, as ordinary products
+ * (COURSE type, metadata `{"pyqSubscription": true, "durationMonths": N}`).
+ * Create-only: a plan that already exists is left alone, because a plan's
+ * price and length never change in place (see src/shared/pyq-plan.ts). After
+ * the first run, plans are managed from admin → PYQ → Plans & trial.
+ * The benefits list is shared by every plan and lives in
+ * pyq.subscription_settings, not here. Usage: `npm run db:seed:pyq-plans`.
  */
 const PLANS = [
   {
@@ -15,13 +18,7 @@ const PLANS = [
     priceAmountMinor: 99_900n,
     metadata: {
       pyqSubscription: true,
-      durationDays: 30,
-      period: 'month',
-      features: [
-        'Unlimited practice across all 3 exams',
-        'All 19 subjects, last 5 years',
-        'Timed custom tests & full statistics',
-      ],
+      durationMonths: 1,
     },
   },
   {
@@ -31,13 +28,7 @@ const PLANS = [
     priceAmountMinor: 249_900n,
     metadata: {
       pyqSubscription: true,
-      durationDays: 90,
-      period: 'quarter',
-      features: [
-        'Unlimited practice across all 3 exams',
-        'All 19 subjects, last 5 years',
-        'Timed custom tests & full statistics',
-      ],
+      durationMonths: 3,
     },
   },
   {
@@ -47,16 +38,8 @@ const PLANS = [
     priceAmountMinor: 799_900n,
     metadata: {
       pyqSubscription: true,
-      durationDays: 365,
-      period: 'year',
+      durationMonths: 12,
       popular: true,
-      features: [
-        'Unlimited practice across all 3 exams',
-        'All 19 subjects, last 5 years',
-        'Timed custom tests & full statistics',
-        'Early access to new question drops',
-        'Priority support',
-      ],
     },
   },
 ];
@@ -76,12 +59,13 @@ async function main() {
         currency: 'INR',
         metadata: plan.metadata as Prisma.InputJsonValue,
       };
-      await prisma.product.upsert({
-        where: { slug: plan.slug },
-        create: { slug: plan.slug, publishedAt: new Date(), ...data },
-        update: data,
-      });
-      console.log(`plan ${plan.slug} upserted`);
+      const existing = await prisma.product.findUnique({ where: { slug: plan.slug }, select: { id: true } });
+      if (existing) {
+        console.log(`plan ${plan.slug} already exists, left as it is`);
+        continue;
+      }
+      await prisma.product.create({ data: { slug: plan.slug, publishedAt: new Date(), ...data } });
+      console.log(`plan ${plan.slug} created`);
     }
   } finally {
     await prisma.$disconnect();

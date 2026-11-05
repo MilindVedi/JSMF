@@ -187,13 +187,7 @@ export function deviceTypeFrom(userAgent: string | undefined): 'mobile' | 'table
   return 'desktop';
 }
 
-/** Crawlers and link previewers announce themselves; their "visits" are not people. */
-export function isBotUserAgent(userAgent: string | undefined): boolean {
-  if (!userAgent) return true;
-  return /bot|crawl|spider|slurp|facebookexternalhit|embedly|preview|lighthouse|headless|phantomjs|python-requests|curl\/|wget/i.test(
-    userAgent,
-  );
-}
+export { isBotUserAgent } from '../../../common/net/user-agent';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

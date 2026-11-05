@@ -48,8 +48,9 @@ export function StreakGoalCelebrator() {
     if (pathname === "/home") return;
     const inPlace = pathname.startsWith("/session");
 
-    // The server counts today from the day's first answer, so the count
-    // already includes today: the badge travels from yesterday's to today's.
+    // Reaching the goal is what earns the day, so the server advances the
+    // streak in the same response that turns todayDone true: the count
+    // already includes today, and the badge travels from yesterday's to it.
     const newStreak = Math.max(streak.currentStreak, 1);
     markCelebrated(streak.lastCompletedDate ?? new Date().toISOString().slice(0, 10));
     const show = setTimeout(() => setBadgeDays(newStreak), 0);
@@ -97,7 +98,7 @@ export function StreakGoalCelebrator() {
             <View className="absolute inset-0 rounded-full" style={{ backgroundColor: withAlpha(accent, 0.18) }} />
             <StreakEmbers />
             <StreakFlame size={24} glow={Math.max(level.glowIntensity, 2)} />
-            <Txt weight={700} className="text-sm" style={{ color: accent }}>
+            <Txt weight={700} className="text-sm">
               {badgeDays} day{badgeDays === 1 ? "" : "s"}
             </Txt>
           </View>

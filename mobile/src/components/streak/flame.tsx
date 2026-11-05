@@ -23,13 +23,25 @@ const INNER =
  * box the flame sits in, never to the fire. `live` runs the flicker: the outer
  * flame sways while the core breathes on a different period. Honours the
  * system's reduce-motion setting.
+ *
+ * `cold` is a 0-day streak (web's data-cold): the flame is dimmed and, instead
+ * of flickering, smoulders — a slow fade and swell (web's streak-smoulder
+ * keyframes, 3.6 s). Dimmed but still under reduce-motion, and never glowing.
  */
-export function StreakFlame({ size = 16, live = true, glow = 0 }: { size?: number; live?: boolean; glow?: number }) {
+export function StreakFlame({ size = 16, live = true, glow = 0, cold = false }: { size?: number; live?: boolean; glow?: number; cold?: boolean }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const reduceMotion = useReducedMotion();
-  const animate = live && !reduceMotion;
+  const animate = live && !reduceMotion && !cold;
+  const smoulder = live && !reduceMotion && cold;
   const sway = useSharedValue(0);
   const core = useSharedValue(0);
+  const ember = useSharedValue(0);
+
+  useEffect(() => {
+    if (!smoulder) return;
+    ember.value = withRepeat(withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.ease) }), -1, true);
+    return () => cancelAnimation(ember);
+  }, [smoulder, ember]);
 
   useEffect(() => {
     if (!animate) return;
@@ -70,6 +82,14 @@ export function StreakFlame({ size = 16, live = true, glow = 0 }: { size?: numbe
     opacity: 1 - Math.max(0, core.value) * 0.1,
     transform: [{ translateY: pivot }, { scaleX: 1 - core.value * 0.08 }, { scaleY: 1 + core.value * 0.07 }, { translateY: -pivot }],
   }));
+  // Cold: 0.42 → 0.62 and back with a 5% swell; a still 0.45 when not animating.
+  const coldStyle = useAnimatedStyle(() =>
+    cold
+      ? smoulder
+        ? { opacity: 0.42 + ember.value * 0.2, transform: [{ scale: 1 + ember.value * 0.05 }] }
+        : { opacity: 0.45 }
+      : { opacity: 1 },
+  );
 
   return (
     <View
@@ -77,11 +97,12 @@ export function StreakFlame({ size = 16, live = true, glow = 0 }: { size?: numbe
         { width: size, height: size },
         // A warm halo around the flame's shape on iOS (shadows follow content alpha there);
         // web would draw it as a square box, so it is native-only.
-        glow > 0 && Platform.OS === "ios" && { shadowColor: "#ff8c28", shadowOpacity: 0.25 + glow * 0.12, shadowRadius: 1.5 + glow * 1.5, shadowOffset: { width: 0, height: 0 } },
+        !cold && glow > 0 && Platform.OS === "ios" && { shadowColor: "#ff8c28", shadowOpacity: 0.25 + glow * 0.12, shadowRadius: 1.5 + glow * 1.5, shadowOffset: { width: 0, height: 0 } },
       ]}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
+      <Animated.View style={[StyleSheet.absoluteFill, coldStyle]}>
       <Animated.View style={[StyleSheet.absoluteFill, outerStyle]}>
         <Svg width={size} height={size} viewBox="0 0 24 24">
           <Defs>
@@ -107,6 +128,7 @@ export function StreakFlame({ size = 16, live = true, glow = 0 }: { size?: numbe
             <Path d={INNER} fill={`url(#${id}i)`} />
           </Svg>
         </Animated.View>
+      </Animated.View>
       </Animated.View>
     </View>
   );

@@ -1,10 +1,10 @@
 "use client";
 
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FilterTabs, type FilterTabOption } from "@/components/common/filter-tabs";
 
 export type QuestionStatusFilter = "all" | "unattempted" | "incorrect" | "bookmarked";
 
-const OPTIONS: { value: QuestionStatusFilter; label: string }[] = [
+const OPTIONS: FilterTabOption<QuestionStatusFilter>[] = [
   { value: "all", label: "All Questions" },
   { value: "unattempted", label: "Unattempted" },
   { value: "incorrect", label: "Incorrect" },
@@ -14,19 +14,17 @@ const OPTIONS: { value: QuestionStatusFilter; label: string }[] = [
 export function StatusTabs({
   value,
   onChange,
+  bookmarkCount,
 }: {
   value: QuestionStatusFilter;
   onChange: (value: QuestionStatusFilter) => void;
+  /** Shown on the Bookmarked tab; the others have no cheap count to give. */
+  bookmarkCount?: number;
 }) {
-  return (
-    <Tabs value={value} onValueChange={(v) => onChange(v as QuestionStatusFilter)}>
-      <TabsList>
-        {OPTIONS.map((option) => (
-          <TabsTrigger key={option.value} value={option.value}>
-            {option.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </Tabs>
+  const options = OPTIONS.map((option) =>
+    option.value === "bookmarked" && bookmarkCount !== undefined
+      ? { ...option, count: bookmarkCount }
+      : option
   );
+  return <FilterTabs label="Filter by status" value={value} options={options} onChange={onChange} />;
 }

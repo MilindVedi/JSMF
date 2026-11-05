@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ArrowLeft, ArrowRight, Bookmark, Check, Eraser, LayoutGrid, MessageSquareWarning } from "lucide-react-native";
+import { ArrowLeft, ArrowRight, Bookmark, Check, Eraser, Info, LayoutGrid, Lock, MessageSquareWarning } from "lucide-react-native";
 import {
   EXAM_STATUS_LABEL,
   EXAM_STATUS_ORDER,
@@ -11,6 +11,7 @@ import {
   examStatuses,
   initialsOf,
   type Attempt,
+  type ExamSectionWindow,
   type ExamQuestionStatus,
   type ExamStatusCounts,
   type SessionQuestion,
@@ -27,6 +28,7 @@ import { cn, Txt } from "@/components/ui/text";
 import { QuestionCard } from "@/components/question/question-card";
 import { ReportSheet } from "@/components/question/report-sheet";
 import { Timer } from "./timer";
+import { ExamInstructionsContent } from "./exam-instructions";
 
 /**
  * A running test laid out like the NEET-PG / FMGE / INI-CET computer-based
@@ -37,21 +39,18 @@ import { Timer } from "./timer";
  * runner's handlers.
  */
 
+/** Solid green and red, as on the NBEMS / AIIMS console (web's exam-status-panel uses the same: emerald-600, red-600). */
+const EXAM_GREEN = "#059669";
+const EXAM_RED = "#dc2626";
+
 /** Squares for plain states, circles for anything marked for review (shared by legend and grid). */
 export function ExamStatusCell({ status, children, size = 28, current = false }: { status: ExamQuestionStatus; children?: ReactNode; size?: number; current?: boolean }) {
   const colors = useColors();
   const marked = status === "marked" || status === "answered-marked";
-  const bg =
-    status === "answered" ? colors.success : status === "not-answered" ? colors.error : status === "not-visited" ? colors.card : colors.primary;
+  const bg = status === "answered" ? EXAM_GREEN : status === "not-answered" ? EXAM_RED : status === "not-visited" ? colors.card : colors.primary;
   const fg =
-    status === "answered"
-      ? colors["success-foreground"]
-      : status === "not-answered"
-        ? colors["error-foreground"]
-        : status === "not-visited"
-          ? colors["muted-foreground"]
-          : colors["primary-foreground"];
-  const border = status === "not-visited" ? colors.border : marked ? "transparent" : `${fg}40`;
+    status === "answered" || status === "not-answered" ? "#ffffff" : status === "not-visited" ? colors["muted-foreground"] : colors["primary-foreground"];
+  const border = status === "not-visited" ? colors.border : "transparent";
   return (
     <View
       style={{
@@ -74,10 +73,10 @@ export function ExamStatusCell({ status, children, size = 28, current = false }:
       )}
       {status === "answered-marked" ? (
         <View
-          style={{ position: "absolute", right: -3, bottom: -3, width: 14, height: 14, borderRadius: 7, backgroundColor: colors["success-foreground"], borderWidth: 2, borderColor: colors.card }}
+          style={{ position: "absolute", right: -3, bottom: -3, width: 14, height: 14, borderRadius: 7, backgroundColor: EXAM_GREEN, borderWidth: 2, borderColor: colors.card }}
           className="items-center justify-center"
         >
-          <Check size={8} strokeWidth={4} color={colors.background} />
+          <Check size={8} strokeWidth={4} color="#ffffff" />
         </View>
       ) : null}
     </View>
@@ -98,11 +97,27 @@ function StatusLegend({ counts }: { counts: ExamStatusCounts }) {
   );
 }
 
+/** Where the question on screen sits among a full mock's sections. */
+export interface ExamSectionView {
+  windows: ExamSectionWindow[];
+  current: number;
+  /** Time-bound sections: only the current one opens. */
+  locked: boolean;
+}
+
 export interface ExamScreenProps {
   detail: SessionDetail;
   question: SessionQuestion;
   index: number;
   total: number;
+  /** Within the running section, for a mock with time-bound sections. */
+  isFirst: boolean;
+  isLast: boolean;
+  /** A new key restarts the clock (a mock's next section). */
+  timerKey?: string | number;
+  timerLabel?: string;
+  onTimeUp: () => void;
+  sectionView: ExamSectionView | null;
   attempts: Record<string, Attempt>;
   flags: Record<string, boolean>;
   selectedOptionId: string | null;
@@ -126,27 +141,27 @@ export interface ExamScreenProps {
 }
 
 export function ExamScreen(props: ExamScreenProps) {
-  const { detail, question, index, total, attempts, flags, selectedOptionId, onSelect, savedOptionId, hasUnsavedChoice, busy, submitting, timed, timeLeft } = props;
+  const { detail, question, index, total, attempts, flags, selectedOptionId, onSelect, savedOptionId, hasUnsavedChoice, busy, submitting, timed, timeLeft, isFirst, isLast, sectionView } = props;
   const { session } = detail;
   const user = useAuthStore((s) => s.user);
-  const { data: preferences } = usePreferences();
-  const lookup = useTaxonomyLookup();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [gridOpen, setGridOpen] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  // The instructions can be reopened during the test, as on web's console.
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
 
-  const examId = examMockExamId(session, preferences?.targetExamId);
-  const exam = examId ? lookup.exam(examId) : undefined;
-  const title = exam ? `${exam.shortName} Mock Test` : "Mock Test";
+  const title = useExamTitle(session);
   const studentName = user?.name || "Student";
   const visited = useVisitedQuestions(session.id, question.id);
   const { statuses, counts } = examStatuses({ questionIds: session.questionIds, attempts, flags, visited });
+  // A locked mock's palette and counts are the running section's, as on the real console.
+  const openSection = sectionView?.locked ? sectionView.windows[sectionView.current] : null;
+  const indices = openSection ? Array.from({ length: openSection.questions }, (_, i) => openSection.firstPosition + i) : statuses.map((_, i) => i);
+  const panelCounts = openSection ? countOf(indices.map((i) => statuses[i])) : counts;
   const savedIndex = savedOptionId ? question.options.findIndex((o) => o.id === savedOptionId) : -1;
   const savedLetter = savedIndex >= 0 ? OPTION_LETTERS[savedIndex] : null;
-  const isFirst = index === 0;
-  const isLast = index === total - 1;
   const left = counts["not-answered"] + counts["not-visited"] + counts.marked;
 
   return (
@@ -161,35 +176,58 @@ export function ExamScreen(props: ExamScreenProps) {
             <Txt font="display" weight={600} className="text-base" numberOfLines={1} accessibilityRole="header">
               {title}
             </Txt>
-            <View className="mt-0.5 flex-row items-center gap-1.5">
-              <View className="size-5 items-center justify-center rounded-full bg-secondary">
-                <Txt weight={700} className="text-[9px] text-secondary-foreground">
-                  {initialsOf(studentName)}
-                </Txt>
-              </View>
-              <Txt className="flex-1 text-xs text-muted-foreground" numberOfLines={1}>
-                {studentName}
-              </Txt>
-            </View>
+            <CandidateRow name={studentName} />
           </View>
-          {timed && timeLeft ? (
+          <IconButton icon={Info} label="Instructions" onPress={() => setInstructionsOpen(true)} />
+          {/* Also at 0: a test (or section) reopened after its time ran out must
+              still auto-submit or move on — the timer fires onTimeUp at once. */}
+          {timed ? (
             <View className="items-end gap-0.5">
               <Txt weight={500} className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Time Left
+                {props.timerLabel ?? "Time Left"}
               </Txt>
-              <Timer durationSec={timeLeft} onTimeUp={props.onSubmitTest} warnAtSec={EXAM_WARN_AT_SEC} withHours />
+              <Timer key={props.timerKey} durationSec={timeLeft} onTimeUp={props.onTimeUp} warnAtSec={EXAM_WARN_AT_SEC} withHours />
             </View>
           ) : null}
         </View>
       </View>
 
+      {sectionView && sectionView.windows.length > 1 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="max-h-11 border-b border-border bg-muted" contentContainerClassName="items-center gap-1 px-3 py-1.5">
+          {sectionView.windows.map((w) => {
+            const current = w.index === sectionView.current;
+            const disabled = sectionView.locked && !current;
+            // Web's tab titles: an earlier locked section is over, a later one is still to come.
+            const lockReason = !disabled ? undefined : w.index < sectionView.current ? `${w.name} is closed` : `${w.name} opens when this section's time ends`;
+            return (
+              <Pressable
+                key={w.index}
+                accessibilityRole="button"
+                accessibilityLabel={`${w.name}, ${w.questions} questions`}
+                accessibilityHint={lockReason}
+                accessibilityState={{ selected: current, disabled }}
+                disabled={disabled}
+                onPress={() => props.onJump(w.firstPosition)}
+                className={cn("flex-row items-center gap-1 rounded-md px-3 py-1.5", current && "bg-primary")}
+              >
+                {disabled ? <Lock size={11} color={colors["muted-foreground"]} /> : null}
+                <Txt weight={600} className={cn("text-xs", current ? "text-primary-foreground" : disabled ? "text-muted-foreground" : "text-foreground")}>
+                  {w.name}
+                </Txt>
+                <Txt className={cn("text-xs tabular-nums", current ? "text-primary-foreground/80" : "text-muted-foreground")}>{w.questions}</Txt>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
       {/* Status counts + the full grid */}
       <View className="h-12 flex-row items-center gap-2.5 border-b border-border bg-background px-4">
         <View className="flex-1 flex-row items-center gap-2" accessibilityLabel="Question status counts">
           {EXAM_STATUS_ORDER.map((status) => (
-            <View key={status} accessibilityLabel={`${EXAM_STATUS_LABEL[status]}: ${counts[status]}`}>
+            <View key={status} accessibilityLabel={`${EXAM_STATUS_LABEL[status]}: ${panelCounts[status]}`}>
               <ExamStatusCell status={status} size={26}>
-                {counts[status]}
+                {panelCounts[status]}
               </ExamStatusCell>
             </View>
           ))}
@@ -257,12 +295,12 @@ export function ExamScreen(props: ExamScreenProps) {
       </View>
 
       <BottomSheet open={gridOpen} onClose={() => setGridOpen(false)} title="Question status" description="Tap a question to open it.">
-        <StatusLegend counts={counts} />
+        <StatusLegend counts={panelCounts} />
         <Txt weight={600} className="mb-3 mt-5 text-[11px] uppercase tracking-wider text-muted-foreground">
-          Questions
+          {openSection ? openSection.name : "Questions"}
         </Txt>
         <View className="flex-row flex-wrap gap-3">
-          {statuses.map((status, i) => (
+          {indices.map((i) => ({ status: statuses[i], i })).map(({ status, i }) => (
             <Pressable
               key={i}
               accessibilityRole="button"
@@ -310,7 +348,54 @@ export function ExamScreen(props: ExamScreenProps) {
         </View>
       </Dialog>
 
+      <BottomSheet open={instructionsOpen} onClose={() => setInstructionsOpen(false)} title="Instructions">
+        <ExamInstructionsContent session={session} />
+      </BottomSheet>
+
       <ReportSheet questionId={question.id} open={reportOpen} onClose={() => setReportOpen(false)} />
     </View>
   );
+}
+
+/** The candidate's initials and name under the console title (web's exam header). */
+export function CandidateRow({ name }: { name: string }) {
+  return (
+    <View className="mt-0.5 flex-row items-center gap-1.5">
+      <View className="size-5 items-center justify-center rounded-full bg-secondary">
+        <Txt weight={700} className="text-[9px] text-secondary-foreground">
+          {initialsOf(name)}
+        </Txt>
+      </View>
+      <Txt className="flex-1 text-xs text-muted-foreground" numberOfLines={1}>
+        {name}
+      </Txt>
+    </View>
+  );
+}
+
+/**
+ * The console's title for a session, as web's useExamTitle: a test drawn from
+ * one exam is that exam's mock, otherwise the student's target exam. Web also
+ * falls back to the exam picked at sign-up while preferences load; here
+ * sign-up writes that choice to preferences (core's session.signup), so
+ * preferences alone are the same answer.
+ */
+export function useExamTitle(session: SessionDetail["session"] | undefined): string {
+  const { data: preferences } = usePreferences();
+  const lookup = useTaxonomyLookup();
+  if (!session) return "Mock Test";
+  const examId = examMockExamId(session, preferences?.targetExamId);
+  return examTitle(session, examId ? lookup.exam(examId)?.shortName : undefined);
+}
+
+/** "NEET-PG Full Mock", "FMGE Mock Test", or "Mock Test". */
+export function examTitle(session: SessionDetail["session"], shortName: string | undefined): string {
+  if (session.mode === "full-mock") return shortName ? `${shortName} Full Mock` : session.label;
+  return shortName ? `${shortName} Mock Test` : "Mock Test";
+}
+
+function countOf(statuses: ExamQuestionStatus[]): ExamStatusCounts {
+  const counts: ExamStatusCounts = { answered: 0, "not-answered": 0, "not-visited": 0, marked: 0, "answered-marked": 0 };
+  for (const status of statuses) counts[status] += 1;
+  return counts;
 }

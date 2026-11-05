@@ -94,6 +94,15 @@ copy, one extra field and a different submit. **Continue with Google** signs
 in an existing account and creates one that does not exist, whichever screen
 it is clicked from.
 
+`/account/profile` (added 2026-10-27) is where a signed-in buyer changes
+their picture, their details and their password. The picture goes **straight
+from the browser to object storage** under the `user.avatar` purpose, never
+through the API (`docs/pdf-platform/05-storage.md`); the details reuse the
+`ProfileForm` from the last signup step, prefilled; the password section is
+hidden for a Google-only account, which the server reports as `hasPassword`
+rather than the page guessing. The main website has the same page against the
+same account, and the two files are kept in step.
+
 `POST /auth/register` is gated behind `PASSWORD_SIGNUP_ENABLED` (default
 `true`) and answers 404 when off. It is gated rather than deleted because
 hiding the form while leaving the route open would still let anyone create an

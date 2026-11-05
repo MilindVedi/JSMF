@@ -1,0 +1,23 @@
+{
+  "displayName": "JSMF - payments: checkout cannot start",
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "Razorpay refused to create an order (`checkout.provider_error`), so nobody can pay. Most often wrong or rotated Razorpay keys. Check `jsonPayload.reason` on the entry. See docs/main-website/README.md §8."
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "checkout.provider_error",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"cloud_run_revision\"\nresource.labels.service_name=\"jsmf-backend\"\njsonPayload.activity=\"checkout.provider_error\"",
+        "labelExtractors": { "reason": "EXTRACT(jsonPayload.reason)" }
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "300s" },
+    "autoClose": "1800s"
+  },
+  "severity": "CRITICAL",
+  "notificationChannels": ["${CHANNEL}"]
+}

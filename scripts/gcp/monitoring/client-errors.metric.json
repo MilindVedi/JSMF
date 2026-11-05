@@ -1,0 +1,20 @@
+{
+  "name": "jsmf_client_errors",
+  "description": "Crash reports from the JSMF websites and phone app (jsonPayload.activity=\"client.error\"), per Error Reporting service. Source: backend/src/modules/client-errors.",
+  "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"jsmf-backend\" AND jsonPayload.activity=\"client.error\"",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "INT64",
+    "unit": "1",
+    "labels": [
+      {
+        "key": "service",
+        "valueType": "STRING",
+        "description": "jsmf-pyq-web, jsmf-main-web, jsmf-store-web, jsmf-pyq-android, jsmf-pyq-ios …"
+      }
+    ]
+  },
+  "labelExtractors": {
+    "service": "EXTRACT(jsonPayload.serviceContext.service)"
+  }
+}

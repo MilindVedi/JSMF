@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { format } from "date-fns";
-import { SESSION_MODE_LABEL, type TestSession } from "@jsmf/core/domain";
+import { formatMarks, SESSION_MODE_LABEL, type Marks, type TestSession } from "@jsmf/core/domain";
 import { cn } from "@/lib/utils";
 
 // The labels are @jsmf/core's (shared with mobile); re-exported for the history page.
@@ -12,12 +12,15 @@ export function SessionHistoryRow({
   correct,
   incorrect,
   unattempted,
+  marks,
 }: {
   session: TestSession;
   accuracy: number;
   correct: number;
   incorrect: number;
   unattempted: number;
+  /** A full mock's score under its exam's marking. */
+  marks?: Marks;
 }) {
   return (
     <Link
@@ -39,6 +42,11 @@ export function SessionHistoryRow({
         <span className="text-success-foreground">{correct} correct</span>
         <span className="text-error-foreground">{incorrect} incorrect</span>
         {unattempted > 0 && <span className="text-muted-foreground">{unattempted} skipped</span>}
+        {marks && (
+          <span className="font-semibold text-foreground tabular-nums">
+            {formatMarks(marks.scored)}/{formatMarks(marks.max)}
+          </span>
+        )}
         <span
           className={cn(
             "rounded-full px-2.5 py-1 font-semibold",

@@ -47,6 +47,8 @@ export interface ImportQuestion {
   difficulty: Difficulty;
   /** Omitted: new questions start as DRAFT, existing ones keep their status. */
   status?: QuestionStatus;
+  /** Never shuffle the options. Omitted: unchanged (false for a new question). */
+  keepOptionOrder?: boolean;
   options: ImportOption[];
 }
 
@@ -165,6 +167,7 @@ export class QuestionImportService {
         explanationImageUrl: question.explanationImageUrl ?? null,
         explanationFigure: question.explanationFigure ?? Prisma.DbNull,
         difficulty: question.difficulty,
+        ...(question.keepOptionOrder !== undefined ? { keepOptionOrder: question.keepOptionOrder } : {}),
       };
 
       const wasNew = await this.prisma.$transaction(async (tx) => {

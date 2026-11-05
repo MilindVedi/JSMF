@@ -93,7 +93,9 @@ export function StreakFlyOverlay() {
         boxShadow: `0 6px 20px -6px rgb(255 110 30 / 0.55)`,
       }}
     >
-      <StreakFlame className="size-4" glow={2} />
+      {/* The count it is arriving with, so the aura in flight is already the
+          tier the chip will settle on. */}
+      <StreakFlame days={Math.max(flightToValue ?? 1, 1)} size={16} />
     </div>
   );
 }

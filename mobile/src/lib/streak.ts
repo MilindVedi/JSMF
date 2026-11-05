@@ -31,6 +31,8 @@ interface StreakAnimationState {
   measureTarget: (() => Promise<Rect | null>) | null;
   registerTarget: (measure: (() => Promise<Rect | null>) | null) => void;
   beginPending: (fromValue: number) => void;
+  /** Abandons a pending flight that will not happen (its source went away), unfreezing the chip. */
+  cancelPending: () => void;
   trigger: (sourceRect: Rect | null, milestoneHit: number | null) => void;
   notifyLanded: () => void;
   markCelebrated: (date: string) => void;
@@ -50,6 +52,10 @@ export const useStreakAnimationStore = create<StreakAnimationState>((set, get) =
   beginPending: (fromValue) => {
     if (get().phase !== "idle") return;
     set({ phase: "pending", flightFromValue: fromValue });
+  },
+  cancelPending: () => {
+    if (get().phase !== "pending") return;
+    set({ phase: "idle", flightFromValue: null });
   },
   trigger: (sourceRect, milestoneHit) => {
     if (get().phase !== "pending") return;

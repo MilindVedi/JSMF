@@ -68,14 +68,14 @@ export function TopbarStreakChip({ streakDays }: { streakDays: number }) {
       <div
         ref={elRef}
         className={cn(
-          "flex items-center gap-1.5 rounded-full border border-transparent px-2.5 py-1 text-xs font-medium transition-transform duration-200",
+          "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold text-foreground transition-transform duration-200",
           level.idlePulse && "animate-streak-idle-pulse",
           pulse && "animate-streak-landed-pulse",
           ringHue && "animate-streak-milestone-ring"
         )}
         style={{
           backgroundColor: `color-mix(in oklch, ${level.accent} 14%, transparent)`,
-          color: level.accent,
+          borderColor: `color-mix(in oklch, ${level.accent} 45%, transparent)`,
           boxShadow:
             level.glowIntensity > 0
               ? `0 0 ${6 + level.glowIntensity * 4}px color-mix(in oklch, ${level.accent} ${10 + level.glowIntensity * 6}%, transparent)`
@@ -83,7 +83,7 @@ export function TopbarStreakChip({ streakDays }: { streakDays: number }) {
           ["--streak-ring-color" as string]: ringHue ?? undefined,
         }}
       >
-        <StreakFlame className="size-4" glow={level.glowIntensity} />
+        <StreakFlame days={shown} size={15} />
         {/* One text node with its suffix, so the chip's gap never splits "1" from "-day". */}
         <span>
           {shown}

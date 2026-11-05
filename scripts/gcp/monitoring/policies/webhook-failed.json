@@ -1,0 +1,23 @@
+{
+  "displayName": "JSMF - payments: webhook failed",
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "Processing a verified Razorpay webhook threw (`webhook.failed`): a payment may not be settling. Razorpay redelivers and the reconciliation sweep retries, but a repeat means something is broken. Check `jsonPayload.eventId` and `jsonPayload.reason`, and the `payment_webhook_events` table. See docs/main-website/README.md §8."
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "webhook.failed",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"cloud_run_revision\"\nresource.labels.service_name=\"jsmf-backend\"\njsonPayload.activity=\"webhook.failed\"",
+        "labelExtractors": { "eventId": "EXTRACT(jsonPayload.eventId)" }
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "300s" },
+    "autoClose": "1800s"
+  },
+  "severity": "CRITICAL",
+  "notificationChannels": ["${CHANNEL}"]
+}

@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 import { EmptyState, Loading, QueryError } from "@/components/ui/primitives";
 import { StackHeader } from "@/components/ui/screen";
 import { QuestionRow } from "@/components/question/question-row";
+import { useRefetchOnFocus } from "@/lib/use-refetch-on-focus";
 
 /** Every bookmarked question (web's /bookmarks). */
 export default function BookmarksScreen() {
   const router = useRouter();
-  const { data: items = [], error, isPending, refetch } = useBookmarks();
+  const bookmarksQuery = useBookmarks();
+  const { data: items = [], error, isPending, refetch } = bookmarksQuery;
+  useRefetchOnFocus(bookmarksQuery);
   const startSession = useStartSession();
   return (
     <View className="flex-1 bg-background">

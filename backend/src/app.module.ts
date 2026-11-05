@@ -33,6 +33,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { LegalAcceptanceGuard } from './common/guards/legal-acceptance.guard';
 import { LegalModule } from './modules/legal/legal.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { ClientErrorsModule } from './modules/client-errors/client-errors.module';
 
 @Module({
   imports: [
@@ -99,6 +100,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     QuestionsModule,
     LegalModule,
     AnalyticsModule,
+    ClientErrorsModule,
   ],
   providers: [
     // Order matters: throttling runs first (cheapest, and should apply to

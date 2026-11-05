@@ -14,12 +14,16 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import { PracticeService } from './practice.service';
+import type { ExamSetupService } from './exam-setup.service';
 import { ProgressService } from './progress.service';
-import { PYQ_SUBSCRIPTION_METADATA_KEY, PyqAccessService } from './pyq-access.service';
+import { PyqAccessService } from './pyq-access.service';
+import { PYQ_PLAN_KEY } from '../../../shared/pyq-plan';
 import { CacheService } from '../../../shared/cache/cache.service';
 import { QuestionStateService } from './question-state.service';
 import { QuestionBankService } from './question-bank.service';
 import { QuestionImportService, type ImportInput } from './question-import.service';
+import { AuditService } from '../../../shared/audit/audit.service';
+import { PyqSubscriptionService } from './pyq-subscription.service';
 
 /**
  * The PYQ bank and practice flow against a real Postgres, wired by hand like
@@ -41,12 +45,16 @@ const config = {
 
 const prisma = new PrismaService();
 const entitlements = new EntitlementService(prisma);
-const access = new PyqAccessService(prisma, entitlements, config);
+// Pass-through cache: these tests change settings between reads.
+const subscriptions = new PyqSubscriptionService(prisma, new AuditService(prisma), { wrap: (_key: string, _ttl: number, load: () => unknown) => load(), del: async () => {} } as never, config);
+const access = new PyqAccessService(prisma, config, subscriptions);
 const cache = new CacheService({ get: () => false } as never);
 const bank = new QuestionBankService(prisma, cache);
 const states = new QuestionStateService(prisma);
 const importer = new QuestionImportService(prisma);
-const practice = new PracticeService(prisma, bank, access, states);
+// Options in written order here; shuffling has its own spec (exam-mode.integration.spec.ts).
+const examSetup = { settings: async () => ({ shuffleOptions: false }) } as unknown as ExamSetupService;
+const practice = new PracticeService(prisma, bank, access, states, examSetup);
 const progress = new ProgressService(prisma, bank);
 
 const run = randomUUID().slice(0, 8);
@@ -201,12 +209,13 @@ describe('practice mode', () => {
 describe('test mode', () => {
   it('hides answers until submit, then scores and reveals', async () => {
     const user = await createUser();
-    const session = await practice.start(user.id, {
+    const started = await practice.start(user.id, {
       mode: PracticeMode.TEST,
       filters,
       count: 4,
       timeLimitSec: 600,
     });
+    const session = await practice.begin(user.id, started.id);
     const [q1, q2, q3] = session.questions;
 
     const recorded = await practice.answer(user.id, session.id, {
@@ -343,7 +352,7 @@ describe('free allowance', () => {
           status: ProductStatus.PUBLISHED,
           accessType: AccessType.PAID,
           priceAmountMinor: 49900n,
-          metadata: { [PYQ_SUBSCRIPTION_METADATA_KEY]: true },
+          metadata: { [PYQ_PLAN_KEY]: true },
         },
       });
       created.productIds.push(plan.id);
@@ -488,7 +497,10 @@ describe('read models', () => {
     ).toBe(0);
 
     // A running test's wrong answer is invisible until submit.
-    const test = await practice.start(user.id, { mode: PracticeMode.TEST, questionIds: [rows[2].id] });
+    const test = await practice.begin(
+      user.id,
+      (await practice.start(user.id, { mode: PracticeMode.TEST, questionIds: [rows[2].id] })).id,
+    );
     await practice.answer(user.id, test.id, { questionId: rows[2].id, selectedOptionId: rows[2].options[1].id });
     expect((await bank.list(user.id, { ...filters, status: 'incorrect' }, 1, 50)).total).toBe(0);
     expect((await practice.history(user.id, 1, 10, 'IN_PROGRESS')).items.map((s) => s.id)).toContain(test.id);

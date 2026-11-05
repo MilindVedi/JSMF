@@ -110,7 +110,7 @@ export default function AdminSettingsPage() {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>Med Prep link</CardTitle>
+          <CardTitle>PYQs link</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
@@ -121,7 +121,7 @@ export default function AdminSettingsPage() {
               onCheckedChange={(checked: boolean) => void toggle("medPrepLinkEnabled", checked)}
             />
             <Label htmlFor="med-prep-link-enabled" className="text-sm font-medium">
-              Show the &ldquo;Med Prep&rdquo; link in the header
+              Show the &ldquo;PYQs&rdquo; link in the header
             </Label>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">

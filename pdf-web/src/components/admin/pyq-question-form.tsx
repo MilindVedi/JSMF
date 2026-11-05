@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   adminPyqApi,
@@ -71,6 +72,10 @@ export function PyqQuestionForm({
       : [newRow(), newRow(), newRow(), newRow()],
   );
   const [correctKey, setCorrectKey] = useState<string>(question?.correctOptionId ?? "");
+  const [keepOptionOrder, setKeepOptionOrder] = useState(question?.keepOptionOrder ?? false);
+  // Found by the server in the saved text, so it holds whatever the switch says.
+  const autoLock =
+    question?.optionOrderLock && question.optionOrderLock.reason !== "admin" ? question.optionOrderLock : null;
 
   useEffect(() => {
     adminPyqApi
@@ -122,6 +127,7 @@ export function PyqQuestionForm({
         stemImageUrl: stemImageUrl.trim() || null,
         explanation: explanation.trim(),
         explanationImageUrl: explanationImageUrl.trim() || null,
+        keepOptionOrder,
         options: options.map((row) => ({
           ...(row.id ? { id: row.id } : {}),
           text: row.text.trim(),
@@ -298,6 +304,23 @@ export function PyqQuestionForm({
             <Plus className="size-4" />
             Add option
           </Button>
+          <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+            <Label htmlFor="keep-option-order" className="flex flex-col items-start gap-0.5">
+              <span>Keep option order</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                Students see the options exactly as written instead of shuffled. Questions with &ldquo;All of
+                the above&rdquo;, &ldquo;Both A and C&rdquo; or an explanation naming an option by letter are
+                kept in order automatically.
+              </span>
+              {autoLock && (
+                <span className="text-xs font-normal text-amber-700 dark:text-amber-400">
+                  Already kept in order: {autoLock.reason === "options-refer-to-options" ? "an option" : "the explanation"}{" "}
+                  mentions &ldquo;{autoLock.match}&rdquo;.
+                </span>
+              )}
+            </Label>
+            <Switch id="keep-option-order" checked={keepOptionOrder} onCheckedChange={setKeepOptionOrder} />
+          </div>
         </CardContent>
       </Card>
 

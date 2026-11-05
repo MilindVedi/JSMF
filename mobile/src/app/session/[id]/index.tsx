@@ -3,7 +3,14 @@ import { Pressable, ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft, ArrowRight, Bookmark, CircleCheck, Flag, FlagTriangleRight, LayoutGrid, MessageSquareWarning, TriangleAlert } from "lucide-react-native";
-import { remainingSeconds, type Attempt, type SessionQuestion } from "@jsmf/core/domain";
+import {
+  lockedSectionRedirect,
+  remainingSeconds,
+  sectionIndexOf,
+  sectionSecondsLeft,
+  type Attempt,
+  type SessionQuestion,
+} from "@jsmf/core/domain";
 import { DailyLimitError, NotFoundError, type AnswerResult, type SessionDetail } from "@jsmf/core/data-source";
 import { useAnswer, useBookmarkToggle, useSessionDetail, useSetFlag, useSubmitSession } from "@jsmf/core/hooks";
 import { toast } from "@/lib/toast";
@@ -14,8 +21,10 @@ import { DailyLimitNotice, EmptyState, Loading, ProgressBar, QueryError } from "
 import { cn, Txt } from "@/components/ui/text";
 import { ExplanationPanel, QuestionCard } from "@/components/question/question-card";
 import { ReportSheet } from "@/components/question/report-sheet";
-import { ExamScreen } from "@/components/exam/exam-screen";
+import { ExamScreen, useExamTitle, type ExamSectionView } from "@/components/exam/exam-screen";
+import { ExamBeginScreen } from "@/components/exam/exam-instructions";
 import { Timer } from "@/components/exam/timer";
+import { forgetVisitedQuestions } from "@/lib/visited";
 
 /**
  * The practice runner (web's /practice/[sessionId]): one question per screen.
@@ -31,6 +40,13 @@ export default function SessionScreen() {
   const raw = Number(params.i ?? 0);
   const index = Number.isFinite(raw) ? Math.min(Math.max(raw, 0), Math.max(total - 1, 0)) : 0;
   const question = detail?.questions[index];
+  const examTitle = useExamTitle(detail?.session);
+
+  // A mock with time-bound sections only ever shows its running section.
+  const redirectTo = detail ? lockedSectionRedirect(detail.session, index) : null;
+  useEffect(() => {
+    if (redirectTo !== null) router.setParams({ i: String(redirectTo) });
+  }, [redirectTo, router]);
 
   if (isPending) return <Loading className="bg-background" />;
   if (error && !(error instanceof NotFoundError)) {
@@ -40,6 +56,12 @@ export default function SessionScreen() {
       </View>
     );
   }
+  // A test opens on its instructions; its questions arrive when it is begun.
+  if (detail?.session.awaitingBegin) {
+    const exit = () => (router.canGoBack() ? router.back() : router.replace("/home"));
+    return <ExamBeginScreen detail={detail} title={examTitle} onExit={exit} />;
+  }
+  if (redirectTo !== null) return <Loading className="bg-background" />;
   if (!detail || !question) {
     return (
       <View className="flex-1 justify-center bg-background px-5">
@@ -78,12 +100,23 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
     ? { ...question, correctOptionId: result.correctOptionId, explanation: result.explanation, explanationFigure: result.explanationFigure }
     : question;
   const isBookmarked = bookmarks.isBookmarked(question.id);
-  const isFirst = index === 0;
-  const isLast = index === total - 1;
   const timed = Boolean(session.config.timed && session.config.durationSec && !detail.submitted);
   // A test keeps answers locked in but hides correctness until it is submitted.
   const hideResults = Boolean(session.config.testMode && !detail.submitted);
-  const [timeLeft] = useState(() => remainingSeconds(session));
+
+  // A full mock's sections: with time-bound sections the student moves only
+  // within the running one, and the clock is that section's (web does the same).
+  const currentSection = sectionIndexOf(session, index);
+  const sectionView: ExamSectionView | null =
+    session.sections && currentSection !== null
+      ? { windows: session.sections, current: currentSection, locked: Boolean(session.pattern?.sectionsLocked) }
+      : null;
+  const openWindow = sectionView?.locked ? sectionView.windows[sectionView.current] : null;
+  const firstIndex = openWindow ? openWindow.firstPosition : 0;
+  const lastIndex = openWindow ? openWindow.firstPosition + openWindow.questions - 1 : total - 1;
+  const isFirst = index === firstIndex;
+  const isLast = index === lastIndex;
+  const [timeLeft] = useState(() => (openWindow && hideResults ? sectionSecondsLeft(session, openWindow.index) : remainingSeconds(session)));
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(() => existingAttempt?.selectedOptionId ?? null);
   const startTime = useRef(0);
   useEffect(() => {
@@ -92,8 +125,15 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
   }, []);
 
   function goTo(next: number) {
-    if (next < 0 || next >= total) return;
+    if (next < firstIndex || next > lastIndex) return;
     router.setParams({ i: String(next) });
+  }
+
+  /** A section's time is over: the next one opens on its own, or the paper is done. */
+  function handleSectionTimeUp() {
+    const next = openWindow ? session.sections?.[openWindow.index + 1] : undefined;
+    if (next) router.setParams({ i: String(next.firstPosition) });
+    else handleFinish();
   }
 
   function exit() {
@@ -101,13 +141,27 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
     else router.replace("/home");
   }
 
+  // Time-up or Submit while an answer is still saving waits for that save, so
+  // the answer the student just gave is in the score (web does the same).
+  const finishAfterSave = useRef(false);
+  useEffect(() => {
+    if (!answer.isPending && finishAfterSave.current) {
+      finishAfterSave.current = false;
+      handleFinish();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answer.isPending]);
+
   function saveAnswer(optionId: string, onSaved?: () => void) {
     answer.mutate(
       { questionId: question.id, optionId, timeSpentMs: Date.now() - startTime.current },
       {
         onSuccess: (saved) => {
           setResult(saved);
-          onSaved?.();
+          // A finish is waiting on this save: stay on this question so this
+          // runner (keyed per question) is still mounted to submit. Moving on
+          // would remount it and drop the waiting submit.
+          if (!finishAfterSave.current) onSaved?.();
         },
         onError: (error) => {
           if (error instanceof DailyLimitError) setLimitReached(true);
@@ -123,10 +177,18 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
   }
 
   function handleFinish() {
+    if (answer.isPending) {
+      finishAfterSave.current = true;
+      return;
+    }
     const toResults = () => router.replace({ pathname: "/session/[id]/results", params: { id: session.id } });
     if (detail.submitted) return toResults();
     submitSession.mutate(session.id, {
-      onSuccess: toResults,
+      onSuccess: () => {
+        // A submitted test's palette is never shown again.
+        forgetVisitedQuestions(session.id);
+        toResults();
+      },
       onError: (error) => toast.error(error.message || "Could not finish the session. Please try again."),
     });
   }
@@ -150,12 +212,16 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
     else saveAnswer(selectedOptionId, then);
   }
 
-  const advance = () => goTo(index + 1);
+  // At a locked section's last question, Save & Next goes back to its first, as on the console.
+  const advance = () => goTo(isLast && openWindow ? firstIndex : index + 1);
 
   function handleSaveAndNext() {
-    // Saving an answer to a marked question makes it plain "Answered", as on the console.
+    // Saving an answer to a marked question makes it plain "Answered", as on
+    // the console; with nothing chosen the mark stays.
     saveChoice(() => {
-      if (selectedOptionId && flagged) writeFlag(false);
+      // Only once the answer is really saved: after the daily-limit error the
+      // choice was not stored, so the mark stays.
+      if (selectedOptionId && flagged && !limitReached) writeFlag(false);
       advance();
     });
   }
@@ -188,6 +254,12 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
         question={question}
         index={index}
         total={total}
+        isFirst={isFirst}
+        isLast={isLast}
+        timerKey={openWindow?.index}
+        timerLabel={openWindow ? `${openWindow.name} · Time Left` : undefined}
+        onTimeUp={openWindow ? handleSectionTimeUp : handleFinish}
+        sectionView={sectionView}
         attempts={attempts}
         flags={flags}
         selectedOptionId={selectedOptionId}
@@ -225,7 +297,8 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
             </Txt>
             <ProgressBar value={((index + 1) / total) * 100} className="h-1.5 w-full" />
           </View>
-          {timed && timeLeft ? <Timer durationSec={timeLeft} onTimeUp={handleFinish} /> : null}
+          {/* Also at 0: a test reopened after its time ran out must still auto-submit. */}
+          {timed ? <Timer durationSec={timeLeft} onTimeUp={handleFinish} /> : null}
           <IconButton icon={Flag} label={flagged ? "Unflag" : "Flag for review"} active={flagged} filled activeColor={colors["error-foreground"]} onPress={() => writeFlag(!flagged)} />
           <IconButton icon={Bookmark} label={isBookmarked ? "Remove bookmark" : "Bookmark question"} active={isBookmarked} filled activeColor={colors.primary} onPress={() => bookmarks.toggle(question.id, isBookmarked)} />
         </View>

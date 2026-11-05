@@ -3,6 +3,7 @@ import { activity } from '../../../shared/logging/activity';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { normaliseContactPhone } from '../../../shared/sms/domain/contact-phone';
 import { toAuthenticatedUser, type AuthenticatedUser } from './auth.service';
+import { UserAvatarUploads } from './user-avatar-uploads';
 
 export interface Profile {
   name: string;
@@ -18,6 +19,15 @@ export interface Profile {
   completed: boolean;
   /** When the account was created, ISO. */
   memberSince: string;
+  /**
+   * A link to the profile picture, or null when none is set. A link rather
+   * than the stored provider/bucket/key, because that is all a browser can
+   * use — and it is built per read, so it expires rather than living forever
+   * in whatever cached the response.
+   */
+  avatarUrl: string | null;
+  /** Whether this account can change its password (an OAuth-only one cannot). */
+  hasPassword: boolean;
 }
 
 /**
@@ -31,7 +41,10 @@ export interface Profile {
 export class ProfileService {
   private readonly logger = new Logger(ProfileService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly avatars: UserAvatarUploads,
+  ) {}
 
   async get(userId: string): Promise<Profile> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -45,6 +58,8 @@ export class ProfileService {
       currentStage: user.currentStage,
       completed: user.profileCompletedAt !== null,
       memberSince: user.createdAt.toISOString(),
+      avatarUrl: await this.avatars.urlFor(userId),
+      hasPassword: user.passwordHash !== null,
     };
   }
 

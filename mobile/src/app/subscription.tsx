@@ -18,6 +18,7 @@ export default function SubscriptionScreen() {
   const access = useAccess();
   const colors = useColors();
   const plan = access.data?.plan ?? null;
+  const trial = access.data?.trial ?? null;
   return (
     <StackScreen title="Your plan">
       {access.error ? (
@@ -36,7 +37,20 @@ export default function SubscriptionScreen() {
             {plan ? (
               <>
                 <Heading className="text-lg">{plan.title}</Heading>
-                <Txt className="text-sm text-muted-foreground">{plan.expiresAt ? `Active until ${formatDate(plan.expiresAt)}` : "Active, no end date"}</Txt>
+                <Txt className="text-sm text-muted-foreground">
+                  {trial
+                    ? `Free trial until ${formatDate(trial.endsAt)}, then this plan${plan.expiresAt ? ` until ${formatDate(plan.expiresAt)}` : ""}`
+                    : plan.expiresAt
+                      ? `Active until ${formatDate(plan.expiresAt)}`
+                      : "Active, no end date"}
+                </Txt>
+              </>
+            ) : trial ? (
+              // Shown, never offered: starting a trial happens on the website,
+              // and the app points nowhere else (app-store rules, above).
+              <>
+                <Heading className="text-lg">Free trial</Heading>
+                <Txt className="text-sm text-muted-foreground">Unlimited practice until {formatDate(trial.endsAt)}</Txt>
               </>
             ) : (
               <>

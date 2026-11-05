@@ -22,10 +22,16 @@ export interface StreakLevelConfig {
 }
 
 // Ordered ascending by minDays — getStreakLevel relies on this. Each tier has
-// its own distinct accent (see the --streak-* tokens in globals.css) so the
-// badge visibly changes color as the streak grows, not just its glow.
+// its own distinct accent (see the --streak-* tokens in globals.css, and
+// mobile's theme/palette.json) so the badge visibly changes color as the
+// streak grows: fire colours — yellow spark, orange, red, royal purple, gold —
+// then deepening ember tones past 30 days. Accents colour the box, border and
+// glow; text beside them stays in the normal text colour, as yellow and gold
+// are not readable as text.
 export const STREAK_LEVELS: StreakLevelConfig[] = [
   { id: "new", label: "Getting started", minDays: 0, accent: "var(--muted-foreground)", glowIntensity: 0, idlePulse: false },
+  // Day one already burns: a warm spark, not the grey of "nothing yet".
+  { id: "spark", label: "Spark", minDays: 1, accent: "var(--streak-spark)", glowIntensity: 1, idlePulse: false },
   { id: "warming", label: "Warming up", minDays: 3, accent: "var(--streak-warming)", glowIntensity: 1, idlePulse: false },
   { id: "hot", label: "On a roll", minDays: 7, accent: "var(--streak-hot)", glowIntensity: 2, idlePulse: false },
   { id: "blazing", label: "Blazing", minDays: 14, accent: "var(--streak-blazing)", glowIntensity: 3, idlePulse: true },
@@ -68,4 +74,38 @@ export function nextMilestone(days: number): number | null {
 
 export function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** The figures the dashboard masthead reads — both clients' streak state fits. */
+export interface StreakCheckIn {
+  todayProgress: number;
+  dailyTarget: number;
+  todayDone: boolean;
+  currentStreak: number;
+}
+
+/**
+ * The line under the dashboard greeting. Every branch is a fact the dashboard
+ * already holds — today's count against the goal, and the streak behind it —
+ * so the masthead tells a student where they actually stand this morning. The
+ * last branch is the only fixed line, and it is the only case with nothing to
+ * say: no streak, nothing done, nothing yet at stake.
+ */
+export function streakCheckInLine({ todayProgress: done, dailyTarget: target, todayDone, currentStreak: days }: StreakCheckIn): string {
+  if (todayDone) {
+    return days > 1 ? `Today's goal is done — that's ${days} days in a row.` : "Today's goal is done. That's day one.";
+  }
+  if (done > 0) {
+    const left = Math.max(target - done, 0);
+    return `${done} of ${target} done today — ${left} to go.`;
+  }
+  if (days > 0) {
+    return `A ${days}-day streak on the line. ${target} questions keeps it alive.`;
+  }
+  return "A little progress, every day.";
+}
+
+/** The eyebrow above the dashboard greeting. */
+export function streakEyebrow(currentStreak: number): string {
+  return currentStreak > 0 ? `Day ${currentStreak} of your streak` : "Your daily check-in";
 }

@@ -1,6 +1,6 @@
 import { PricingCard } from "@/components/marketing/pricing-card";
 import { DATA_SOURCE_KIND } from "@/lib/data-source/kind";
-import { getMarketingPlans } from "@/lib/server/marketing-plans";
+import { getMarketingPlans, getMarketingTrial } from "@/lib/server/marketing-plans";
 
 // Rendered per request so a deploy never serves a copy built without the
 // backend; the plans fetch itself is cached, so the backend sees at most one
@@ -8,7 +8,7 @@ import { getMarketingPlans } from "@/lib/server/marketing-plans";
 export const dynamic = "force-dynamic";
 
 export default async function PricingPage() {
-  const plans = await getMarketingPlans();
+  const [plans, trial] = await Promise.all([getMarketingPlans(), getMarketingTrial()]);
 
   return (
     <div className="mx-auto w-full max-w-[1280px] px-4 py-20 sm:px-6 sm:py-28">
@@ -20,14 +20,16 @@ export default async function PricingPage() {
         <p className="mt-4 text-muted-foreground">
           {DATA_SOURCE_KIND === "mock"
             ? "Final pricing isn't locked in yet — the plans below show how entitlements differ by exam coverage and features so you can see what each tier unlocks."
-            : "Practise free every day. Upgrade for unlimited questions across every exam in the bank."}
+            : trial
+              ? `Try everything free for ${trial.days} days — no payment needed. Then pick the plan that fits.`
+              : "Practise free every day. Upgrade for unlimited questions across every exam in the bank."}
         </p>
       </div>
 
       {plans?.length ? (
         <div className="mt-16 grid gap-6 lg:grid-cols-3">
           {plans.map((plan) => (
-            <PricingCard key={plan.id} plan={plan} />
+            <PricingCard key={plan.id} plan={plan} trialDays={trial?.days} />
           ))}
         </div>
       ) : (

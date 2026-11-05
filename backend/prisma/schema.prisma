@@ -49,9 +49,12 @@ model User {
   phoneVerifiedAt       DateTime?        @map("phone_verified_at") @db.Timestamptz(6)
   name                  String           @db.VarChar(120)
   // No avatarUrl column: an avatar is a file we host, addressed the same way
-  // as every other stored file (provider + object key), never a raw URL —
-  // both null together when no avatar has been set.
+  // as every other stored file (provider + bucket + object key), never a raw
+  // URL — all three null together when no avatar has been set. `objectRefOf`
+  // turns them into an ObjectRef; the "user.avatar" upload purpose is the
+  // only thing that writes them.
   avatarStorageProvider StorageProvider? @map("avatar_storage_provider")
+  avatarBucket          String?          @map("avatar_bucket") @db.VarChar(255)
   avatarObjectKey       String?          @map("avatar_object_key")
   // Nullable: an OAuth-only account has no password.
   passwordHash          String?          @map("password_hash")
@@ -104,6 +107,7 @@ model User {
   pyqPreferences         PyqPreference?
   pyqQuestionStates      UserQuestionState[]
   pyqDailyActivity       UserDailyActivity[]
+  pyqTrial               PyqTrial?
   legalAcceptances       LegalAcceptance[]
   legalVersionsCreated   LegalDocumentVersion[]    @relation("LegalVersionCreatedBy")
   legalVersionsPublished LegalDocumentVersion[]    @relation("LegalVersionPublishedBy")
@@ -1723,7 +1727,7 @@ model PlatformSettings {
   mentorPhotoBucket               String?          @map("mentor_photo_bucket") @db.VarChar(255)
   mentorPhotoObjectKey            String?          @map("mentor_photo_object_key")
 
-  /// The "Med Prep" link in the header of the main website and the PDF store,
+  /// The "PYQs" link in the header of the main website and the PDF store,
   /// pointing at the PYQ practice site. Off removes it from both at once —
   /// so it can be hidden again the moment that site has a problem, without a
   /// deploy.
@@ -1783,6 +1787,7 @@ model Exam {
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   questions Question[]
+  pattern   ExamPattern?
 
   @@map("exams")
   @@schema("pyq")
@@ -1847,6 +1852,12 @@ model Question {
   explanationFigure   Json?          @map("explanation_figure")
   difficulty          Difficulty     @default(MEDIUM)
   status              QuestionStatus @default(DRAFT)
+  /// The admin's "keep option order": this question's options are never
+  /// shuffled. Questions whose options or explanation refer to other options
+  /// ("All of the above", "Both A and C", "option B is…") are kept in order
+  /// whatever this says — detected on every read by domain/option-order.ts,
+  /// so improving the detector needs no backfill.
+  keepOptionOrder     Boolean        @default(false) @map("keep_option_order")
   createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt           DateTime?      @map("deleted_at") @db.Timestamptz(6)
@@ -1929,6 +1940,19 @@ model PracticeSession {
   unattemptedCount Int?                  @map("unattempted_count")
   /// 0-100, correct over attempted.
   accuracy         Int?
+  /// Whether this session shows each question's options in its own shuffled
+  /// order. Decided once, at start, from the admin switch, so flipping the
+  /// switch never reorders options under someone mid-test.
+  shuffleOptions   Boolean               @default(false) @map("shuffle_options")
+  /// When the clock started. A TEST waits on its instructions screen with
+  /// this null, its questions withheld, until the student begins it; every
+  /// other session starts at creation. Deadlines count from here.
+  clockStartedAt   DateTime?             @map("clock_started_at") @db.Timestamptz(6)
+  /// The exam pattern a full mock was started with (sections, timings,
+  /// marking — see domain/exam-pattern.ts), copied so editing the pattern
+  /// never changes a mock in progress or a score already given. Null for
+  /// every other session.
+  pattern          Json?
   createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -2135,16 +2159,65 @@ model UserQuestionState {
 /// Answers given per India-time calendar day, per student — what streaks
 /// read, so the topbar's streak on every page is a scan of active days rather
 /// than of every attempt. Derived like UserQuestionState; unlike it, answers
-/// inside a running TEST count (they keep the day alive).
+/// inside a running TEST count (they keep the day alive). A day extends the
+/// streak only once it reaches the student's daily goal: `goalMet`, not
+/// `answered > 0`.
 model UserDailyActivity {
   userId   String   @map("user_id") @db.Uuid
   day      DateTime @db.Date
   answered Int
+  /// Whether this day reached the student's daily goal — the day the streak
+  /// counts. Recorded here rather than compared against `dailyTarget` on read
+  /// so that raising the goal later never erases days already earned under
+  /// the old one. Sticky: once true it stays true, including when the goal
+  /// goes up again the same day.
+  goalMet  Boolean  @default(false) @map("goal_met")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, day])
   @@map("user_daily_activity")
+  @@schema("pyq")
+}
+
+/// The parts of the PYQ subscription offer that are not plans: the free trial
+/// and the list of benefits every plan shares. One fixed row ("global"), like
+/// PlatformSettings. The plans themselves stay ordinary products (see
+/// src/shared/pyq-plan.ts), so checkout, refunds and finance reports need
+/// nothing new for them.
+///
+/// Changed only from the admin panel, and only while the deployment sets
+/// SUBSCRIPTION_MANAGEMENT_ENABLED=true. Reading it is always allowed.
+model PyqSubscriptionSettings {
+  id           String   @id @default("global") @db.VarChar(20)
+  /// Whether a student who has never had a trial or a plan may start one.
+  /// Turning it off never ends a trial already running.
+  trialEnabled Boolean  @default(false) @map("trial_enabled")
+  /// Length of a trial started from now on. A running trial keeps the length
+  /// it started with (PyqTrial.endsAt). 1–90, enforced by a CHECK.
+  trialDays    Int      @default(7) @map("trial_days") @db.SmallInt
+  /// The benefits shown on every plan card. Plans differ only in length and
+  /// price, so this lives once here rather than on each plan.
+  features     String[] @default([])
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("subscription_settings")
+  @@schema("pyq")
+}
+
+/// A student's free trial: full plan access until `endsAt`. At most one per
+/// account, ever. The primary key on user_id is the guarantee, so two taps
+/// arriving together can never start two trials. Never updated after insert.
+model PyqTrial {
+  userId    String   @id @map("user_id") @db.Uuid
+  startedAt DateTime @default(now()) @map("started_at") @db.Timestamptz(6)
+  endsAt    DateTime @map("ends_at") @db.Timestamptz(6)
+  /// The length granted, kept because the setting may change later.
+  days      Int      @db.SmallInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("trials")
   @@schema("pyq")
 }
 
@@ -2983,4 +3056,37 @@ model NoSessionQuote {
   @@index([sortOrder])
   @@map("no_session_quotes")
   @@schema("public")
+}
+
+/// How an exam's real paper runs — sections, their timings, and marking — so
+/// a student can sit a full mock of it. One per exam, edited in the admin
+/// panel (PYQ → Exam setup). Sessions copy it at start (PracticeSession.pattern).
+model ExamPattern {
+  examId    String   @id @map("exam_id") @db.Uuid
+  /// Offered to students as a full mock — once the bank holds enough
+  /// published questions of this exam to fill it.
+  enabled   Boolean  @default(false)
+  /// `{ version, sections: [{ name, questions, minutes }], sectionsLocked,
+  /// marking: { correct, incorrect } }`, validated by domain/exam-pattern.ts.
+  /// One document rather than columns: it is always read and written whole,
+  /// and the session snapshot is the very same shape.
+  pattern   Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@map("exam_patterns")
+  @@schema("pyq")
+}
+
+/// The one row of practice-wide switches the admin controls.
+model PracticeSettings {
+  id             String   @id @default("global") @db.VarChar(20)
+  /// New sessions show each question's options in a shuffled order (stable
+  /// within a session). Questions that must keep their order always do.
+  shuffleOptions Boolean  @default(true) @map("shuffle_options")
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("practice_settings")
+  @@schema("pyq")
 }

@@ -26,6 +26,7 @@ import {
   type QuestionFiltersState,
 } from "@/components/filters/filters";
 import { QuestionRow } from "@/components/question/question-row";
+import { useRefetchOnFocus } from "@/lib/use-refetch-on-focus";
 
 type StatusFilter = "all" | "unattempted" | "incorrect" | "bookmarked";
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
@@ -67,6 +68,8 @@ export default function PracticeScreen() {
     [filters, status, settledSearch, sort]
   );
   const list = useInfiniteQuestions(query, PAGE_SIZE);
+  // Statuses and the Unattempted / Incorrect / Bookmarked tabs change during practice.
+  useRefetchOnFocus(list);
   const items = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
   const total = list.data?.pages[0]?.total ?? 0;
 
@@ -114,7 +117,9 @@ export default function PracticeScreen() {
   return (
     <TabScreen title="Question Bank" subtitle="Memory-based PYQs by exam, year, subject and topic." scroll={false}>
       <FlatList
-        data={list.error ? [] : items}
+        // A failed "load more" keeps what is already loaded (web's pager keeps
+        // its place); only a first-page failure replaces the list.
+        data={list.error && items.length === 0 ? [] : items}
         keyExtractor={(q) => q.id}
         contentContainerClassName="px-5 pb-10"
         ListHeaderComponent={header}
@@ -126,11 +131,12 @@ export default function PracticeScreen() {
         )}
         onEndReachedThreshold={0.6}
         onEndReached={() => {
-          if (list.hasNextPage && !list.isFetchingNextPage) void list.fetchNextPage();
+          // After a failed page, the footer's button retries — scrolling doesn't loop on it.
+          if (list.hasNextPage && !list.isFetchingNextPage && !list.isFetchNextPageError) void list.fetchNextPage();
         }}
         refreshControl={<RefreshControl refreshing={list.isRefetching && !list.isFetchingNextPage} onRefresh={() => void list.refetch()} tintColor={colors.primary} />}
         ListEmptyComponent={
-          list.error ? (
+          list.error && items.length === 0 ? (
             <QueryError error={list.error} onRetry={() => void list.refetch()} title="Couldn't load questions" />
           ) : list.isPending ? (
             <ActivityIndicator color={colors["muted-foreground"]} className="py-10" />
@@ -142,7 +148,16 @@ export default function PracticeScreen() {
             />
           )
         }
-        ListFooterComponent={list.isFetchingNextPage ? <ActivityIndicator color={colors["muted-foreground"]} className="py-6" /> : null}
+        ListFooterComponent={
+          list.isFetchingNextPage ? (
+            <ActivityIndicator color={colors["muted-foreground"]} className="py-6" />
+          ) : list.isFetchNextPageError ? (
+            <View className="flex-row items-center justify-between gap-3 py-4">
+              <Txt className="flex-1 text-sm text-muted-foreground">Couldn&apos;t load more questions.</Txt>
+              <Button label="Try again" size="sm" variant="outline" onPress={() => void list.fetchNextPage()} />
+            </View>
+          ) : null
+        }
       />
     </TabScreen>
   );

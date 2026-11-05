@@ -7,6 +7,7 @@ import { useStreakAnimationStore, useStreakState, type Rect } from "@/lib/streak
 import { useStreakAccent, withAlpha } from "@/theme/theme";
 import { Txt } from "@/components/ui/text";
 import { StreakFlame } from "./flame";
+import { useStreakIdlePulse } from "./idle-pulse";
 
 /**
  * The global streak indicator in each tab's header (web's TopbarStreakChip).
@@ -63,6 +64,7 @@ export function StreakChip() {
   const ringAccent = useStreakAccent(ringDays ?? 0);
   const level = getStreakLevel(shown);
   const chipStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const idleStyle = useStreakIdlePulse(level.idlePulse);
   const ringStyle = useAnimatedStyle(() => ({ opacity: 0.55 * (1 - ring.value), transform: [{ scale: 1 + ring.value * 0.5 }] }));
 
   // No streak yet: an empty "0-day" pill reads as a failed achievement; the
@@ -74,6 +76,7 @@ export function StreakChip() {
     <Animated.View
       style={[
         chipStyle,
+        idleStyle,
         {
           flexDirection: "row",
           alignItems: "center",
@@ -83,7 +86,17 @@ export function StreakChip() {
           paddingVertical: 5,
           backgroundColor: withAlpha(accent, 0.14),
           borderWidth: 1,
-          borderColor: withAlpha(accent, 0.25),
+          borderColor: withAlpha(accent, 0.45),
+          // The tier's glow, as web's box-shadow (iOS draws it; Android has no
+          // coloured soft shadow, so the chip stays flat there).
+          ...(level.glowIntensity > 0
+            ? {
+                shadowColor: accent,
+                shadowOpacity: 0.1 + level.glowIntensity * 0.06,
+                shadowRadius: (6 + level.glowIntensity * 4) / 2,
+                shadowOffset: { width: 0, height: 0 },
+              }
+            : null),
         },
       ]}
       accessibilityLabel={`${shown}-day streak`}
@@ -92,7 +105,7 @@ export function StreakChip() {
         <Animated.View pointerEvents="none" style={[{ position: "absolute", inset: -2, borderRadius: 999, borderWidth: 2, borderColor: ringAccent }, ringStyle]} />
       ) : null}
       <StreakFlame size={15} glow={level.glowIntensity} />
-      <Txt weight={700} className="text-[13px]" style={{ color: accent }}>
+      <Txt weight={700} className="text-[13px]">
         {shown}
       </Txt>
     </Animated.View>

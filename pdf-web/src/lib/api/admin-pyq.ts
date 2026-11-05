@@ -36,6 +36,17 @@ export interface PyqAdminQuestion {
   explanationImageUrl: string | null;
   difficulty: PyqDifficulty;
   status: PyqQuestionStatus;
+  /** Admin's "keep option order": never shuffled for students. */
+  keepOptionOrder: boolean;
+  /**
+   * Why students always see these options in the order written — the admin
+   * tick, or a reference the server found ("All of the above", "option B").
+   * Null when they may be shuffled.
+   */
+  optionOrderLock:
+    | { reason: "admin" }
+    | { reason: "options-refer-to-options" | "explanation-names-options"; match: string }
+    | null;
   createdAt: string;
   updatedAt: string;
   reports: { open: number; total: number };
@@ -60,6 +71,7 @@ export interface PyqQuestionInput {
   explanationImageUrl?: string | null;
   difficulty: PyqDifficulty;
   status?: PyqQuestionStatus;
+  keepOptionOrder?: boolean;
   options: PyqOptionInput[];
 }
 

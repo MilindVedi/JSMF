@@ -5,9 +5,12 @@ import { Circle, CircleCheck, CircleX, TriangleAlert } from "lucide-react-native
 import {
   completionKicker,
   formatDuration,
+  formatMarks,
+  markingLabel,
   getSessionSubjectPerformance,
   getSessionSummary,
   resultsNextAction,
+  sectionResults,
   type ResultsNextTarget,
 } from "@jsmf/core/domain";
 import { NotFoundError } from "@jsmf/core/data-source";
@@ -57,6 +60,9 @@ export default function ResultsScreen() {
   const { session, questions } = detail;
   const summary = getSessionSummary(session, questions);
   const subjects = getSessionSubjectPerformance(session, questions);
+  // A full mock splits into its exam's sections (NEET-PG's five, FMGE's Part A/B). Core
+  // slices the attempts by the pattern, so a session without one gives an empty list.
+  const sections = sectionResults(session, session.attempts);
   const isTimed = Boolean(session.config.timed && session.config.durationSec);
   const next = resultsNextAction(session);
   const rows = questions
@@ -71,7 +77,18 @@ export default function ResultsScreen() {
         <Txt weight={500} className="text-sm text-muted-foreground">
           {completionKicker(session)}
         </Txt>
-        <Heading className="text-[30px] leading-9">{summary.accuracy}% accuracy</Heading>
+        {detail.marks && session.pattern ? (
+          <>
+            <Heading className="text-[30px] leading-9">
+              {formatMarks(detail.marks.scored)} / {formatMarks(detail.marks.max)}
+            </Heading>
+            <Txt className="text-sm text-muted-foreground">
+              marks · {summary.accuracy}% accuracy · {markingLabel(session.pattern)}
+            </Txt>
+          </>
+        ) : (
+          <Heading className="text-[30px] leading-9">{summary.accuracy}% accuracy</Heading>
+        )}
         <Txt className="text-center text-sm text-muted-foreground">
           {summary.correct} correct · {summary.incorrect} incorrect
           {summary.unattempted > 0 ? ` · ${summary.unattempted} unattempted` : ""} out of {summary.totalQuestions} questions
@@ -92,6 +109,38 @@ export default function ResultsScreen() {
             Showing only {filter} questions · <Txt weight={600} className="text-xs underline">Clear filter</Txt>
           </Txt>
         </Pressable>
+      ) : null}
+
+      {/* Web draws a five-column table here; a phone is too narrow for that, so each
+          section is a row of its marks with the labelled counts underneath. */}
+      {sections.length > 1 ? (
+        <Card className="gap-3">
+          <Heading className="text-base">Sections</Heading>
+          {sections.map((s, n) => (
+            <View
+              key={s.name}
+              accessible
+              accessibilityLabel={`${s.name}: ${formatMarks(s.marks)} of ${formatMarks(s.maxMarks)} marks, ${s.correct} correct, ${s.incorrect} incorrect, ${s.unattempted} unattempted`}
+              className={cn("gap-1", n > 0 && "border-t border-border pt-3")}
+            >
+              <View className="flex-row items-center justify-between gap-2">
+                <Txt weight={500} className="flex-1 text-sm" numberOfLines={1}>
+                  {s.name}
+                </Txt>
+                <Txt weight={600} className="text-sm">
+                  {formatMarks(s.marks)}
+                  <Txt className="text-sm text-muted-foreground"> / {formatMarks(s.maxMarks)}</Txt>
+                </Txt>
+              </View>
+              <Txt className="text-xs text-muted-foreground">
+                <Txt className="text-xs text-success-foreground">{s.correct} correct</Txt>
+                {" · "}
+                <Txt className="text-xs text-error-foreground">{s.incorrect} incorrect</Txt>
+                {` · ${s.unattempted} unattempted`}
+              </Txt>
+            </View>
+          ))}
+        </Card>
       ) : null}
 
       {subjects.length > 1 ? (

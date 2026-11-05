@@ -7,6 +7,8 @@ This file is the orientation: how the app is wired, what the API is, how access 
 | Document | Read it for |
 |---|---|
 | [features.md](./features.md) | Every implemented feature, screen by screen and rule by rule, with the file that owns each one — and an honest list of what is not built yet. |
+| [subscriptions.md](./subscriptions.md) | Plans, pricing, the shared benefits and the free trial: how an admin manages them, the `SUBSCRIPTION_MANAGEMENT_ENABLED` switch, versioning on a price change, and every security control. |
+| [exam-mode.md](./exam-mode.md) | Tests on the real exam console: the instructions screen and "begin", full mocks following each exam's pattern (time-bound sections, exact marking), shuffled options and the questions that keep their order, what the server enforces, and the admin's **PYQ → Exam setup**. |
 | [user-flows.md](./user-flows.md) | The end-to-end journeys (onboarding, a practice session, a timed test, revision, subscribing, renewal, admin content lifecycle), with PlantUML diagrams in [diagrams/](./diagrams/). |
 
 ## 1. Shape
@@ -41,6 +43,10 @@ Migrations (additive only, so an older app version runs against them unchanged):
 - `20261005130000_pyq_report_resolution` — `admin_note`, `resolved_by_id` on `question_reports` (both nullable).
 - `20261005120000_pyq_learning` — `collections` (user-named lists), `collection_questions` (membership + `added_at`), `user_preferences` (target exam slug, daily goal; one row per user, absent = defaults).
 - `20261011120000_pyq_read_models` — `user_question_states` (one row per user per answered-or-flagged question: latest result, last answered/correct/wrong, attempt and incorrect counts, flagged) and `user_daily_activity` (answers per user per India-time day). Both are **derived** from `attempts` and backfilled by the migration itself; see §7.
+- `20261027100000_streak_daily_goal` — `user_daily_activity.goal_met`, recorded on the day itself so that a day counts towards the streak only once it reached the student's daily goal, and so that later changes to that goal never rewrite days already earned. Backfilled from each student's current target.
+- `20261027180000_pyq_subscription_settings` — `subscription_settings` (one fixed row: trial on/off, trial length, the benefits list every plan shares; seeded with trials off) and `trials` (one row per student who ever started a trial — the primary key is what makes it once per account). Both additive; see [subscriptions.md](./subscriptions.md).
+
+- `20261028100000_exam_patterns_and_option_shuffle` — `exam_patterns` (one per exam: sections, time-bound or not, exact marking; seeded for NEET-PG, FMGE and INI-CET), `practice_settings` (one fixed row: shuffle options, on), `questions.keep_option_order`, and on `practice_sessions` the shuffle decision, `clock_started_at` (null while a test waits on its instructions screen; existing rows backfilled from `started_at`) and the mock's copied `pattern`. Additive. See [exam-mode.md](./exam-mode.md).
 
 ## 3. API (all under `/api`, sign-in required unless noted)
 
@@ -48,12 +54,18 @@ Migrations (additive only, so an older app version runs against them unchanged):
 |---|---|
 | `GET pyq/taxonomy` | Exams → subjects → topics with question counts (public) |
 | `GET pyq/access` | Subscribed? Free answers left today; current plan + expiry |
-| `GET pyq/plans` | Plans on sale (public) — buy via `POST orders` |
+| `GET pyq/plans` | Plans on sale (public), each with the shared benefits — buy via `POST orders` |
+| `GET pyq/trial` | Whether a free trial is on offer and its length (public; for pricing copy) |
+| `POST pyq/trial` | Start this student's one free trial; returns their access (409 if off or not eligible) |
+| `GET/PATCH/PUT admin/pyq/exam-setup…` | Option shuffling and each exam's paper pattern — ADMIN only, audited (see [exam-mode.md](./exam-mode.md)) |
+| `GET/PATCH/POST/PUT admin/pyq/subscription…` | Plans, benefits and trial for the admin page — ADMIN only, writes need `SUBSCRIPTION_MANAGEMENT_ENABLED` (see [subscriptions.md](./subscriptions.md)) |
 | `GET pyq/taxonomy` years | The taxonomy also lists `years` (with counts) that have published questions; the year filters use it |
 | `GET pyq/questions` | Filter by exam, subject, topic, year, difficulty, status (unattempted/correct/incorrect/bookmarked), own collections, `search` (case-insensitive stem text); `sort` = `newest-exam-year` (default) / `oldest-exam-year` / `name-az` / `name-za` (subject name); paginated; rows are summaries (no options), never answers |
 | `POST pyq/questions/:id/reports` | Report a problem with a question |
 | `POST/GET pyq/sessions`, `GET pyq/sessions/:id` | Start a session (with filters: optional `order` = `random` / `unattempted-first` / `incorrect-first` / `bookmarked-first`) / history (optional `status=IN_PROGRESS\|SUBMITTED`; each row carries `examIds`, `subjectIds`, `newestYear`, `oldestYear`, `lastWrongAt`, `resumeIndex` computed from its questions) / load one |
-| `POST pyq/sessions/:id/answers` | PRACTICE: returns correctness + explanation; TEST: stored only |
+| `POST pyq/sessions/:id/begin` | A test's "I am ready to begin": starts its clock (idempotent) and returns its questions — withheld until then |
+| `GET/POST pyq/mocks` | Full mocks on offer / start one (`{ examId }`) — see [exam-mode.md](./exam-mode.md) |
+| `POST pyq/sessions/:id/answers` | PRACTICE: returns correctness + explanation; TEST: stored only. In a full mock with time-bound sections, only the running section takes answers (409 otherwise) |
 | `PATCH pyq/sessions/:id/questions/:qid/flag` | Flag for review |
 | `POST pyq/sessions/:id/submit`, `GET …/review` | Score; answers + explanations after submit |
 | `GET/PUT/DELETE pyq/bookmarks(/:qid)` | Bookmarks (the list carries each question's `userStatus`) |
@@ -81,25 +93,23 @@ Ids: exams/subjects/topics use slugs (`neet-pg`, `anatomy`, `anatomy--upper-limb
 ## 4. Access and plans
 
 - Free users: `PYQ_FREE_DAILY_QUESTIONS` answers per day (default 20), resetting at midnight India time. Hitting it returns 403 `PYQ_DAILY_LIMIT_REACHED`; the app shows a message linking to `/subscription`.
-- Subscribed: an ACTIVE, unexpired entitlement to any product whose `metadata` has `"pyqSubscription": true`. Logic lives only in `PyqAccessService`.
+- Subscribed (unlimited): an ACTIVE, unexpired entitlement to any product whose `metadata` has `"pyqSubscription": true`, **or** a running free trial. Logic lives only in `PyqAccessService`.
 - Known edge: two answers at the exact same instant can exceed the limit by one.
 
-### Plans (Phase 2)
+### Plans and the free trial
 
-- A plan is an **ordinary product** (type `COURSE`, `accessType PAID`, `PUBLISHED`) whose `metadata` is
-  `{"pyqSubscription": true, "durationDays": 30, "period": "month", "popular": false, "features": ["…"]}`.
-  `durationDays` is required; `period`/`popular`/`features` are display hints. Shape is read only in `backend/src/shared/pyq-plan.ts`.
-- `GET /api/pyq/plans` (public) lists published plans: id, title, subtitle, price (minor units), currency, duration, features.
-- Buying is the normal `POST /api/orders {productId}` → Razorpay widget → `POST /api/payments/verify`; the webhook remains the authority (same hardened `settle()`).
-- Create one: `cd backend && npm run db:seed:pyq-plans` (monthly ₹999/30d, quarterly ₹2,499/90d, yearly ₹7,999/365d; upsert by slug), or create a COURSE product with that metadata. Reprice/retire = edit/unpublish the product.
-- Plans are hidden from the PDF storefront (list, featured, product page) and from the library.
-- **Expiry:** on the settlement that moves the order to PAID, `settle()` calls `applyPlanTerm`, which sets the PURCHASE entitlement's `expiresAt = now + durationDays`. Redelivered webhooks / the racing verify call never add days twice. Access checks treat a past `expiresAt` as no access (no sweeper needed).
-- **Renewal:** checkout allows buying a plan you already hold. Renewing while active extends from the current expiry (no lost days); after expiry it starts from now. The entitlement row is re-pointed at the newest order.
-- **Refund:** refunding the latest plan order revokes the plan entitlement (all-or-nothing, like every product — remaining days from earlier orders go with it). Refunding an older, superseded order revokes nothing. An admin-gifted perpetual grant (`expiresAt` null) is never shortened by a purchase.
-- `GET /api/pyq/access` also returns `plan: {productId, title, expiresAt} | null`; `/subscription` shows it and refetches after checkout.
-- Log line: `pyq.plan_purchased` (orderNumber, userId, productId, expiresAt, renewal) via `activity()`.
-- Tests: `backend/src/modules/orders/application/pyq-plan.integration.spec.ts`.
-- Web: `/subscription` in api mode uses `usePlans`/`usePlanCheckout` (`web/src/hooks/pyq/plans.ts`, a copy of main-web's checkout flow); mock mode keeps the illustrative mock plans.
+Managed from the admin panel (pdf-web **PYQ → Plans & trial**, `/admin/pyq/plans`) when the API runs with `SUBSCRIPTION_MANAGEMENT_ENABLED=true`; read-only otherwise. The full rules — versioning on a price change, the trial's eligibility, how terms stack, and every security control — are in **[subscriptions.md](./subscriptions.md)**. In short:
+
+- A plan is an **ordinary product** (type `COURSE`, `accessType PAID`) whose `metadata` is `{"pyqSubscription": true, "durationMonths": N, "popular": bool}`. Older plans carry `durationDays` instead and keep working. Shape is read only in `backend/src/shared/pyq-plan.ts`.
+- Every plan shows the same benefits (`pyq.subscription_settings.features`); plans differ only in length and price.
+- Price and length never change in place: a change makes a new version and takes the old one off sale, still valid for its holders.
+- Plans are hidden from the PDF storefront, the library, and the generic admin Products page, which refuses to edit them.
+- **Expiry** on settlement (`applyPlanTerm`): one term from the latest of now, the furthest expiry of any plan the student holds, and the end of a running trial. Redelivered webhooks never add days twice.
+- **Refund:** refunding the latest plan order revokes that plan entitlement (all-or-nothing, like every product). An admin-gifted perpetual grant is never shortened by a purchase.
+- `GET /api/pyq/access` returns `plan`, `trial` and `trialOffer`; `/subscription` shows them and offers "Start free trial".
+- Log lines: `pyq.plan_purchased`, `pyq.trial_started` via `activity()`; admin changes are in the audit log (`pyq.plan_*`, `pyq.subscription_settings_updated`).
+- Tests: `backend/src/modules/orders/application/pyq-plan.integration.spec.ts`, `backend/src/modules/questions/application/pyq-subscription.integration.spec.ts`.
+- Dev data: `cd backend && npm run db:seed:pyq-plans` creates three starter plans if they don't exist (create-only).
 
 ## 5. Content
 
@@ -122,7 +132,7 @@ Every student screen runs against the backend in api mode, including question-ba
 
 Still not built: profile photo upload (no upload endpoint yet, so the photo control is hidden in api mode) and changing the sign-in email. See [features.md §12](./features.md).
 
-A **timed custom test** runs as a TEST session: answers are saved but correctness and explanations stay hidden (palette shows "answered") until submit. Every other mode is PRACTICE.
+A **timed custom test** or a **full mock** runs as a TEST session on the exam console: it opens on an instructions screen and its clock starts on "I am ready to begin"; answers are saved but correctness and explanations stay hidden (palette shows "answered") until submit. A full mock also follows its exam's pattern — sections, their clocks, marking. Every other mode is PRACTICE. Options are shown in a shuffled order per session (admin switch, on by default), except for questions that must keep their order. All of it: [exam-mode.md](./exam-mode.md).
 
 Tests: `pyq.integration.spec.ts` (import idempotency, hidden answers, practice/test flows, scoring, free limit, isolation, search/sort/ordering, history fields, read models), `pyq-admin.integration.spec.ts` (editor validation, option-id stability, soft delete, taxonomy rules, reports, ADMIN-only) and `learning.integration.spec.ts` (collections, streaks across IST midnight, revision/reinforce, preferences, timed test as TEST).
 

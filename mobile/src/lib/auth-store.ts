@@ -9,9 +9,39 @@ import { authSession } from "./core";
  */
 type AuthStatus = "restoring" | "signed-in" | "signed-out";
 
+/** Screens never worth returning to after signing in again. */
+const NO_RETURN = /^\/(sign-in|sign-up|forgot-password|reset-password|auth\/|$)/;
+
+/**
+ * Where to send the student after they sign in again, if the session was lost
+ * mid-use (web's /login?next=). Same rule as web's safeNext: an in-app path
+ * only, never "//host".
+ */
+export function returnPathFor(path: string | null | undefined): string | null {
+  if (!path || !path.startsWith("/") || path.startsWith("//") || NO_RETURN.test(path)) return null;
+  return path;
+}
+
+/** The screen the signed-in student is on, kept by the root layout. */
+let lastSignedInPath: string | null = null;
+
+/**
+ * Called by the root layout on every route change. Remembers the signed-in
+ * screen, and spends `returnTo` once the student has landed on a real screen
+ * after signing in again — not before, or the redirect would find it gone.
+ */
+export function trackSignedInPath(path: string): void {
+  const { status, returnTo } = useAuthStore.getState();
+  if (status !== "signed-in") return;
+  lastSignedInPath = path;
+  if (returnTo && returnPathFor(path)) useAuthStore.setState({ returnTo: null });
+}
+
 interface AuthState {
   status: AuthStatus;
   user: AuthUser | null;
+  /** Set when the session is lost mid-use; read by the post-sign-in redirect (see trackSignedInPath). */
+  returnTo: string | null;
   restore: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   signup: (input: SignupInput) => Promise<void>;
@@ -27,6 +57,7 @@ export const useAuthStore = create<AuthState>()((set, get) => {
   return {
     status: "restoring",
     user: null,
+    returnTo: null,
     restore: async () => {
       if (get().status !== "restoring") return;
       const user = await authSession.restore();
@@ -41,7 +72,9 @@ export const useAuthStore = create<AuthState>()((set, get) => {
     adopt: (session) => signedIn(authSession.adopt(session)),
     logout: async () => {
       await authSession.logout();
-      set({ status: "signed-out", user: null });
+      // Signing out on purpose returns nowhere.
+      lastSignedInPath = null;
+      set({ status: "signed-out", user: null, returnTo: null });
     },
     rename: async (name) => {
       const user = await authSession.rename(name);
@@ -51,4 +84,8 @@ export const useAuthStore = create<AuthState>()((set, get) => {
 });
 
 /** The API client drops the session when the server rejects a refresh. */
-setSessionLostHandler(() => useAuthStore.setState({ status: "signed-out", user: null }));
+setSessionLostHandler(() => {
+  const returnTo = returnPathFor(lastSignedInPath);
+  lastSignedInPath = null;
+  useAuthStore.setState({ status: "signed-out", user: null, returnTo });
+});

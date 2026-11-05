@@ -26,8 +26,13 @@ export function Timer({
   timeUp.current = onTimeUp;
 
   useEffect(() => {
-    const id = setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000);
+    // Counted against a fixed end, not by decrementing: a backgrounded app's
+    // timers pause, and a three-hour mock must not drift.
+    const endsAt = Date.now() + durationSec * 1000;
+    const id = setInterval(() => setRemaining(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))), 1000);
     return () => clearInterval(id);
+    // Set once, at mount; a new duration is a new timer (keyed by the caller).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (remaining === 0 && !fired.current) {

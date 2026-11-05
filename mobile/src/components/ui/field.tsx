@@ -43,6 +43,8 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field({ label, e
           !editable && "opacity-60"
         )}
         style={{ fontFamily: "Manrope_400Regular" }}
+        // The visible label, read out by screen readers (a caller's own label wins).
+        accessibilityLabel={label}
         {...props}
       />
       {error ? <Txt className="text-xs text-destructive">{error}</Txt> : hint ? <Txt className="text-xs text-muted-foreground">{hint}</Txt> : null}

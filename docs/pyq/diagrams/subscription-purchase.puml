@@ -18,7 +18,7 @@ Student -> Page : open /subscription
 Page -> Hooks : usePlans()
 Hooks -> HTTP : GET pyq/plans   (public)
 HTTP -> DB : PUBLISHED products where\nmetadata->>'pyqSubscription' = true
-HTTP --> Page : id, title, price, durationDays, features
+HTTP --> Page : id, title, price, durationMonths, shared features
 Page -> Hooks : useAccess() — current plan + expiry
 
 == Checkout ==
@@ -74,17 +74,16 @@ group settle() — one transaction
 
   alt transitioned.count == 1  (first settlement only)
     Pay -> Pay : applyPlanTerm(entitlement, product.metadata, orderId)
-    Pay -> Pay : readPyqPlan(metadata) — null unless\npyqSubscription true and durationDays > 0
-    alt fresh purchase\n(sourceOrderId == this order and expiresAt is null)
-      Pay -> DB : expiresAt = now + durationDays
-    else renewal (an entitlement already exists)
-      Pay -> Pay : extendedExpiry(current, durationDays)
+    Pay -> Pay : readPyqPlan(metadata) — null unless\npyqSubscription true and a valid length
+    alt not a perpetual gift
+      Pay -> DB : furthest expiry of any live plan held;\nrunning trial's endsAt
+      Pay -> Pay : extendedExpiry(held, terms, now, trialEndsAt)
       note right of Pay
-        base = current expiry if still in the future,
-        otherwise now. Renewing early loses no days;
-        renewing after expiry starts from today.
+        base = latest of now, any plan still running,
+        and a running trial's end. Renewing early, or
+        paying during a trial, loses no days.
       end note
-      Pay -> DB : expiresAt = base + durationDays,\nsourceOrderId = this order
+      Pay -> DB : expiresAt = base + one term (calendar months),\nsourceOrderId = this order
     else perpetual grant (expiresAt null, not this order)
       Pay -> Pay : return null — an admin gift is never shortened
     end

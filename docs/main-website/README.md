@@ -815,18 +815,18 @@ offering is published, and shares the request the bottom banner makes. Both
 buttons use the `.cta-spot` style in `globals.css`.
 
 **Header** (`site.tsx`): Home, Live Session, About, Reserve a Seat, Book 1:1
-(when published), **Study Resources** (`links.store`) and **Med Prep**
+(when published), **Study Resources** (`links.store`) and **PYQs**
 (`links.medPrep`), the last two in a new tab. Desktop labels are text only
 with `nowrap` (`.nav-compact` hides each link's leading icon); below **1400px**
 the ☰ menu is used, because eight links do not fit on one capped line any
 narrower. That width is measured, not a Tailwind step — the content decides it.
 The two crossovers are the exception to the icon hiding: `.nav-keep-icon` keeps
 their marks, so Study Resources carries the same shelf icon and the same words
-as the Med Prep site's header and a visitor recognises the same destination on
+as the PYQs site's header and a visitor recognises the same destination on
 both. The store's own name stays **JSMF Resources**; only the word used to
 point at it from elsewhere changed.
 
-**Med Prep** is behind two admin switches read from `GET /settings`
+**PYQs** is behind two admin switches read from `GET /settings`
 (`useMedPrepLink`): `medPrepLinkEnabled` shows it at all, and
 `medPrepLinkHighlight` gives it a "New" badge, a faint brand tint and a slow
 pulse (`.nav-new` / `.nav-new-badge` in `globals.css`, shared character for
@@ -855,6 +855,8 @@ under Admin → Settings in the store, so either can go without a deploy.
 | `GET /feedback/forms/:formId?k=`, `POST /feedback/forms/:formId/response` | public (personal link or signed in) | §3f |
 | `/admin/sessions/:id/feedback-forms` (list, create, `/:formId` get/patch/delete, `/questions` PUT, `/people`, `/send`, `/results`, `/responses/:responseId` DELETE, `/highlights`) | ADMIN, EDUCATOR (deleting a reply: ADMIN) | §3f |
 | `POST /internal/session-reminders` | Cloud Run IAM | reminder sweep (reminders **and** the `AUTO_AFTER_SESSION` bundle sweep, §3c) |
+| `GET /auth/me/profile`, `PATCH /auth/me/profile`, `PATCH /auth/me/name`, `PATCH /auth/me/password` | user | the account page, §9 |
+| `POST /uploads` (`purpose: "user.avatar"`), `POST /uploads/:id/complete`, `DELETE /auth/me/avatar` | user | profile picture, §9 |
 | `GET /settings` | public | `{ showSpamFolderNote }` — read by both jsmf.me and resources.jsmf.me, §7 |
 | `GET /admin/settings`, `PATCH /admin/settings` | ADMIN | §7 |
 
@@ -1053,15 +1055,18 @@ jsonPayload.activity="checkout.provider_error"
 jsonPayload.activity="webhook.failed"
 ```
 
-### Alerts to set up (recommended, one-time)
+Every line written while serving a request also carries `requestId` (returned
+to the caller as the `X-Request-Id` header), the Cloud Trace and the signed-in
+`userId` — `jsonPayload.requestId="<id>"` is the whole request. Crash reports
+from the websites and the phone app arrive as `jsonPayload.activity="client.error"`.
+Both are described in [Observability](../observability/README.md).
 
-In Logs Explorer, run a query → **Create alert** (log-based alert), notify by
-email:
+### Alerts
 
-1. `jsonPayload.activity="checkout.provider_error"` — nobody can pay.
-2. `jsonPayload.activity="webhook.failed"` — a payment is not settling.
-3. `resource.labels.service_name="jsmf-backend" severity>=ERROR` — anything
-   else broke.
+These three — checkout cannot start (`checkout.provider_error`), webhook failed
+(`webhook.failed`), and any server error — plus two for app crashes, are kept
+as code and applied by `scripts/gcp/setup-monitoring.ps1`. See
+[Observability §3](../observability/README.md#3-alerts).
 
 ### The other half: the database is the ledger
 
@@ -1072,3 +1077,38 @@ error codes), `payment_webhook_events` (every verified webhook, its
 seat), `session_registrations` (answers, mobile number, `confirmation_sent_at`).
 The admin panel's Orders page and each session's Registrations table read
 these directly.
+
+---
+
+## 9. The account page (`/account/profile`)
+
+Added 2026-10-27, and the same page exists on the store at
+`resources.jsmf.me/account/profile`. Identity is platform-wide, so the two are
+the same account and the two files are kept in step
+(`main-web/src/components/profile-page.tsx` and
+`pdf-web/src/components/store/profile-page.tsx`).
+
+Three sections:
+
+1. **Picture, email, member since.** The picture is uploaded **straight from
+   the browser to Google Cloud Storage**, never through the API, using the
+   `user.avatar` upload purpose — `docs/pdf-platform/05-storage.md` has the
+   flow and why replacing one deletes the old object. The limit and accepted
+   types are read from `GET /uploads/options` rather than repeated in the
+   page, so `MAX_AVATAR_UPLOAD_SIZE_MB` takes effect without a deploy.
+2. **Your details.** The same `ProfileForm` the last signup step uses, now
+   with an `initial` prop so it can be prefilled. One set of fields and one
+   set of rules rather than a second form that could drift from signup.
+3. **Password**, unless the account only signs in with Google — the page asks
+   the server (`hasPassword`) rather than guessing, because a form asking for
+   a current password that does not exist is a dead end.
+
+The way in is the person's own name in the header, which was already there as
+plain text, plus a "Profile" row in the mobile menu.
+
+**A site that can upload must be in `CORS_ORIGINS` and in the bucket CORS
+file.** `uploadOrigin()` binds the storage session to the request's origin
+only when the API already trusts it, and otherwise falls back to
+`STOREFRONT_URL` — from another origin the browser is then blocked by CORS on
+the session URL, which does not read like a configuration problem. Both files
+are listed in `docs/pdf-platform/05-storage.md`.

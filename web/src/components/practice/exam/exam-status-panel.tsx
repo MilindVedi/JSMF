@@ -13,10 +13,12 @@ import {
 /**
  * One shape per status, shared by the legend and the grid so they always
  * match: squares for plain states, a circle for anything marked for review.
+ * Solid green, red and purple, as on the NBEMS / AIIMS console (mobile's
+ * ExamStatusCell uses the same colours).
  */
 const CELL_CLASS: Record<ExamQuestionStatus, string> = {
-  answered: "rounded-[0.3rem] border-success-foreground/25 bg-success text-success-foreground",
-  "not-answered": "rounded-[0.3rem] border-error-foreground/25 bg-error text-error-foreground",
+  answered: "rounded-[0.3rem] border-transparent bg-emerald-600 text-white",
+  "not-answered": "rounded-[0.3rem] border-transparent bg-red-600 text-white",
   "not-visited": "rounded-[0.3rem] border-border bg-card text-muted-foreground",
   marked: "rounded-full border-transparent bg-primary text-primary-foreground",
   "answered-marked": "rounded-full border-transparent bg-primary text-primary-foreground",
@@ -41,7 +43,7 @@ export function ExamStatusCell({
     >
       {children}
       {status === "answered-marked" && (
-        <span className="absolute -right-1 -bottom-1 flex size-3.5 items-center justify-center rounded-full bg-success-foreground text-background ring-2 ring-card">
+        <span className="absolute -right-1 -bottom-1 flex size-3.5 items-center justify-center rounded-full bg-emerald-600 text-white ring-2 ring-card">
           <Check className="size-2.5" strokeWidth={3.5} />
         </span>
       )}
@@ -73,14 +75,18 @@ export function ExamQuestionGrid({
   statuses,
   currentIndex,
   onJump,
+  indices,
 }: {
   statuses: ExamQuestionStatus[];
   currentIndex: number;
   onJump: (index: number) => void;
+  /** Only these questions (a locked mock's open section); all when absent. */
+  indices?: number[];
 }) {
   return (
     <div className="grid grid-cols-5 gap-2">
-      {statuses.map((status, i) => {
+      {(indices ?? statuses.map((_, i) => i)).map((i) => {
+        const status = statuses[i];
         const isCurrent = i === currentIndex;
         return (
           <button
@@ -113,11 +119,16 @@ export function ExamStatusPanel({
   statuses,
   currentIndex,
   onJump,
+  indices,
+  heading = "Questions",
 }: {
   counts: ExamStatusCounts;
   statuses: ExamQuestionStatus[];
   currentIndex: number;
   onJump: (index: number) => void;
+  /** Only these questions (a locked mock's open section); all when absent. */
+  indices?: number[];
+  heading?: string;
 }) {
   return (
     <div className="flex h-full flex-col">
@@ -125,8 +136,8 @@ export function ExamStatusPanel({
         <ExamStatusLegend counts={counts} />
       </div>
       <div className="flex-1 overflow-y-auto p-4">
-        <p className="mb-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Questions</p>
-        <ExamQuestionGrid statuses={statuses} currentIndex={currentIndex} onJump={onJump} />
+        <p className="mb-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{heading}</p>
+        <ExamQuestionGrid statuses={statuses} currentIndex={currentIndex} onJump={onJump} indices={indices} />
       </div>
     </div>
   );

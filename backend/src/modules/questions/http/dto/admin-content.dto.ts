@@ -144,6 +144,11 @@ export class CreateQuestionDto {
   @IsEnum(QuestionStatus)
   status?: QuestionStatus;
 
+  @ApiPropertyOptional({ default: false, description: "Never shuffle this question's options" })
+  @IsOptional()
+  @IsBoolean()
+  keepOptionOrder?: boolean;
+
   @ApiProperty({ type: [AdminOptionDto] })
   @IsArray()
   @ArrayMinSize(MIN_OPTIONS)
@@ -201,6 +206,11 @@ export class UpdateQuestionDto {
   @Transform(toUpper)
   @IsEnum(Difficulty)
   difficulty?: Difficulty;
+
+  @ApiPropertyOptional({ description: "Never shuffle this question's options" })
+  @IsOptional()
+  @IsBoolean()
+  keepOptionOrder?: boolean;
 
   @ApiPropertyOptional({ type: [AdminOptionDto] })
   @IsOptional()

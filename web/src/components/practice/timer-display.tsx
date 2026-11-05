@@ -24,10 +24,15 @@ export function TimerDisplay({
   const firedRef = useRef(false);
 
   useEffect(() => {
+    // Counted against a fixed end, not by decrementing: browsers slow timers
+    // in background tabs, and a three-hour mock must not drift.
+    const endsAt = Date.now() + durationSec * 1000;
     const interval = setInterval(() => {
-      setRemaining((r) => Math.max(0, r - 1));
+      setRemaining(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
     }, 1000);
     return () => clearInterval(interval);
+    // The clock is set once, at mount; a new duration means a new timer (keyed by the caller).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

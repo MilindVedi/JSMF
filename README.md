@@ -11,7 +11,7 @@ JSMF/
   docs/     Product, architecture, and planning documentation (start here)
   web/      Next.js + TypeScript web application (marketing site + logged-in app)
   backend/  (not yet created) NestJS + TypeScript API — planned per docs/03-architecture.md
-  mobile/   Expo (React Native) app for Android + iOS — "JSMF Med Prep", see docs/mobile/README.md
+  mobile/   Expo (React Native) app for Android + iOS — "JSMF PYQs", see docs/mobile/README.md
 ```
 
 ## Current stage

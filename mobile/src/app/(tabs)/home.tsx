@@ -14,7 +14,7 @@ import {
   Sparkles,
   TrendingUp,
 } from "lucide-react-native";
-import { greetingForHour, sessionScopeLabel } from "@jsmf/core/domain";
+import { greetingForHour, sessionScopeLabel, streakCheckInLine, streakEyebrow } from "@jsmf/core/domain";
 import type { SessionListItem } from "@jsmf/core/data-source";
 import { usePreferences, useSessionHistory, useStats, useTaxonomyLookup } from "@jsmf/core/hooks";
 import { useAuthStore } from "@/lib/auth-store";
@@ -28,6 +28,7 @@ import { Eyebrow, Heading, Txt } from "@/components/ui/text";
 import { StreakCard } from "@/components/streak/streak-card";
 import { SubjectBadge } from "@/components/question/badges";
 import { SessionSummaryRow } from "@/components/sessions";
+import { useRefetchOnFocus } from "@/lib/use-refetch-on-focus";
 
 /**
  * Home (web's /dashboard): the onboarding variant for a brand-new account
@@ -40,16 +41,24 @@ export default function HomeScreen() {
   // Exactly what the screen shows: the session to resume and the last four finished.
   const open = useSessionHistory(1, 1, "open");
   const finished = useSessionHistory(1, 4, "submitted");
-  const { data: preferences } = usePreferences();
+  useRefetchOnFocus(stats, open, finished);
+  const preferences = usePreferences();
+  const { taxonomy } = useTaxonomyLookup();
   const startSession = useStartSession();
   const streak = useStreakState();
   const firstName = (user?.name ?? "").split(" ")[0] || "there";
-  const targetExamId = preferences?.targetExamId ?? "neet-pg";
+  // The exam the student chose — never a guess. Until preferences arrive the
+  // first-run hero waits rather than showing (and starting) the wrong exam; an
+  // older account with no exam saved falls back to the first exam, as sign-up does.
+  const targetExamId = preferences.data ? (preferences.data.targetExamId ?? taxonomy.exams[0]?.id ?? null) : null;
+  /** "NEET-PG · FMGE · INI-CET" — empty until the taxonomy has loaded. */
+  const examsCovered = taxonomy.exams.map((exam) => exam.shortName).join(" · ");
   const refreshing = stats.isRefetching || open.isRefetching || finished.isRefetching;
   const refresh = () => {
     void stats.refetch();
     void open.refetch();
     void finished.refetch();
+    void preferences.refetch();
   };
 
   const error = stats.error ?? open.error ?? finished.error;
@@ -79,8 +88,10 @@ export default function HomeScreen() {
           targetExamId={targetExamId}
           hasBookmark={statistics.bookmarkCount > 0}
           hasStreak={streak.currentStreak > 0}
-          onStart={() => startSession({ mode: "browse", label: "Question Bank", filters: { examIds: [targetExamId] }, count: 10 })}
-          starting={startSession.isPending}
+          onStart={() => {
+            if (targetExamId) startSession({ mode: "browse", label: "Question Bank", filters: { examIds: [targetExamId] }, count: 10 });
+          }}
+          starting={startSession.isPending || !targetExamId}
         />
       </TabScreen>
     );
@@ -94,14 +105,29 @@ export default function HomeScreen() {
     .slice(0, 3);
 
   return (
-    <TabScreen title={`${greetingForHour(new Date().getHours())}, ${firstName}`} subtitle="Ready for today's practice?" onRefresh={refresh} refreshing={refreshing}>
+    <TabScreen
+      eyebrow={streakEyebrow(streak.currentStreak)}
+      title={`${greetingForHour(new Date().getHours())}, ${firstName}`}
+      subtitle={streakCheckInLine(streak)}
+      onRefresh={refresh}
+      refreshing={refreshing}
+    >
+      {/* The exams the bank covers, read from the taxonomy (web's masthead pill). */}
+      {examsCovered ? <ExamsPill text={examsCovered} /> : null}
+      {/* Each number stands alone with what it is out of underneath — "10/187"
+          read as a fraction to work out (web dropped it for the same reason). */}
       <View className="flex-row gap-3">
-        <StatCard icon={TrendingUp} label="Overall accuracy" value={`${statistics.accuracy}%`} />
-        <StatCard icon={ClipboardList} label="Attempted" value={`${statistics.attempted}/${statistics.totalQuestions}`} />
+        <StatCard
+          icon={TrendingUp}
+          label="Overall accuracy"
+          value={`${statistics.accuracy}%`}
+          hint={`${statistics.correct} correct ${statistics.correct === 1 ? "answer" : "answers"}`}
+        />
+        <StatCard icon={ClipboardList} label="Questions attempted" value={statistics.attempted} hint={`of ${statistics.totalQuestions} questions`} />
       </View>
       <View className="-mt-1 flex-row gap-3">
-        <StatCard icon={CircleX} label="Wrong questions" value={statistics.wrongQuestionCount} tone="error" />
-        <StatCard icon={Bookmark} label="Bookmarked" value={statistics.bookmarkCount} tone="flag" />
+        <StatCard icon={CircleX} label="Wrong questions" value={statistics.wrongQuestionCount} hint="Room to improve" tone="error" />
+        <StatCard icon={Bookmark} label="Bookmarked" value={statistics.bookmarkCount} hint="Saved for later" tone="flag" />
       </View>
 
       <ContinueCard inProgress={inProgress} lastCompleted={recent[0]} />
@@ -157,7 +183,31 @@ export default function HomeScreen() {
   );
 }
 
-function StatCard({ icon, label, value, tone = "muted" }: { icon: IconComponent; label: string; value: string | number; tone?: Tone }) {
+function ExamsPill({ text }: { text: string }) {
+  const colors = useColors();
+  return (
+    <View className="flex-row items-center gap-2 self-start rounded-full border border-border bg-card px-3.5 py-2">
+      <BookOpen size={16} color={colors.primary} />
+      <Txt weight={600} className="text-xs">
+        {text}
+      </Txt>
+    </View>
+  );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  hint,
+  tone = "muted",
+}: {
+  icon: IconComponent;
+  label: string;
+  value: string | number;
+  hint?: string;
+  tone?: Tone;
+}) {
   return (
     <Card className="flex-1 flex-row items-center gap-3 p-3.5">
       <IconTile icon={icon} tone={tone} />
@@ -168,6 +218,11 @@ function StatCard({ icon, label, value, tone = "muted" }: { icon: IconComponent;
         <Txt className="text-xs leading-4 text-muted-foreground" numberOfLines={2}>
           {label}
         </Txt>
+        {hint ? (
+          <Txt className="mt-0.5 text-[11px] leading-4 text-muted-foreground/80" numberOfLines={2}>
+            {hint}
+          </Txt>
+        ) : null}
       </View>
     </Card>
   );
@@ -264,7 +319,7 @@ function Onboarding({
   onStart,
   starting,
 }: {
-  targetExamId: string;
+  targetExamId: string | null;
   hasBookmark: boolean;
   hasStreak: boolean;
   onStart: () => void;
@@ -284,7 +339,7 @@ function Onboarding({
         <View className="rounded-xl border border-border bg-muted/40 p-4">
           <Eyebrow>Your selected exam</Eyebrow>
           <Txt font="display" weight={600} className="mt-1 text-2xl">
-            {exam(targetExamId)?.shortName ?? targetExamId}
+            {targetExamId ? (exam(targetExamId)?.shortName ?? targetExamId) : "…"}
           </Txt>
         </View>
         <Button label="Start your first practice" iconRight={ArrowRight} size="lg" loading={starting} onPress={onStart} />

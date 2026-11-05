@@ -17,6 +17,11 @@ import { CollectionsService } from './application/collections.service';
 import { LearningService } from './application/learning.service';
 import { PyqPlansController } from './http/pyq-plans.controller';
 import { PyqPlansService } from './application/pyq-plans.service';
+import { PyqPlanAdminService } from './application/pyq-plan-admin.service';
+import { PyqSubscriptionService } from './application/pyq-subscription.service';
+import { AdminPyqSubscriptionController } from './http/admin-pyq-subscription.controller';
+import { ExamSetupService } from './application/exam-setup.service';
+import { AdminExamSetupController } from './http/admin-exam-setup.controller';
 
 /**
  * The PYQ (previous-year questions) bank and the practice built on it.
@@ -34,6 +39,8 @@ import { PyqPlansService } from './application/pyq-plans.service';
     PyqPlansController,
     AdminQuestionsController,
     AdminQuestionContentController,
+    AdminPyqSubscriptionController,
+    AdminExamSetupController,
   ],
   providers: [
     QuestionBankService,
@@ -45,8 +52,11 @@ import { PyqPlansService } from './application/pyq-plans.service';
     LearningService,
     PyqAccessService,
     PyqPlansService,
+    PyqPlanAdminService,
+    PyqSubscriptionService,
     QuestionAdminService,
     PyqTaxonomyAdminService,
+    ExamSetupService,
   ],
   exports: [QuestionImportService, QuestionStateService],
 })

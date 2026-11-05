@@ -26,9 +26,10 @@ export function addDays(day: string, days: number): string {
 }
 
 /**
- * Current and longest run of consecutive active days. A streak survives until
- * the end of the day after its last active day: with nothing yet today, a run
- * ending yesterday is still "current".
+ * Current and longest run of consecutive days on which the daily goal was
+ * reached. A streak survives until the end of the day after its last such
+ * day: with the goal not yet met today, a run ending yesterday is still
+ * "current", so there is all of today to keep it alive.
  */
 export function computeStreak(activeDays: string[], today: string) {
   const days = [...new Set(activeDays)].sort();
@@ -72,24 +73,32 @@ export class LearningService {
     const [rows, prefs] = await Promise.all([
       this.prisma.userDailyActivity.findMany({
         where: { userId, answered: { gt: 0 } },
-        select: { day: true, answered: true },
+        select: { day: true, answered: true, goalMet: true },
       }),
       this.preferences(userId),
     ]);
-    const days = rows.map((row) => ({ day: row.day.toISOString().slice(0, 10), answered: row.answered }));
+    const days = rows.map((row) => ({
+      day: row.day.toISOString().slice(0, 10),
+      answered: row.answered,
+      goalMet: row.goalMet,
+    }));
     const today = istDay(now);
+    // Only days that reached the goal extend the streak — a single answer
+    // keeps nothing alive. `goalMet` is the flag recorded on the day itself
+    // (see QuestionStateService.refreshDay), not a comparison against the
+    // current target, so changing the goal never rewrites past days.
     const { current, longest, lastActiveDay } = computeStreak(
-      days.map((row) => row.day),
+      days.filter((row) => row.goalMet).map((row) => row.day),
       today,
     );
-    const todayCount = days.find((row) => row.day === today)?.answered ?? 0;
+    const todayRow = days.find((row) => row.day === today);
     return {
       currentStreak: current,
       longestStreak: longest,
       today,
-      todayCount,
+      todayCount: todayRow?.answered ?? 0,
       dailyTarget: prefs.dailyTarget,
-      todayDone: todayCount >= prefs.dailyTarget,
+      todayDone: todayRow?.goalMet ?? false,
       lastActiveDay,
     };
   }
@@ -203,7 +212,11 @@ export class LearningService {
     };
   }
 
-  async updatePreferences(userId: string, input: { targetExamId?: string | null; dailyTarget?: number }) {
+  async updatePreferences(
+    userId: string,
+    input: { targetExamId?: string | null; dailyTarget?: number },
+    now: Date = new Date(),
+  ) {
     if (input.targetExamId) {
       const exam = await this.prisma.exam.findUnique({ where: { slug: input.targetExamId }, select: { id: true } });
       if (!exam) throw new BadRequestException('Unknown exam');
@@ -217,6 +230,19 @@ export class LearningService {
       create: { userId, ...data },
       update: data,
     });
+    // Lowering the goal takes effect now rather than at the next answer: if
+    // today's count already clears the new target, today is done. Only today,
+    // and only ever upwards — past days keep what they earned under the goal
+    // they were worked under, in either direction.
+    if (input.dailyTarget !== undefined) {
+      await this.prisma.$executeRaw`
+        UPDATE pyq.user_daily_activity
+        SET goal_met = true
+        WHERE user_id = ${userId}::uuid
+          AND day = ${istDay(now)}::date
+          AND NOT goal_met
+          AND answered >= ${input.dailyTarget}`;
+    }
     activity(this.logger, 'pyq.preferences_updated', {
       userId,
       targetExamId: input.targetExamId,

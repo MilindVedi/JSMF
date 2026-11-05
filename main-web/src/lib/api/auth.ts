@@ -114,6 +114,16 @@ export interface Profile {
   preparingFor: string | null;
   currentStage: string | null;
   completed: boolean;
+  /** When the account was created, ISO. */
+  memberSince?: string;
+  /**
+   * A link to the profile picture, or null when none is set. Built fresh on
+   * every read and short-lived, so it is never stored or put in a URL that
+   * outlives it.
+   */
+  avatarUrl?: string | null;
+  /** False for an account that only signs in with Google: there is no password to change. */
+  hasPassword?: boolean;
 }
 
 /**
@@ -129,6 +139,18 @@ export const accountApi = {
 
   profile: () => api.get<Profile>("/auth/me/profile"),
 
+  /** Just the display name, without the signup questions. */
+  updateName: (input: { name: string }) => api.patch<AuthUser>("/auth/me/name", input),
+
+  /**
+   * Removes the profile picture and its bytes.
+   *
+   * Setting one is not here: the file goes straight from the browser to
+   * object storage through `directUpload({ purpose: "user.avatar" })`, so it
+   * never passes through the API. This is only the other direction.
+   */
+  removeAvatar: () => api.delete<void>("/auth/me/avatar"),
+
   /** The questions asked once after signup. Returns the updated user. */
   updateProfile: (input: ProfileInput) => api.patch<AuthUser>("/auth/me/profile", input),
 
@@ -138,6 +160,14 @@ export const accountApi = {
 
   verifySignup: (input: { email: string; code: string }) =>
     api.postAnonymous<AuthSession>("/auth/signup/verify", input),
+
+  /**
+   * Changes the signed-in account's password. Returns a fresh session, because
+   * the change revokes every existing one — the caller must `adopt` the result
+   * or it is signed out moments later.
+   */
+  changePassword: (input: { currentPassword: string; newPassword: string }) =>
+    api.patch<AuthSession>("/auth/me/password", input),
 
   forgotPassword: (input: { email: string }) =>
     api.postAnonymous<CodeIssued>("/auth/password/forgot", input),

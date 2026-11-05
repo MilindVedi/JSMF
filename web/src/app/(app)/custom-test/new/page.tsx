@@ -16,6 +16,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AngadNote } from "@/components/dev/angad-note";
+import { FullMockCard } from "@/components/practice/full-mock-card";
 import {
   Dialog,
   DialogContent,
@@ -117,6 +118,8 @@ export default function CustomTestBuilderPage() {
         title="Build a Custom Test"
         description="Choose your filters, pick how many questions, and start practicing."
       />
+
+      <FullMockCard />
 
       <Card>
         <CardHeader>

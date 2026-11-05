@@ -13,17 +13,25 @@ export function ExamHeader({
   timed,
   durationSec,
   onTimeUp,
+  timerKey,
+  timerLabel = "Time Left",
   studentName,
   avatarUrl,
   exitHref,
+  instructionsSlot,
 }: {
   title: string;
   timed: boolean;
   durationSec?: number;
   onTimeUp?: () => void;
+  /** A new key restarts the clock (a mock's next section). */
+  timerKey?: string | number;
+  timerLabel?: string;
   studentName: string;
   avatarUrl?: string;
   exitHref: string;
+  /** The console's "Instructions" button. */
+  instructionsSlot?: React.ReactNode;
 }) {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background px-3 sm:gap-3 sm:px-5">
@@ -46,8 +54,9 @@ export function ExamHeader({
         {/* Also at 0: a test reopened after its time ran out must still auto-submit. */}
         {timed && durationSec !== undefined ? (
           <div className="flex items-center gap-2">
-            <span className="hidden text-xs font-medium text-muted-foreground sm:inline">Time Left</span>
+            <span className="hidden text-xs font-medium text-muted-foreground sm:inline">{timerLabel}</span>
             <TimerDisplay
+              key={timerKey}
               durationSec={durationSec}
               onTimeUp={onTimeUp}
               warnAtSec={WARN_AT_SEC}
@@ -56,6 +65,7 @@ export function ExamHeader({
             />
           </div>
         ) : null}
+        {instructionsSlot}
         <span className="hidden h-6 w-px bg-border sm:block" aria-hidden />
         <div className="flex items-center gap-2">
           <Avatar className="size-8">

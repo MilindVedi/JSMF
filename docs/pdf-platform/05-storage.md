@@ -217,6 +217,7 @@ the same flow for all of them and never imports any of them.
 | `product.attachment` | catalog | ADMIN, EDUCATOR | PDF, ZIP, PNG, JPEG, WebP | same | same |
 | `product.cover_image` | catalog | ADMIN, EDUCATOR | PNG, JPEG, WebP | `MAX_IMAGE_UPLOAD_SIZE_MB` (8) | next cover version (public) |
 | `session.testimonial` | events | ADMIN, EDUCATOR | PNG, JPEG, WebP | same | a `session_testimonials` row (public) |
+| `user.avatar` | identity | any signed-in person | PNG, JPEG, WebP | `MAX_AVATAR_UPLOAD_SIZE_MB` (5) | the three `users.avatar_*` columns (public) |
 
 A purpose says: the roles allowed (empty = any signed-in person, with
 `prepare` deciding); its bucket visibility; its types and limit; how to
@@ -317,6 +318,16 @@ Uploading from another web origin (a second domain, the raw `run.app` URL)
 needs it added to that file, to `CORS_ORIGINS`, and re-applying. The public
 bucket needs no rule.
 
+**Every site that lets someone upload must be in both places**
+(added 2026-10-27): profile pictures (`user.avatar`) are uploaded from the
+main website as well as the store, so `https://jsmf.me` and
+`http://localhost:3002` joined the **PUT rule** and `CORS_ORIGINS`. The
+GET/HEAD rule stays the store alone — it is the PDF reader, which only runs
+there. Miss one and the browser is blocked by `uploadOrigin()` falling back
+to `STOREFRONT_URL`; the upload fails with a CORS error on the session URL
+rather than anything that reads like a configuration problem, which is worth
+remembering when the PYQ app gets a picture picker of its own.
+
 **The reader needs the second rule in the same file** (added 2026-10-25):
 `GET`/`HEAD` from the store, exposing `Content-Range`, `Content-Length` and
 `Accept-Ranges`. The reader fetches PDFs from the private bucket a piece at a
@@ -338,14 +349,31 @@ into place only when complete. The browser client and the whole flow run
 unchanged without a bucket, and `uploads/application/upload.integration.spec.ts`
 uses it.
 
-### Adding a kind of upload (a user's avatar, a user's file)
+### `user.avatar`, the first purpose open to everyone
+
+`identity/application/user-avatar-uploads.ts`. It is the first purpose with
+`roles: []`, so **`prepare` is the authorisation**: the key prefix is built
+from the *token's* user id (`users/<id>/avatar`), and a `targetId` for anyone
+else is refused — there is no id in the request to tamper with.
+
+Replacing a picture has to delete the old object, which is storage work and
+so cannot happen inside the completing transaction. `record` therefore writes
+the superseded ref into the upload's own `context`, and `committed` reads the
+row back and deletes it. A field on the row rather than something held in
+memory: it survives a restart, and an operator can see why a bucket still
+holds a file. `DELETE /api/auth/me/avatar` is the other direction — it clears
+the columns first, then the bytes, so a picture someone asked to remove never
+survives a failed delete.
+
+### Adding a kind of upload (a user's file)
 
 Write one class that registers an `UploadPurpose`, as
 `catalog/application/product-upload-purposes.ts` and
 `events/application/session-testimonial-uploads.ts` do. Nothing else changes:
 not the table, the endpoints, nor the browser client
-(`directUpload({ purpose, targetId, file })`). For uploads from **ordinary
-users**, these are still to add, and each fits a step that already exists:
+(`directUpload({ purpose, targetId, file })`). `user.avatar` above was added
+exactly that way. For uploads from **ordinary users**, these are still to add,
+and each fits a step that already exists:
 
 - **Image processing** (resize, re-encode, strip EXIF such as phone GPS) for
   avatars and covers. Do it between the checks and `record`: read the staged

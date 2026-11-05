@@ -19,6 +19,7 @@ import {
   type QuestionWithRelations,
   toAnsweredQuestionView,
 } from "../domain/question-view";
+import { optionOrderLock } from "../domain/option-order";
 
 export const MIN_OPTIONS = 2;
 export const MAX_OPTIONS = 6;
@@ -44,6 +45,8 @@ export interface AdminQuestionInput {
   explanationImageUrl?: string | null;
   difficulty: Difficulty;
   status?: QuestionStatus;
+  /** Never shuffle this question's options. Some questions are kept in order regardless (see optionOrderLock). */
+  keepOptionOrder?: boolean;
   options: AdminOptionInput[];
 }
 
@@ -148,6 +151,7 @@ export class QuestionAdminService {
         explanationImageUrl: input.explanationImageUrl ?? null,
         difficulty: input.difficulty,
         status: input.status ?? QuestionStatus.DRAFT,
+        keepOptionOrder: input.keepOptionOrder ?? false,
         options: {
           create: input.options.map((option, index) => ({
             label: OPTION_LABELS[index],
@@ -205,6 +209,7 @@ export class QuestionAdminService {
       data.explanationImageUrl = input.explanationImageUrl;
     }
     if (input.difficulty !== undefined) data.difficulty = input.difficulty;
+    if (input.keepOptionOrder !== undefined) data.keepOptionOrder = input.keepOptionOrder;
 
     if (input.options) {
       this.validateOptions(input.options);
@@ -497,6 +502,9 @@ export class QuestionAdminService {
     return {
       ...toAnsweredQuestionView(row),
       status: row.status,
+      keepOptionOrder: row.keepOptionOrder,
+      /** Why students always see these options in the order written; null when they may be shuffled. */
+      optionOrderLock: optionOrderLock(row),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       reports: reports ?? { open: 0, total: 0 },

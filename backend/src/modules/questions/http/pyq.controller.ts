@@ -13,12 +13,15 @@ import {
   Header,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
 import type { AuthenticatedUser } from '../../identity/application/auth.service';
+import { ExamSetupService } from '../application/exam-setup.service';
 import { PracticeService } from '../application/practice.service';
 import { ProgressService } from '../application/progress.service';
 import { PyqAccessService } from '../application/pyq-access.service';
+import { PyqSubscriptionService } from '../application/pyq-subscription.service';
 import { QuestionBankService } from '../application/question-bank.service';
 import {
   AnswerDto,
@@ -28,6 +31,7 @@ import {
   ReportQuestionDto,
   StartSessionDto,
 } from './dto/questions.dto';
+import { StartMockDto } from './dto/exam-setup.dto';
 
 /**
  * The PYQ practice app's API. Everything except the taxonomy needs a
@@ -42,6 +46,8 @@ export class PyqController {
     private readonly practice: PracticeService,
     private readonly progress: ProgressService,
     private readonly access: PyqAccessService,
+    private readonly subscriptions: PyqSubscriptionService,
+    private readonly examSetup: ExamSetupService,
   ) {}
 
   @Get('taxonomy')
@@ -59,6 +65,32 @@ export class PyqController {
     summary: 'Subscription state and remaining free questions today',
   })
   myAccess(@CurrentUser() user: AuthenticatedUser) {
+    return this.access.describe(user.id);
+  }
+
+  /**
+   * Whether trials are on, and how long they are — for the public pricing
+   * pages. Says nothing about any one person; /pyq/access answers whether
+   * *this* student may start one.
+   */
+  @Get('trial')
+  @Header('Cache-Control', 'public, max-age=60')
+  @Public()
+  @ApiOperation({ summary: 'Whether a free trial is on offer, and its length in days' })
+  async trialOffer() {
+    const settings = await this.subscriptions.settings();
+    return { enabled: settings.trialEnabled, days: settings.trialEnabled ? settings.trialDays : null };
+  }
+
+  @Post('trial')
+  @HttpCode(201)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({
+    summary: "Start this student's free trial",
+    description: '409 when trials are off, or when this account has had a trial or held a plan before.',
+  })
+  async startTrial(@CurrentUser() user: AuthenticatedUser) {
+    await this.subscriptions.startTrial(user.id);
     return this.access.describe(user.id);
   }
 
@@ -89,6 +121,32 @@ export class PyqController {
   })
   start(@CurrentUser() user: AuthenticatedUser, @Body() dto: StartSessionDto) {
     return this.practice.start(user.id, dto);
+  }
+
+  @Get('mocks')
+  @ApiOperation({
+    summary: 'Full mocks on offer: each exam whose pattern is on and whose bank can fill it',
+  })
+  mocks() {
+    return this.examSetup.mockOffers();
+  }
+
+  @Post('mocks')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary: "Start a full mock of one exam, following its pattern (a TEST that waits for begin)",
+  })
+  startMock(@CurrentUser() user: AuthenticatedUser, @Body() dto: StartMockDto) {
+    return this.practice.startMock(user.id, dto);
+  }
+
+  @Post('sessions/:id/begin')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Begin a test from its instructions screen: starts its clock (idempotent) and returns it with its questions",
+  })
+  begin(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.practice.begin(user.id, id);
   }
 
   @Get('sessions')

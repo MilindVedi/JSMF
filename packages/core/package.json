@@ -15,6 +15,7 @@
     "./hooks": "./src/hooks/index.ts",
     "./query": "./src/query/index.ts",
     "./schemas": "./src/schemas/index.ts",
+    "./observability": "./src/observability/index.ts",
     "./package.json": "./package.json"
   },
   "sideEffects": false,

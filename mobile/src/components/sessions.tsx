@@ -2,7 +2,7 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { format } from "date-fns";
 import { ChevronRight } from "lucide-react-native";
-import { accuracyTone, SESSION_MODE_LABEL } from "@jsmf/core/domain";
+import { accuracyTone, formatMarks, SESSION_MODE_LABEL } from "@jsmf/core/domain";
 import type { SessionListItem } from "@jsmf/core/data-source";
 import { useColors } from "@/theme/theme";
 import { Badge, PressableCard } from "@/components/ui/primitives";
@@ -12,7 +12,7 @@ import { Txt } from "@/components/ui/text";
 export function SessionSummaryRow({ item, showMode = false }: { item: SessionListItem; showMode?: boolean }) {
   const router = useRouter();
   const colors = useColors();
-  const { session, accuracy, correct, incorrect, unattempted } = item;
+  const { session, accuracy, correct, incorrect, unattempted, marks } = item;
   return (
     <PressableCard className="flex-row items-center gap-3 p-3.5" onPress={() => router.push({ pathname: "/session/[id]/results", params: { id: session.id } })}>
       <View className="flex-1 gap-1">
@@ -25,6 +25,13 @@ export function SessionSummaryRow({ item, showMode = false }: { item: SessionLis
           {showMode && unattempted > 0 ? ` · ${unattempted} skipped` : ""}
         </Txt>
       </View>
+      {/* Only a full mock is marked; web shows its marks before the accuracy. */}
+      {marks ? (
+        <Txt weight={600} className="text-sm">
+          {formatMarks(marks.scored)}
+          <Txt className="text-xs text-muted-foreground">/{formatMarks(marks.max)}</Txt>
+        </Txt>
+      ) : null}
       <Badge label={`${accuracy}%`} tone={accuracyTone(accuracy)} />
       <ChevronRight size={16} color={colors["muted-foreground"]} />
     </PressableCard>

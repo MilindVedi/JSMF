@@ -1,6 +1,6 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Pressable, ScrollView, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Bookmark, ChevronDown, ChevronRight, CircleCheck, CircleX, Library } from "lucide-react-native";
 import {
   DATE_PRESETS,
@@ -14,6 +14,7 @@ import {
   getQuestionsInCollections,
   getWrongFacetsFromRevision,
   groupBySubject,
+  type QuestionSortContext,
   isWithinRange,
   matchesExamYear,
   sortQuestions,
@@ -34,9 +35,22 @@ import { Heading, Txt } from "@/components/ui/text";
 import { MultiSelect, SortSheetButton } from "@/components/filters/filters";
 import { QuestionRow } from "@/components/question/question-row";
 import { SubjectBadge } from "@/components/question/badges";
+import { useRefetchOnFocus } from "@/lib/use-refetch-on-focus";
 
 const NO_ITEMS: RevisionItem[] = [];
+type GroupMode = "recent" | "subject";
 const MAX_ROWS = 50;
+const MAX_COLLECTION_ROWS = 15;
+type SectionKey = "wrong" | "bookmarked" | "collections" | "reinforce";
+const SECTION_KEYS: SectionKey[] = ["wrong", "bookmarked", "collections", "reinforce"];
+
+/** Scrolls a just-opened section into view, once its expand has laid out (its top does not move when it opens). */
+function scrollToSection(scroll: RefObject<ScrollView | null>, sectionY: RefObject<Partial<Record<SectionKey, number>>>, key: SectionKey) {
+  setTimeout(() => {
+    const y = sectionY.current[key];
+    if (y !== undefined) scroll.current?.scrollTo({ y: Math.max(y - 8, 0), animated: true });
+  }, 60);
+}
 // Phones get the presets; web's calendar custom range is not offered here.
 const PRESETS = DATE_PRESETS.filter((p) => p.value !== "custom");
 const sortOptions = (section: keyof typeof REVISION_SECTION_SORT_OPTIONS) =>
@@ -49,14 +63,40 @@ const sortOptions = (section: keyof typeof REVISION_SECTION_SORT_OPTIONS) =>
  * windows and sorts are core's.
  */
 export default function RevisionScreen() {
+  const router = useRouter();
   const revision = useRevision();
   const collectionsQuery = useCollections();
+  useRefetchOnFocus(revision, collectionsQuery);
   const startSession = useStartSession();
   const items = revision.data ?? NO_ITEMS;
   const collections = useMemo(() => collectionsQuery.data ?? [], [collectionsQuery.data]);
   const { taxonomy } = useTaxonomyLookup();
   const today = new Date().toISOString().slice(0, 10);
-  const [open, setOpen] = useState({ wrong: true, bookmarked: true, collections: false, reinforce: false });
+  const [open, setOpen] = useState<Record<SectionKey, boolean>>({ wrong: true, bookmarked: true, collections: false, reinforce: false });
+
+  // Opening a section and bringing it into view - for the tiles, and for a
+  // link that names one (Stats -> Collections lands on it, open, as web's
+  // #collections-section anchor does).
+  const scrollRef = useRef<ScrollView>(null);
+  const sectionY = useRef<Partial<Record<SectionKey, number>>>({});
+  const goTo = (key: SectionKey) => {
+    setOpen((o) => ({ ...o, [key]: true }));
+    scrollToSection(scrollRef, sectionY, key);
+  };
+  const { section: sectionParam } = useLocalSearchParams<{ section?: string }>();
+  const loaded = Boolean(revision.data && collectionsQuery.data);
+  useEffect(() => {
+    const key = SECTION_KEYS.find((k) => k === sectionParam);
+    if (!key || !loaded) return;
+    // On the next frame, once the loaded sections have laid out.
+    const frame = requestAnimationFrame(() => {
+      setOpen((o) => ({ ...o, [key]: true }));
+      scrollToSection(scrollRef, sectionY, key);
+      // Consumed, so the same link works again while this tab stays mounted.
+      router.setParams({ section: undefined });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sectionParam, loaded, router]);
 
   const facts = useMemo(() => new Map(items.map((i) => [i.question.id, i] as const)), [items]);
   const all = useMemo(() => items.map((i) => i.question), [items]);
@@ -74,6 +114,11 @@ export default function RevisionScreen() {
   const reinforce = useSectionState();
   const coll = useSectionState();
   const [collectionId, setCollectionId] = useState<string | null>(null);
+  // Bookmarked, Collections and Reinforce each list recent items or group them
+  // by subject (web's tabs), as Needs Practice does.
+  const [markedMode, setMarkedMode] = useState<GroupMode>("recent");
+  const [collMode, setCollMode] = useState<GroupMode>("recent");
+  const [reinforceMode, setReinforceMode] = useState<GroupMode>("recent");
 
   const wrongRange = computeDateRange(wrong.preset, "", "", today);
   const facets = useMemo(
@@ -83,11 +128,15 @@ export default function RevisionScreen() {
   );
   const wrongList = filterByStem(sortQuestions(wrongMode === "never" ? facets.neverCorrected : facets.recent, wrong.sort, sortContext), wrong.search);
 
+  const bookmarkCount = useMemo(() => items.filter((i) => i.bookmarkedAt).length, [items]);
   const bookmarkedPool = items.filter((i) => i.bookmarkedAt && matchesExamYear(i.question, marked.examIds, marked.years));
   const markedRange = computeDateRange(marked.preset, "", "", today);
+  const markedInRange = bookmarkedPool.filter((i) => markedRange && isWithinRange(i.bookmarkedAt!.slice(0, 10), markedRange));
+  // By subject groups the whole exam/year-filtered pool, not the date window (web does the same).
+  const markedBySubject = groupBySubject(bookmarkedPool.map((i) => i.question));
   const markedList = filterByStem(
     sortQuestions(
-      bookmarkedPool.filter((i) => markedRange && isWithinRange(i.bookmarkedAt!.slice(0, 10), markedRange)).map((i) => i.question),
+      markedInRange.map((i) => i.question),
       marked.sort,
       sortContext
     ),
@@ -96,9 +145,11 @@ export default function RevisionScreen() {
 
   const reinforcePool = items.filter((i) => i.latestCorrect === true && i.lastAttemptedAt && matchesExamYear(i.question, reinforce.examIds, reinforce.years));
   const reinforceRange = computeDateRange(reinforce.preset, "", "", today);
+  const reinforceInRange = reinforcePool.filter((i) => reinforceRange && isWithinRange(i.lastAttemptedAt!.slice(0, 10), reinforceRange));
+  const reinforceBySubject = groupBySubject(reinforcePool.map((i) => i.question));
   const reinforceList = filterByStem(
     sortQuestions(
-      reinforcePool.filter((i) => reinforceRange && isWithinRange(i.lastAttemptedAt!.slice(0, 10), reinforceRange)).map((i) => i.question),
+      reinforceInRange.map((i) => i.question),
       reinforce.sort,
       sortContext
     ),
@@ -116,6 +167,7 @@ export default function RevisionScreen() {
   const collInRange = !collRange ? [] : !activeCollection || isWithinRange(activeCollection.createdAt.slice(0, 10), collRange) ? collPool : [];
   const collList = filterByStem(sortQuestions(collInRange, coll.sort, sortContext), coll.search);
   const collLabel = `Collection: ${activeCollection?.name ?? "Collection"}`;
+  const collBySubject = groupBySubject(collPool);
 
   const practise = (mode: "wrong-questions" | "bookmarks" | "browse", label: string, questions: PublicQuestion[], collectionIds?: string[]) =>
     startSession({ mode, label, questionIds: questions.map((q) => q.id), filters: collectionIds ? { collectionIds } : undefined });
@@ -151,10 +203,11 @@ export default function RevisionScreen() {
         void collectionsQuery.refetch();
       }}
       refreshing={revision.isRefetching}
+      scrollRef={scrollRef}
     >
       <View className="flex-row gap-3">
-        <Tile icon={CircleX} tone="error" value={facets.all.length} label="Wrong · need another look" onPress={() => setOpen((o) => ({ ...o, wrong: true }))} />
-        <Tile icon={Bookmark} tone="primary" value={bookmarkedPool.length} label="Bookmarked · saved for later" onPress={() => setOpen((o) => ({ ...o, bookmarked: true }))} />
+        <Tile icon={CircleX} tone="error" value={facets.all.length} label="Wrong · need another look" onPress={() => goTo("wrong")} />
+        <Tile icon={Bookmark} tone="primary" value={bookmarkedPool.length} label="Bookmarked · saved for later" onPress={() => goTo("bookmarked")} />
       </View>
       <View className="-mt-1 flex-row gap-3">
         <Tile
@@ -162,15 +215,18 @@ export default function RevisionScreen() {
           tone="flag"
           value={collectionStats.totalQuestions}
           label={`Questions · across ${collectionStats.collectionCount} collection${collectionStats.collectionCount === 1 ? "" : "s"}`}
-          onPress={() => setOpen((o) => ({ ...o, collections: true }))}
+          onPress={() => goTo("collections")}
         />
-        <Tile icon={CircleCheck} tone="success" value={reinforcePool.length} label="Reinforce · what you know" onPress={() => setOpen((o) => ({ ...o, reinforce: true }))} />
+        <Tile icon={CircleCheck} tone="success" value={reinforcePool.length} label="Reinforce · what you know" onPress={() => goTo("reinforce")} />
       </View>
 
       <Section
         title="Needs Practice"
         description="Questions you've answered incorrectly"
         open={open.wrong}
+        onLayoutY={(y) => {
+          sectionY.current.wrong = y;
+        }}
         onToggle={() => setOpen((o) => ({ ...o, wrong: !o.wrong }))}
         action={
           wrongMode !== "subject" && wrongList.length > 0 ? (
@@ -204,12 +260,13 @@ export default function RevisionScreen() {
           }
         />
         {wrongMode === "subject" ? (
-          <SubjectGroups groups={facets.bySubject} search={wrong.search} onPractise={(qs) => practise("wrong-questions", "Wrong Questions Revision", qs)} emptyIcon={CircleCheck} emptyTitle="Nothing to revise yet" emptyText="Questions you get wrong will be grouped by subject here." />
+          <SubjectGroups groups={facets.bySubject} search={wrong.search} sort={wrong.sort} sortContext={sortContext} onPractise={(qs) => practise("wrong-questions", "Wrong Questions Revision", qs)} emptyIcon={CircleCheck} emptyTitle="Nothing to revise yet" emptyText="Questions you get wrong will be grouped by subject here." />
         ) : wrongList.length === 0 ? (
           <EmptyState
             icon={CircleCheck}
             title={wrongMode === "never" ? "Nothing stuck in the never-corrected pile" : wrong.preset === "all" ? "No wrong questions yet — keep practising!" : "Nothing wrong in this range"}
             description="Questions you get wrong show up here so you can revise them until they stick."
+            action={<Button label="Go to Question Bank" size="sm" onPress={() => router.push("/practice")} />}
           />
         ) : (
           <QuestionList questions={wrongList.slice(0, MAX_ROWS)} statusOf={(q) => statusMap.get(q.id) ?? "incorrect"} onPress={(q) => practise("wrong-questions", "Wrong Question Review", [q])} />
@@ -220,28 +277,51 @@ export default function RevisionScreen() {
         title="Bookmarked"
         description="Questions you saved for later"
         open={open.bookmarked}
+        onLayoutY={(y) => {
+          sectionY.current.bookmarked = y;
+        }}
         onToggle={() => setOpen((o) => ({ ...o, bookmarked: !o.bookmarked }))}
-        action={markedList.length > 0 ? <Button label={`Practise ${markedList.length}`} size="sm" onPress={() => practise("bookmarks", "My Bookmarks", markedList)} /> : null}
+        action={markedMode === "recent" && markedList.length > 0 ? <Button label={`Practise ${markedList.length}`} size="sm" onPress={() => practise("bookmarks", "My Bookmarks", markedList)} /> : null}
       >
-        <SectionFilters state={marked} sort="bookmarked" showDates description={dateRangeDescription(marked.preset, "", "", "Bookmarked", "Every question you've bookmarked for later review.")} />
-        {markedList.length === 0 ? (
+        <Segmented
+          value={markedMode}
+          onChange={setMarkedMode}
+          options={[
+            { value: "recent", label: "Recently Bookmarked", count: markedInRange.length },
+            { value: "subject", label: "By subject" },
+          ]}
+        />
+        <SectionFilters
+          state={marked}
+          sort="bookmarked"
+          showDates={markedMode === "recent"}
+          description={markedMode === "subject" ? "Where your bookmarks are concentrated." : dateRangeDescription(marked.preset, "", "", "Bookmarked", "Every question you've bookmarked for later review.")}
+        />
+        {markedMode === "subject" ? (
+          <SubjectGroups groups={markedBySubject} search={marked.search} sort={marked.sort} sortContext={sortContext} onPractise={(qs) => practise("bookmarks", "My Bookmarks", qs)} emptyIcon={Bookmark} emptyTitle="Nothing to show" emptyText="Bookmark questions while practising to see them grouped by subject here." />
+        ) : markedList.length === 0 ? (
           <EmptyState
             icon={Bookmark}
-            title={bookmarkedPool.length === 0 && marked.examIds.length === 0 ? "No bookmarks yet" : "No bookmarks match these filters"}
-            description={bookmarkedPool.length === 0 ? "Save questions while practising to revisit them here." : "Try a different search term, exam/year, or date range."}
+            title={bookmarkCount === 0 ? "No bookmarks yet" : "No bookmarks match these filters"}
+            description={bookmarkCount === 0 ? "Save questions while practising to revisit them here." : "Try a different search term, exam/year, or date range."}
           />
         ) : (
-          <QuestionList questions={markedList.slice(0, 5)} statusOf={(q) => statusMap.get(q.id) ?? "unattempted"} onPress={(q) => practise("browse", "Bookmarked Question", [q])} />
+          <>
+            <QuestionList questions={markedList.slice(0, 5)} statusOf={(q) => statusMap.get(q.id) ?? "unattempted"} onPress={(q) => practise("browse", "Bookmarked Question", [q])} />
+            {bookmarkCount > 5 ? <ViewAll label={`View all ${bookmarkCount} bookmarks`} href="/bookmarks" /> : null}
+          </>
         )}
-        <ViewAll label={`View all bookmarks`} href="/bookmarks" />
       </Section>
 
       <Section
         title="Your Collections"
         description="Questions you've organised yourself"
         open={open.collections}
+        onLayoutY={(y) => {
+          sectionY.current.collections = y;
+        }}
         onToggle={() => setOpen((o) => ({ ...o, collections: !o.collections }))}
-        action={collList.length > 0 && activeCollection ? <Button label={`Practise ${collList.length}`} size="sm" onPress={() => practise("browse", collLabel, collList, [activeCollection.id])} /> : null}
+        action={collMode === "recent" && collList.length > 0 && activeCollection ? <Button label={`Practise ${collList.length}`} size="sm" onPress={() => practise("browse", collLabel, collList, [activeCollection.id])} /> : null}
       >
         {collections.length === 0 ? (
           <EmptyState icon={Library} title="No collections yet" description="Use the collection button on any question to start one." />
@@ -257,11 +337,44 @@ export default function RevisionScreen() {
                 onChange={(ids) => setCollectionId(ids[0] ?? null)}
               />
             </View>
-            <SectionFilters state={coll} sort="collections" showDates description={dateRangeDescription(coll.preset, "", "", "Added", "Every question saved in the selected collection(s).")} />
-            {collList.length === 0 ? (
+            <Segmented
+              value={collMode}
+              onChange={setCollMode}
+              options={[
+                { value: "recent", label: "Recently added", count: collInRange.length },
+                { value: "subject", label: "By subject" },
+              ]}
+            />
+            <SectionFilters
+              state={coll}
+              sort="collections"
+              showDates={collMode === "recent"}
+              description={collMode === "subject" ? "Where the selected collection's questions are concentrated." : dateRangeDescription(coll.preset, "", "", "Added", "Every question saved in the selected collection(s).")}
+            />
+            {collMode === "subject" ? (
+              <SubjectGroups
+                groups={collBySubject}
+                search={coll.search}
+                sort={coll.sort}
+                sortContext={sortContext}
+                onPractise={(qs) => {
+                  if (activeCollection) practise("browse", collLabel, qs, [activeCollection.id]);
+                }}
+                emptyIcon={Library}
+                emptyTitle="Nothing to show"
+                emptyText="Questions in this collection will be grouped by subject here."
+              />
+            ) : collList.length === 0 ? (
               <EmptyState icon={Library} title={coll.search ? "No questions match your search" : "No questions in this selection"} description={coll.search ? "Try a different search term." : "Choose a different collection, exam/year, or date range."} />
             ) : (
-              <QuestionList questions={collList.slice(0, 15)} statusOf={(q) => statusMap.get(q.id) ?? "unattempted"} onPress={(q) => practise("browse", collLabel, [q])} />
+              <>
+                <QuestionList questions={collList.slice(0, MAX_COLLECTION_ROWS)} statusOf={(q) => statusMap.get(q.id) ?? "unattempted"} onPress={(q) => practise("browse", collLabel, [q])} />
+                {collList.length > MAX_COLLECTION_ROWS ? (
+                  <Txt className="text-xs text-muted-foreground">
+                    +{collList.length - MAX_COLLECTION_ROWS} more — narrow your collection selection to see fewer at once.
+                  </Txt>
+                ) : null}
+              </>
             )}
           </>
         )}
@@ -271,11 +384,29 @@ export default function RevisionScreen() {
         title="Reinforce"
         description="Questions you've answered correctly and want to revisit"
         open={open.reinforce}
+        onLayoutY={(y) => {
+          sectionY.current.reinforce = y;
+        }}
         onToggle={() => setOpen((o) => ({ ...o, reinforce: !o.reinforce }))}
-        action={reinforceList.length > 0 ? <Button label={`Practise ${reinforceList.length}`} size="sm" onPress={() => practise("browse", "Reinforce Practice", reinforceList)} /> : null}
+        action={reinforceMode === "recent" && reinforceList.length > 0 ? <Button label={`Practise ${reinforceList.length}`} size="sm" onPress={() => practise("browse", "Reinforce Practice", reinforceList)} /> : null}
       >
-        <SectionFilters state={reinforce} sort="reinforce" showDates description={dateRangeDescription(reinforce.preset, "", "", "Answered correctly", "Every question you've answered correctly, in case you want to reinforce it.")} />
-        {reinforceList.length === 0 ? (
+        <Segmented
+          value={reinforceMode}
+          onChange={setReinforceMode}
+          options={[
+            { value: "recent", label: "Recently attempted", count: reinforceInRange.length },
+            { value: "subject", label: "By subject" },
+          ]}
+        />
+        <SectionFilters
+          state={reinforce}
+          sort="reinforce"
+          showDates={reinforceMode === "recent"}
+          description={reinforceMode === "subject" ? "Where your correct answers are concentrated." : dateRangeDescription(reinforce.preset, "", "", "Answered correctly", "Every question you've answered correctly, in case you want to reinforce it.")}
+        />
+        {reinforceMode === "subject" ? (
+          <SubjectGroups groups={reinforceBySubject} search={reinforce.search} sort={reinforce.sort} sortContext={sortContext} onPractise={(qs) => practise("browse", "Reinforce Practice", qs)} emptyIcon={CircleCheck} emptyTitle="Nothing to reinforce yet" emptyText="Questions you answer correctly will be grouped by subject here." />
+        ) : reinforceList.length === 0 ? (
           <EmptyState
             icon={CircleCheck}
             title={reinforcePool.length === 0 ? "Nothing to reinforce yet" : "No matches"}
@@ -284,6 +415,8 @@ export default function RevisionScreen() {
         ) : (
           <QuestionList questions={reinforceList.slice(0, 5)} statusOf={() => "correct"} onPress={(q) => practise("browse", "Reinforce Review", [q])} />
         )}
+        {/* The full list, and the "not revisited" split, live on their own screen (web's /reinforce). */}
+        {reinforcePool.length > 0 ? <ViewAll label={`View all ${reinforcePool.length}`} href="/reinforce" /> : null}
       </Section>
     </TabScreen>
   );
@@ -342,10 +475,27 @@ function Tile({ icon, tone, value, label, onPress }: { icon: IconComponent; tone
   );
 }
 
-function Section({ title, description, open, onToggle, action, children }: { title: string; description: string; open: boolean; onToggle: () => void; action?: ReactNode; children: ReactNode }) {
+function Section({
+  title,
+  description,
+  open,
+  onToggle,
+  onLayoutY,
+  action,
+  children,
+}: {
+  title: string;
+  description: string;
+  open: boolean;
+  onToggle: () => void;
+  /** Where the section starts in the scroll content, so a link can scroll to it. */
+  onLayoutY?: (y: number) => void;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
   const colors = useColors();
   return (
-    <View className="rounded-2xl border border-border bg-card">
+    <View className="rounded-2xl border border-border bg-card" onLayout={onLayoutY ? (e) => onLayoutY(e.nativeEvent.layout.y) : undefined}>
       <View className="flex-row items-center gap-3 p-4">
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={onToggle} className="flex-1 flex-row items-start gap-2">
           <View style={{ transform: [{ rotate: open ? "0deg" : "-90deg" }], marginTop: 3 }}>
@@ -378,6 +528,8 @@ function QuestionList({ questions, statusOf, onPress }: { questions: PublicQuest
 function SubjectGroups({
   groups,
   search,
+  sort,
+  sortContext,
   onPractise,
   emptyIcon,
   emptyTitle,
@@ -385,12 +537,19 @@ function SubjectGroups({
 }: {
   groups: { subjectId: string; questions: PublicQuestion[] }[];
   search: string;
+  sort: QuestionSortOption;
+  sortContext: QuestionSortContext;
   onPractise: (questions: PublicQuestion[]) => void;
   emptyIcon: IconComponent;
   emptyTitle: string;
   emptyText: string;
 }) {
-  const visible = groupBySubject(groups.flatMap((g) => filterByStem(g.questions, search)));
+  // The groups keep their order (most questions first, from the whole pool);
+  // inside each, the chosen sort decides the order Practise starts in, and
+  // search only hides rows - as web.
+  const visible = groups
+    .map((g) => ({ subjectId: g.subjectId, questions: filterByStem(sortQuestions(g.questions, sort, sortContext), search) }))
+    .filter((g) => g.questions.length > 0);
   if (visible.length === 0) return <EmptyState icon={emptyIcon} title={emptyTitle} description={emptyText} />;
   return (
     <View className="overflow-hidden rounded-xl border border-border">
@@ -409,7 +568,7 @@ function SubjectGroups({
   );
 }
 
-function ViewAll({ label, href }: { label: string; href: "/bookmarks" }) {
+function ViewAll({ label, href }: { label: string; href: "/bookmarks" | "/reinforce" }) {
   const router = useRouter();
   const colors = useColors();
   return (

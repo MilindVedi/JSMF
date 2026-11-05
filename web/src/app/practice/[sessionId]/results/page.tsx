@@ -8,6 +8,9 @@ import { EmptyState } from "@/components/common/empty-state";
 import {
   completionKicker,
   formatDuration,
+  formatMarks,
+  markingLabel,
+  sectionResults,
   getSessionSubjectPerformance,
   getSessionSummary,
   resultsNextAction,
@@ -77,14 +80,29 @@ export default function ResultsPage() {
   const subjectPerformance = getSessionSubjectPerformance(session, questions);
   const isTimed = Boolean(session.config.timed && session.config.durationSec);
   const action = nextAction(session);
+  // A full mock is scored like its exam: marks first, accuracy second.
+  const marks = detail.marks;
+  const sections = sectionResults(session, session.attempts);
 
   return (
     <div className="mx-auto w-full max-w-[820px] px-4 py-8 sm:py-10">
       <div className="mb-6 text-center">
         <p className="text-sm font-medium text-muted-foreground">{completionKicker(session)}</p>
-        <h1 className="mt-1 font-heading text-3xl font-bold text-foreground">
-          {summary.accuracy}% accuracy
-        </h1>
+        {marks && session.pattern ? (
+          <>
+            <h1 className="mt-1 font-heading text-3xl font-bold text-foreground tabular-nums">
+              {formatMarks(marks.scored)}
+              <span className="text-xl font-semibold text-muted-foreground"> / {formatMarks(marks.max)} marks</span>
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {summary.accuracy}% accuracy · marking {markingLabel(session.pattern)}
+            </p>
+          </>
+        ) : (
+          <h1 className="mt-1 font-heading text-3xl font-bold text-foreground">
+            {summary.accuracy}% accuracy
+          </h1>
+        )}
         <p className="mt-1 text-sm text-muted-foreground">
           {summary.correct} correct · {summary.incorrect} incorrect
           {summary.unattempted > 0 && ` · ${summary.unattempted} unattempted`} out of{" "}
@@ -136,6 +154,41 @@ export default function ResultsPage() {
             Clear filter
           </button>
         </p>
+      )}
+
+      {sections.length > 1 && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Sections</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead className="text-xs text-muted-foreground">
+                <tr className="border-b border-border">
+                  <th className="px-4 py-2 text-left font-medium">Section</th>
+                  <th className="px-2 py-2 text-right font-medium">Correct</th>
+                  <th className="px-2 py-2 text-right font-medium">Incorrect</th>
+                  <th className="hidden px-2 py-2 text-right font-medium sm:table-cell">Unattempted</th>
+                  <th className="px-4 py-2 text-right font-medium">Marks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border tabular-nums">
+                {sections.map((s) => (
+                  <tr key={s.name}>
+                    <td className="px-4 py-2.5 text-foreground">{s.name}</td>
+                    <td className="px-2 py-2.5 text-right text-success-foreground">{s.correct}</td>
+                    <td className="px-2 py-2.5 text-right text-error-foreground">{s.incorrect}</td>
+                    <td className="hidden px-2 py-2.5 text-right text-muted-foreground sm:table-cell">{s.unattempted}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-foreground">
+                      {formatMarks(s.marks)}
+                      <span className="font-normal text-muted-foreground"> / {formatMarks(s.maxMarks)}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
       )}
 
       {subjectPerformance.length > 1 && (

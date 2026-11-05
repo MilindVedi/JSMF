@@ -15,6 +15,7 @@ import { Loading } from "@/components/ui/primitives";
 import { cn, Heading, Txt } from "@/components/ui/text";
 import { ThemeScope, useColors } from "@/theme/theme";
 import { LegalDocumentView } from "./legal-text";
+import { FormError } from "@/components/auth/auth-shell";
 
 const SLUG: Record<LegalDocumentType, LegalDocumentSlug> = { TERMS: "terms", PRIVACY: "privacy", REFUND: "refund" };
 
@@ -64,6 +65,8 @@ function AcceptModal({ status, required }: { status: LegalStatus; required: Stat
     mutationFn: () => legalApi.accept(required.map((doc) => doc.type), everAccepted ? "RE_ACCEPT" : "SIGNUP"),
     // Refetching everything refreshes the status (closing this) and reloads whatever the block stopped.
     onSuccess: () => queryClient.invalidateQueries(),
+    // Shown inside the gate as well (below): a native Modal is drawn above the
+    // app's toast host, so a toast alone would be hidden behind it.
     onError: (error) => toast.error(error.message),
   });
 
@@ -117,9 +120,22 @@ function AcceptModal({ status, required }: { status: LegalStatus; required: Stat
                     );
                   })}
                 </View>
+                {accept.isError ? (
+                  <View className="mt-4">
+                    <FormError message={accept.error.message} />
+                  </View>
+                ) : null}
                 <View className="mt-6 flex-row justify-end gap-2">
                   <Button label="Sign out" variant="ghost" disabled={accept.isPending} onPress={() => void logout()} />
-                  <Button label="Accept and continue" disabled={!allTicked || accept.isPending} loading={accept.isPending} onPress={() => accept.mutate()} />
+                  <Button
+                    label="Accept and continue"
+                    disabled={!allTicked || accept.isPending}
+                    loading={accept.isPending}
+                    onPress={() => {
+                      accept.reset();
+                      accept.mutate();
+                    }}
+                  />
                 </View>
               </View>
             )}

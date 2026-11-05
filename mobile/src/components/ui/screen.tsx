@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -6,7 +6,7 @@ import { useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { useColors } from "@/theme/theme";
 import { StreakChip } from "@/components/streak/streak-chip";
-import { cn, Heading, Txt } from "./text";
+import { cn, Eyebrow, Heading, Txt } from "./text";
 
 const LOGO = require("../../../assets/images/logo.png");
 
@@ -17,7 +17,7 @@ export function Logo({ size = 30, showName = true }: { size?: number; showName?:
       <Image source={LOGO} style={{ width: size, height: size }} contentFit="contain" accessibilityIgnoresInvertColors />
       {showName ? (
         <Txt font="display" weight={600} className="text-base text-brand-ink">
-          JSMF <Txt font="display" weight={400} className="text-base text-muted-foreground">Med Prep</Txt>
+          JSMF <Txt font="display" weight={400} className="text-base text-muted-foreground">PYQs</Txt>
         </Txt>
       ) : null}
     </View>
@@ -30,26 +30,33 @@ export function Logo({ size = 30, showName = true }: { size?: number; showName?:
  */
 export function TabScreen({
   title,
+  eyebrow,
   subtitle,
   children,
   onRefresh,
   refreshing = false,
   scroll = true,
   headerExtra,
+  scrollRef,
 }: {
   title: string;
+  /** A small line above the title (web's masthead eyebrow). */
+  eyebrow?: string;
   subtitle?: string;
   children: ReactNode;
   onRefresh?: () => void;
   refreshing?: boolean;
   scroll?: boolean;
   headerExtra?: ReactNode;
+  /** Lets a screen scroll itself, e.g. to a section a link asked for. */
+  scrollRef?: Ref<ScrollView>;
 }) {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const header = (
     <View className="flex-row items-center gap-3 px-5 pb-3" style={{ paddingTop: insets.top + 10 }}>
       <View className="flex-1">
+        {eyebrow ? <Eyebrow className="mb-1">{eyebrow}</Eyebrow> : null}
         <Heading className="text-[22px] leading-7" accessibilityRole="header">
           {title}
         </Heading>
@@ -71,6 +78,7 @@ export function TabScreen({
     <View className="flex-1 bg-background">
       {header}
       <ScrollView
+        ref={scrollRef}
         className="flex-1"
         contentContainerClassName="px-5 pb-10 gap-4"
         keyboardShouldPersistTaps="handled"

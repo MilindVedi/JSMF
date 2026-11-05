@@ -4,14 +4,21 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { remainingSeconds, type SessionQuestion } from "@jsmf/core/domain";
+import {
+  lockedSectionRedirect,
+  remainingSeconds,
+  sectionIndexOf,
+  sectionSecondsLeft,
+  type SessionQuestion,
+} from "@jsmf/core/domain";
 import { PracticeTopbar } from "@/components/practice/practice-topbar";
 import { QuestionCard } from "@/components/practice/question-card";
 import { ExplanationPanel } from "@/components/practice/explanation-panel";
 import { PracticeActionBar } from "@/components/practice/practice-action-bar";
-import { QuestionPalette } from "@/components/practice/question-palette";
+import { QuestionPalette, QuestionPalettePanel } from "@/components/practice/question-palette";
 import { ReportQuestionModal } from "@/components/practice/report-question-modal";
-import { ExamQuestionScreen } from "@/components/practice/exam/exam-question-screen";
+import { ExamQuestionScreen, type ExamSectionView } from "@/components/practice/exam/exam-question-screen";
+import { ExamBeginGate } from "@/components/practice/exam/exam-begin-gate";
 import { EmptyState } from "@/components/common/empty-state";
 import { DailyLimitNotice, PageLoading, QueryError } from "@/components/pyq/query-states";
 import { Button } from "@/components/ui/button";
@@ -36,6 +43,13 @@ export default function PracticeSessionPage() {
   const index = Number.isFinite(rawIndex) ? Math.min(Math.max(rawIndex, 0), Math.max(total - 1, 0)) : 0;
   const question = detail?.questions[index];
 
+  // A mock with time-bound sections only ever shows its running section: a
+  // link or a reload into another one lands on the running one's first question.
+  const redirectTo = detail ? lockedSectionRedirect(detail.session, index) : null;
+  useEffect(() => {
+    if (redirectTo !== null) router.replace(`/practice/${sessionId}?i=${redirectTo}`);
+  }, [redirectTo, router, sessionId]);
+
   if (isPending) return <PageLoading className="min-h-dvh" />;
 
   if (error && !(error instanceof NotFoundError)) {
@@ -45,6 +59,11 @@ export default function PracticeSessionPage() {
       </div>
     );
   }
+
+  // A test opens on its instructions; its questions arrive when it is begun.
+  if (detail?.session.awaitingBegin) return <ExamBeginGate detail={detail} />;
+
+  if (redirectTo !== null) return <PageLoading className="min-h-dvh" />;
 
   if (!detail || !question) {
     return (
@@ -107,12 +126,25 @@ function PracticeQuestionRunner({
       }
     : question;
   const isBookmarked = bookmarks.isBookmarked(question.id);
-  const isFirst = index === 0;
-  const isLast = index === total - 1;
   const timed = Boolean(session.config.timed && session.config.durationSec && !detail.submitted);
   // A test keeps answers locked in but hides correctness until it is submitted.
   const hideResults = Boolean(session.config.testMode && !detail.submitted);
-  const [timeLeft] = useState(() => remainingSeconds(detail.session));
+
+  // A full mock's sections. With time-bound sections the student moves only
+  // within the running one, and the header clock is that section's.
+  const currentSection = sectionIndexOf(session, index);
+  const sectionView: ExamSectionView | null =
+    session.sections && currentSection !== null
+      ? { windows: session.sections, current: currentSection, locked: Boolean(session.pattern?.sectionsLocked) }
+      : null;
+  const openWindow = sectionView?.locked ? sectionView.windows[sectionView.current] : null;
+  const firstIndex = openWindow ? openWindow.firstPosition : 0;
+  const lastIndex = openWindow ? openWindow.firstPosition + openWindow.questions - 1 : total - 1;
+  const isFirst = index === firstIndex;
+  const isLast = index === lastIndex;
+  const [timeLeft] = useState(() =>
+    openWindow && hideResults ? sectionSecondsLeft(session, openWindow.index) : remainingSeconds(detail.session)
+  );
 
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(
     () => existingAttempt?.selectedOptionId ?? null
@@ -125,8 +157,15 @@ function PracticeQuestionRunner({
   }, []);
 
   function goTo(newIndex: number) {
-    if (newIndex < 0 || newIndex >= total) return;
+    if (newIndex < firstIndex || newIndex > lastIndex) return;
     router.replace(`/practice/${session.id}?i=${newIndex}`);
+  }
+
+  /** A section's time is over: the next one opens on its own, or the paper is done. */
+  function handleSectionTimeUp() {
+    const next = openWindow ? session.sections?.[openWindow.index + 1] : undefined;
+    if (next) router.replace(`/practice/${session.id}?i=${next.firstPosition}`);
+    else handleFinish();
   }
 
   function saveAnswer(optionId: string, onSaved?: () => void) {
@@ -199,7 +238,8 @@ function PracticeQuestionRunner({
     else saveAnswer(selectedOptionId, then);
   }
 
-  const advance = () => goTo(index + 1);
+  // At a locked section's last question, Save & Next goes back to its first, as on the console.
+  const advance = () => goTo(isLast && openWindow ? firstIndex : index + 1);
 
   function handleSaveAndNext() {
     // Saving an answer to a marked question makes it plain "Answered", as on
@@ -286,6 +326,8 @@ function PracticeQuestionRunner({
         question={question}
         index={index}
         total={total}
+        isFirst={isFirst}
+        isLast={isLast}
         attempts={attempts}
         flags={flags}
         selectedOptionId={selectedOptionId}
@@ -296,6 +338,10 @@ function PracticeQuestionRunner({
         submitting={submitSession.isPending}
         timed={timed}
         timeLeft={timeLeft}
+        timerKey={openWindow?.index}
+        timerLabel={openWindow ? `${openWindow.name} · Time Left` : undefined}
+        onTimeUp={openWindow ? handleSectionTimeUp : handleFinish}
+        sectionView={sectionView}
         limitMessage={limitMessage}
         isBookmarked={isBookmarked}
         onToggleBookmark={() => bookmarks.toggle(question.id, isBookmarked)}
@@ -324,6 +370,10 @@ function PracticeQuestionRunner({
         exitHref={session.sourceHref ?? "/dashboard"}
       />
 
+      {/* Question on the left, palette down the right — where the real exam
+          console keeps it. Below lg the palette is a drawer from the bottom bar. */}
+      <div className="flex flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
       <div className="mx-auto w-full max-w-[760px] flex-1 px-4 py-6 sm:py-8">
         <QuestionCard
           question={revealed}
@@ -370,6 +420,19 @@ function PracticeQuestionRunner({
         }
         reportSlot={<ReportQuestionModal questionId={question.id} />}
       />
+      </div>
+
+      <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-[300px] shrink-0 border-l border-border bg-card lg:block">
+        <QuestionPalettePanel
+          questionIds={session.questionIds}
+          attempts={attempts}
+          flags={flags}
+          currentIndex={index}
+          onJump={goTo}
+          hideResults={hideResults}
+        />
+      </aside>
+      </div>
     </div>
   );
 }

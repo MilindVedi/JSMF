@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
-import { usePreferences, useTaxonomyLookup, useUpdatePreferences } from "@/hooks/pyq";
+import { pyqKeys, usePreferences, useTaxonomyLookup, useUpdatePreferences } from "@/hooks/pyq";
 import { useStreakState } from "@/lib/use-streak-state";
 import { QueryError } from "@/components/pyq/query-states";
 import { usePlanLabel } from "@/lib/use-plan-label";
@@ -54,7 +54,7 @@ export default function ProfilePage() {
   const planLabel = usePlanLabel();
   // Fetched only here, and once: the join date never changes.
   const memberSince = useQuery({
-    queryKey: ["account", "member-since"],
+    queryKey: pyqKeys.memberSince,
     queryFn: () => authApi.memberSince(),
     enabled: IS_API,
     staleTime: Infinity,
@@ -170,7 +170,7 @@ export default function ProfilePage() {
         <Separator />
         <CardContent className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <StreakFlame className="size-4" live={false} />
+            <StreakFlame days={streak.currentStreak} size={16} live={false} />
             <span className="text-sm text-muted-foreground">
               Current streak <span className="font-semibold text-foreground">{streak.currentStreak}d</span>
             </span>

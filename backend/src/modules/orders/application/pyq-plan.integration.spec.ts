@@ -10,6 +10,8 @@ import { PyqPlansService } from '../../questions/application/pyq-plans.service';
 import { OrderEvents } from './order-events';
 import { OrderService } from './order.service';
 import { PaymentService } from './payment.service';
+import { AuditService } from '../../../shared/audit/audit.service';
+import { PyqSubscriptionService } from '../../questions/application/pyq-subscription.service';
 
 /**
  * PYQ subscription plans bought through the ordinary order/payment path:
@@ -40,9 +42,11 @@ const provider = new StubPaymentAdapter(config);
 const entitlements = new EntitlementService(prisma);
 const orders = new OrderService(prisma, provider, entitlements);
 const payments = new PaymentService(prisma, provider, entitlements, mail, whatsapp, config, new OrderEvents());
-const access = new PyqAccessService(prisma, entitlements, config);
+// Pass-through cache: these tests change settings between reads.
+const subscriptions = new PyqSubscriptionService(prisma, new AuditService(prisma), { wrap: (_key: string, _ttl: number, load: () => unknown) => load(), del: async () => {} } as never, config);
+const access = new PyqAccessService(prisma, config, subscriptions);
 // Pass-through: these tests change plans between reads.
-const plans = new PyqPlansService(prisma, { wrap: (_key: string, _ttl: number, load: () => unknown) => load(), del: async () => {} } as never);
+const plans = new PyqPlansService(prisma, { wrap: (_key: string, _ttl: number, load: () => unknown) => load(), del: async () => {} } as never, subscriptions);
 
 const PRICE = 99_900n;
 const DAYS = 30;
@@ -113,12 +117,14 @@ afterAll(async () => {
 });
 
 describe('PYQ plans', () => {
-  it('lists the plan publicly with duration and features', async () => {
+  it('lists the plan publicly with duration and the shared benefits', async () => {
     const plan = (await plans.list()).find((p) => p.id === planId);
     expect(plan).toMatchObject({
       durationDays: DAYS,
+      durationMonths: null,
       priceAmountMinor: PRICE.toString(),
-      features: ['Unlimited'],
+      // Per-plan features in metadata are ignored: every plan shows the shared list.
+      features: (await subscriptions.settings()).features,
     });
   });
 

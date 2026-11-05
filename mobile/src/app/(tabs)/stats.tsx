@@ -11,12 +11,16 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { TabScreen } from "@/components/ui/screen";
 import { Heading, Txt } from "@/components/ui/text";
 import { AccuracyTrendChart, DonutBreakdown, SubjectBars } from "@/components/charts/charts";
+import { useRefetchOnFocus } from "@/lib/use-refetch-on-focus";
 
 /** Performance & statistics (web's /statistics): overview, coverage, per subject, accuracy trend. */
 export default function StatsScreen() {
   const router = useRouter();
-  const { data: stats, error, refetch, isRefetching } = useStats();
-  const { data: collections = [] } = useCollections();
+  const statsQuery = useStats();
+  const { data: stats, error, refetch, isRefetching } = statsQuery;
+  const collectionsQuery = useCollections();
+  const { data: collections = [] } = collectionsQuery;
+  useRefetchOnFocus(statsQuery, collectionsQuery);
   const { taxonomy, subject } = useTaxonomyLookup();
   const [coverageOpen, setCoverageOpen] = useState(false);
 
@@ -98,16 +102,16 @@ export default function StatsScreen() {
           </Card>
 
           <View className="gap-2.5">
-            <LinkRow icon={CircleX} tone="error" title="Wrong questions" text={`${stats.wrongQuestionCount} question${stats.wrongQuestionCount === 1 ? "" : "s"} to revise`} href="/revision" />
+            <LinkRow icon={CircleX} tone="error" title="Wrong questions" text={`${stats.wrongQuestionCount} question${stats.wrongQuestionCount === 1 ? "" : "s"} to revise`} href={{ pathname: "/revision", params: { section: "wrong" } }} />
             <LinkRow icon={Bookmark} tone="flag" title="Bookmarks" text={`${stats.bookmarkCount} question${stats.bookmarkCount === 1 ? "" : "s"} saved`} href="/bookmarks" />
             <LinkRow
               icon={Library}
               tone="flag"
               title="Collections"
               text={`${collectionStats.totalQuestions} question${collectionStats.totalQuestions === 1 ? "" : "s"} across ${collectionStats.collectionCount} collection${collectionStats.collectionCount === 1 ? "" : "s"}`}
-              href="/revision"
+              href={{ pathname: "/revision", params: { section: "collections" } }}
             />
-            <LinkRow icon={CircleCheck} tone="success" title="Reinforce" text={`${stats.correct} question${stats.correct === 1 ? "" : "s"} to reinforce`} href="/revision" />
+            <LinkRow icon={CircleCheck} tone="success" title="Reinforce" text={`${stats.correct} question${stats.correct === 1 ? "" : "s"} to reinforce`} href="/reinforce" />
             <LinkRow icon={History} tone="muted" title="Attempt history" text="Every session you've finished" href="/history" />
           </View>
         </>

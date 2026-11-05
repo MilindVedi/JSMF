@@ -25,6 +25,15 @@ const schema = z
     LOG_FORMAT: z.enum(['json', 'text']).optional(),
     /** Include debug/verbose lines. Off by default — they are noise in production. */
     LOG_DEBUG: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+    /**
+     * The Google Cloud project, used only to write each log line's trace in the
+     * form Cloud Logging groups by. Leave unset on Cloud Run: it is read from
+     * the metadata server at boot. Read directly in main.ts, like LOG_FORMAT.
+     */
+    GOOGLE_CLOUD_PROJECT: z
+      .string()
+      .regex(/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/, 'must be a Google Cloud project id')
+      .optional(),
     PORT: z.coerce.number().int().positive().default(4000),
     CORS_ORIGINS: z
       .string()
@@ -96,6 +105,11 @@ const schema = z
     /// so this is about page weight as much as storage; 8 matches what
     /// testimonial screenshots were already allowed.
     MAX_IMAGE_UPLOAD_SIZE_MB: z.coerce.number().int().positive().max(100).default(8),
+    /// Upper bound on a profile picture. Its own knob rather than sharing the
+    /// one above: an avatar is shown at a few dozen pixels, so anything near
+    /// a cover's budget is waste, and a tighter limit is the cheapest guard
+    /// against every signed-in account being able to park 8 MB in the bucket.
+    MAX_AVATAR_UPLOAD_SIZE_MB: z.coerce.number().int().positive().max(50).default(5),
     /// How long an admin has to finish an upload once started. Long enough for
     /// a large file on a slow connection; the sweep removes anything left after.
     DIRECT_UPLOAD_EXPIRY_HOURS: z.coerce.number().int().min(1).max(168).default(24),
@@ -481,6 +495,22 @@ const schema = z
       .transform((value) => value === 'true'),
 
     /**
+     * Whether an admin can change PYQ subscription plans, prices, the shared
+     * benefits list and the free trial from the dashboard right now.
+     *
+     * Off by default, for the same reason as REFUNDS_ENABLED: these screens
+     * decide what students are charged, so the ability to use them is an
+     * operator decision made at deploy time, never something an admin can
+     * grant themselves. While off, the admin page is read-only and every write
+     * answers 409; what is already configured keeps applying unchanged, so a
+     * running trial or a plan on sale is never switched off by this flag.
+     */
+    SUBSCRIPTION_MANAGEMENT_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+
+    /**
      * Slug of a cheap session kept only for paying through the real checkout
      * on the main website's /testapayment page. That session is left out of
      * the homepage's "upcoming" pick, which would otherwise show it to
@@ -535,6 +565,26 @@ const schema = z
     /// shared network. Over the limit the batch is simply lost — the page never
     /// notices. Read from process.env by the route's @Throttle as well.
     ANALYTICS_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(120),
+
+    /// Crash reports from the websites and the phone app (POST /client-errors,
+    /// docs/observability). Off: the route still answers 204 and logs nothing,
+    /// so no app needs a redeploy to follow the switch.
+    CLIENT_ERRORS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
+    /// Reports one caller may send per minute. A page that is genuinely broken
+    /// sends one batch (up to 5 distinct errors) and then stays quiet — the
+    /// clients dedupe and cap themselves — so 30 is far above honest use and
+    /// low enough that one address cannot fill the log. Read from process.env
+    /// by the route's @Throttle as well.
+    CLIENT_ERRORS_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(30),
+    /// Client errors this API instance will write per minute, from everyone
+    /// together. The ceiling on what a flood from many addresses can cost in
+    /// log volume; past it, reports are dropped and one `client.errors_dropped`
+    /// warning is written per minute. A real outage still shows up long before
+    /// this is reached — the alert fires on far fewer.
+    CLIENT_ERRORS_MAX_PER_MINUTE: z.coerce.number().int().positive().default(600),
 
     /// Replies (new or changed) one network address may send per hour on a
     /// feedback form's no-sign-in link. Nobody signs in there, so there is no

@@ -1,4 +1,4 @@
-import { NOT_A_PYQ_PLAN } from '../../../shared/pyq-plan';
+import { NOT_A_PYQ_PLAN, isPyqPlanMetadata } from '../../../shared/pyq-plan';
 import {
   BadRequestException,
   ConflictException,
@@ -44,6 +44,19 @@ const CATALOG_TYPES: ProductType[] = [
 ];
 
 /** `type` filter for a catalogue read: the one asked for, if it is a catalogue type. */
+/**
+ * PYQ plans are products, but are changed only through PyqPlanAdminService,
+ * which is admin-only, gated by SUBSCRIPTION_MANAGEMENT_ENABLED, and keeps
+ * their rules: price and length never change in place, and a plan is never
+ * archived (that would cut off everyone on it). The generic product endpoints
+ * are open to educators too and know none of that, so they refuse plans.
+ */
+function assertNotPyqPlan(product: Product): void {
+  if (isPyqPlanMetadata(product.metadata)) {
+    throw new ConflictException('This is a PYQ subscription plan. Manage it from PYQ → Plans & trial.');
+  }
+}
+
 function catalogType(requested?: ProductType): Prisma.EnumProductTypeFilter {
   return { in: CATALOG_TYPES.filter((type) => !requested || type === requested) };
 }
@@ -190,6 +203,7 @@ export class ProductService {
     within?: WithinProductWrite,
   ): Promise<Product> {
     const before = await this.getOrThrow(id);
+    assertNotPyqPlan(before);
 
     const accessType = input.accessType ?? before.accessType;
     const pricing =
@@ -337,6 +351,7 @@ export class ProductService {
     actor: Actor,
     extra: Prisma.ProductUncheckedUpdateInput = {},
   ): Promise<Product> {
+    assertNotPyqPlan(before);
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.update({
         where: { id: before.id },
@@ -464,6 +479,8 @@ export class ProductService {
       status: query.status,
       type: catalogType(query.type),
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' } } : {}),
+      // Plans have their own screen (PYQ → Plans & trial) with its own rules.
+      AND: [NOT_A_PYQ_PLAN],
     };
 
     const [items, total] = await this.prisma.$transaction([

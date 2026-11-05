@@ -15,11 +15,15 @@ export function ExamMobileStatusBar({
   statuses,
   currentIndex,
   onJump,
+  indices,
+  heading,
 }: {
   counts: ExamStatusCounts;
   statuses: ExamQuestionStatus[];
   currentIndex: number;
   onJump: (index: number) => void;
+  indices?: number[];
+  heading?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -50,6 +54,8 @@ export function ExamMobileStatusBar({
               counts={counts}
               statuses={statuses}
               currentIndex={currentIndex}
+              indices={indices}
+              heading={heading}
               onJump={(i) => {
                 setOpen(false);
                 onJump(i);

@@ -52,9 +52,12 @@ function NavLink({ item, collapsed, onNavigate }: { item: NavItem; collapsed?: b
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
         collapsed && "justify-center px-0",
+        // The rail is deep purple, so the active item is the light one: a
+        // near-white pill carrying the brand colour as its text. Everything
+        // else is the rail's own muted foreground, lifting to white on hover.
         active
-          ? "bg-teal text-teal-foreground"
-          : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
       )}
     >
       <Icon className="size-4.5 shrink-0" strokeWidth={1.9} />

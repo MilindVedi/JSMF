@@ -7,7 +7,7 @@ import { ChevronRight, CreditCard, FileText, LogOut, Mail, Minus, Plus, Trophy, 
 import { authApi } from "@jsmf/core/api";
 import type { PyqPreferences } from "@jsmf/core/data-source";
 import { initialsOf } from "@jsmf/core/domain";
-import { useAccess, usePreferences, useTaxonomyLookup, useUpdatePreferences } from "@jsmf/core/hooks";
+import { pyqKeys, useAccess, usePreferences, useTaxonomyLookup, useUpdatePreferences } from "@jsmf/core/hooks";
 import { useAuthStore } from "@/lib/auth-store";
 import { SUPPORT_EMAIL } from "@/lib/env";
 import { useStreakState } from "@/lib/streak";
@@ -39,7 +39,7 @@ export default function ProfileScreen() {
   const streak = useStreakState();
   const { taxonomy, exam } = useTaxonomyLookup();
   const colors = useColors();
-  const memberSince = useQuery({ queryKey: ["account", "member-since"], queryFn: () => authApi.memberSince(), staleTime: Infinity });
+  const memberSince = useQuery({ queryKey: pyqKeys.memberSince, queryFn: () => authApi.memberSince(), staleTime: Infinity });
 
   const [name, setName] = useState(user?.name ?? "");
   const [examId, setExamId] = useState<string | null>(null);
@@ -69,7 +69,7 @@ export default function ProfileScreen() {
   const chosenGoal = goal ?? savedGoal;
   const dirty = name.trim() !== user.name || chosenExam !== savedExam || chosenGoal !== savedGoal;
   const plan = access.data?.plan ?? null;
-  const planLabel = access.data ? (plan?.title ?? "Free") : null;
+  const planLabel = access.data ? (plan?.title ?? (access.data.trial ? "Free trial" : "Free")) : null;
 
   async function save() {
     setSaving(true);
@@ -92,7 +92,7 @@ export default function ProfileScreen() {
 
   function requestDeletion() {
     setDeleteOpen(false);
-    const subject = encodeURIComponent("Account deletion request — JSMF Med Prep");
+    const subject = encodeURIComponent("Account deletion request — JSMF PYQs");
     const body = encodeURIComponent(`Please delete my JSMF account and its data.\n\nAccount email: ${user!.email ?? ""}\nAccount id: ${user!.id}\n`);
     Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`).catch(() =>
       toast.info("Email us to delete your account", `Write to ${SUPPORT_EMAIL} from your account's email address.`)
@@ -125,7 +125,7 @@ export default function ProfileScreen() {
         <Divider />
         <View className="flex-row gap-6">
           <View className="flex-row items-center gap-2">
-            <StreakFlame size={16} live={false} />
+            <StreakFlame size={16} live={false} cold={streak.currentStreak < 1} />
             <Txt className="text-sm text-muted-foreground">
               Current streak <Txt weight={700} className="text-sm">{streak.currentStreak}d</Txt>
             </Txt>
@@ -151,9 +151,10 @@ export default function ProfileScreen() {
           <Txt weight={700} className="text-[13px]">
             Target exam
           </Txt>
-          <View className="flex-row gap-2">
+          {/* Three to a row, as web's grid: an admin-added exam wraps instead of squeezing. */}
+          <View className="flex-row flex-wrap gap-2">
             {taxonomy.exams.map((e) => (
-              <Chip key={e.id} label={e.shortName} selected={chosenExam === e.id} onPress={() => setExamId(e.id)} className="flex-1 justify-center" />
+              <Chip key={e.id} label={e.shortName} selected={chosenExam === e.id} onPress={() => setExamId(e.id)} className="grow basis-[30%] justify-center" />
             ))}
           </View>
         </View>
@@ -176,6 +177,11 @@ export default function ProfileScreen() {
               <Chip key={g} label={String(g)} selected={chosenGoal === g} onPress={() => setGoal(g)} className="h-8 px-3" />
             ))}
           </View>
+          {/* Worth saying plainly: the goal is what the streak counts, so
+              changing it changes what a day has to be to keep the run. */}
+          <Txt className="text-[11px] text-muted-foreground">
+            Reach it to earn the day and keep your streak going. Days already earned are never taken away.
+          </Txt>
         </View>
         <Button label="Save changes" disabled={!dirty || name.trim().length < 2 || saving} loading={saving} onPress={save} />
       </Card>

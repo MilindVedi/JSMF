@@ -23,7 +23,7 @@ export default function LegalScreen() {
       {!type ? (
         <Txt className="text-muted-foreground">This document does not exist.</Txt>
       ) : doc.data ? (
-        <LegalDocumentView document={doc.data} />
+        <LegalDocumentView document={doc.data} slug={slug as LegalDocumentSlug} />
       ) : doc.isError ? (
         <Txt className="text-muted-foreground">{LEGAL_LOAD_ERROR}</Txt>
       ) : (

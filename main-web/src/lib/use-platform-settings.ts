@@ -81,7 +81,7 @@ export interface MedPrepLink {
 }
 
 /**
- * The "Med Prep" crossover in the header, and whether it is still being
+ * The "PYQs" crossover in the header, and whether it is still being
  * announced as new. Both are admin switches, so they can be turned off
  * without a deploy — the first the moment that site has a problem, the second
  * once it has stopped being news.

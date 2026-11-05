@@ -127,24 +127,32 @@
   --chart-4: oklch(0.72 0.14 70);
   --chart-5: oklch(0.75 0.09 290);
 
-  /* Streak tiers — a progression from soft violet to gold/ember. */
-  --streak-warming: oklch(0.7 0.1 294);
-  --streak-hot: oklch(0.6 0.16 294);
-  --streak-blazing: oklch(0.52 0.2 300);
-  --streak-legendary: oklch(0.66 0.15 75);
+  /* Streak tiers — fire colours: yellow spark, orange, red, royal purple,
+     gold, then deepening ember tones. Mirrored in mobile/src/theme/palette.json. */
+  --streak-spark: oklch(0.82 0.14 85);
+  --streak-warming: oklch(0.72 0.18 50);
+  --streak-hot: oklch(0.65 0.22 25);
+  --streak-blazing: oklch(0.58 0.24 300);
+  --streak-legendary: oklch(0.8 0.16 90);
   --streak-45: oklch(0.62 0.16 60);
   --streak-60: oklch(0.58 0.15 45);
   --streak-90: oklch(0.54 0.14 32);
   --streak-120: oklch(0.5 0.13 20);
 
-  --sidebar: oklch(0.975 0.01 295);
-  --sidebar-foreground: oklch(0.22 0.035 294);
-  --sidebar-primary: oklch(0.43 0.22 294);
-  --sidebar-primary-foreground: oklch(0.99 0.005 295);
-  --sidebar-accent: oklch(0.95 0.035 295);
-  --sidebar-accent-foreground: oklch(0.32 0.12 294);
-  --sidebar-border: oklch(0.9 0.018 294);
-  --sidebar-ring: oklch(0.56 0.2 294);
+  /* The rail is deep brand purple in both themes — it is the one piece of
+     furniture that stays the same whatever the page beside it is doing, so it
+     carries the brand and lets the working area stay quiet. `primary` here is
+     the active pill: near-white, with deep purple text, rather than a second
+     saturated colour competing with the rail itself. `accent` is only a wash
+     of white for hover, so nothing on the rail needs its own hue. */
+  --sidebar: oklch(0.27 0.12 294);
+  --sidebar-foreground: oklch(0.9 0.025 294);
+  --sidebar-primary: oklch(0.985 0.006 294);
+  --sidebar-primary-foreground: oklch(0.32 0.14 294);
+  --sidebar-accent: oklch(1 0 0 / 10%);
+  --sidebar-accent-foreground: oklch(0.99 0.005 295);
+  --sidebar-border: oklch(1 0 0 / 14%);
+  --sidebar-ring: oklch(0.82 0.09 294);
 
   /* Answer states — muted surfaces, kept clearly distinct from the violet. */
   --success: oklch(0.94 0.045 165);
@@ -197,23 +205,25 @@
   --chart-4: oklch(0.76 0.13 70);
   --chart-5: oklch(0.6 0.08 290);
 
-  --streak-warming: oklch(0.76 0.09 294);
-  --streak-hot: oklch(0.68 0.14 294);
-  --streak-blazing: oklch(0.64 0.17 300);
-  --streak-legendary: oklch(0.74 0.15 75);
+  --streak-spark: oklch(0.85 0.13 85);
+  --streak-warming: oklch(0.76 0.16 50);
+  --streak-hot: oklch(0.7 0.19 25);
+  --streak-blazing: oklch(0.66 0.21 300);
+  --streak-legendary: oklch(0.84 0.15 90);
   --streak-45: oklch(0.7 0.16 60);
   --streak-60: oklch(0.66 0.15 45);
   --streak-90: oklch(0.62 0.14 32);
   --streak-120: oklch(0.58 0.13 20);
 
-  --sidebar: oklch(0.15 0.03 294);
-  --sidebar-foreground: oklch(0.96 0.012 295);
-  --sidebar-primary: oklch(0.72 0.15 294);
-  --sidebar-primary-foreground: oklch(0.17 0.03 294);
-  --sidebar-accent: oklch(0.26 0.05 294);
-  --sidebar-accent-foreground: oklch(0.96 0.012 295);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.62 0.17 294);
+  /* Same rail, a shade deeper so it still separates from a dark page. */
+  --sidebar: oklch(0.19 0.055 294);
+  --sidebar-foreground: oklch(0.88 0.03 294);
+  --sidebar-primary: oklch(0.96 0.012 295);
+  --sidebar-primary-foreground: oklch(0.22 0.07 294);
+  --sidebar-accent: oklch(1 0 0 / 10%);
+  --sidebar-accent-foreground: oklch(0.99 0.005 295);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.72 0.12 294);
 
   --success: oklch(0.3 0.06 165);
   --success-foreground: oklch(0.84 0.09 165);
@@ -324,22 +334,81 @@
     transform-origin: 50% 85%;
   }
 
-  /* StreakFlame: the outer flame sways and stretches while the core breathes
-     on a different period, so the two never move in lockstep. */
-  @keyframes flame-sway {
-    0%, 100% { transform: rotate(0deg) scale(1, 1); }
-    25% { transform: rotate(-3deg) scale(0.98, 1.04); }
-    50% { transform: rotate(1.5deg) scale(1.02, 0.97); }
-    75% { transform: rotate(2.5deg) scale(0.99, 1.03); }
+  /* StreakFlame: an aura breathing behind the fire, the fire flickering, and
+     two sparks rising out of it — three periods, so the whole never pulses in
+     lockstep. The aura is the only part that takes the tier's colour, set as
+     --aura from getStreakLevel; the fire stays fire-coloured at every tier. */
+  .streak-flame {
+    --aura: var(--muted-foreground);
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    flex-shrink: 0;
   }
-  .animate-flame-sway { animation: flame-sway 1.8s ease-in-out infinite; }
+  .streak-aura {
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: radial-gradient(circle, color-mix(in oklch, var(--aura) 55%, transparent) 0%, transparent 70%);
+    animation: streak-breathe 2.4s ease-in-out infinite;
+  }
+  .streak-icon {
+    position: relative;
+    transform-origin: 50% 90%;
+    animation: streak-flicker 1.6s ease-in-out infinite;
+    filter: drop-shadow(0 0 4px color-mix(in oklch, var(--aura) 80%, transparent));
+  }
+  .streak-spark {
+    position: absolute;
+    bottom: 30%;
+    width: 3px;
+    height: 3px;
+    border-radius: 9999px;
+    background: var(--aura);
+    opacity: 0;
+    animation: streak-rise 2s ease-out infinite;
+  }
+  .streak-spark-1 { left: 38%; }
+  .streak-spark-2 { left: 58%; animation-delay: 1s; }
 
-  @keyframes flame-core {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    40% { transform: scale(0.88, 1.08); opacity: 0.9; }
-    70% { transform: scale(1.06, 0.95); opacity: 1; }
+  /* Nothing is burning on day zero, so the fire stays dim and has no sparks —
+     but it smoulders slowly rather than sitting dead, so the flame reads as
+     something that can be lit. */
+  .streak-flame[data-cold] .streak-icon { opacity: 0.45; filter: none; animation: streak-smoulder 3.6s ease-in-out infinite; }
+  .streak-flame[data-cold] .streak-aura { opacity: 0.4; animation: streak-smoulder-glow 4.8s ease-in-out infinite; }
+  /* A still flame, for a flame used as a label rather than as a live streak. */
+  .streak-flame[data-still] .streak-icon,
+  .streak-flame[data-still] .streak-aura { animation: none; }
+
+  @keyframes streak-flicker {
+    0%, 100% { transform: scale(1) rotate(0); }
+    25% { transform: scale(1.08, 0.95) rotate(-3deg); }
+    50% { transform: scale(0.96, 1.07) rotate(2deg); }
+    75% { transform: scale(1.05, 0.98) rotate(-1deg); }
   }
-  .animate-flame-core { animation: flame-core 1.15s ease-in-out infinite; }
+
+  @keyframes streak-smoulder {
+    0%, 100% { opacity: 0.42; transform: scale(1); }
+    50% { opacity: 0.62; transform: scale(1.05); }
+  }
+
+  @keyframes streak-smoulder-glow {
+    0%, 100% { opacity: 0.25; transform: scale(0.9); }
+    50% { opacity: 0.55; transform: scale(1.1); }
+  }
+
+  @keyframes streak-breathe {
+    0%, 100% { transform: scale(0.85); opacity: 0.7; }
+    50% { transform: scale(1.15); opacity: 1; }
+  }
+
+  /* Named "rise", not "ember": streak-ember below is the one-shot celebration
+     burst, and two keyframes of the same name would silently fight. */
+  @keyframes streak-rise {
+    0% { transform: translateY(0) scale(1); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translateY(-14px) scale(0.3); opacity: 0; }
+  }
 
   /* Celebration: the badge pops with a little overshoot, and embers drift
      out and up from it (each ember sets --ember-x / --ember-y inline). */
@@ -358,8 +427,9 @@
   .animate-streak-ember { animation: streak-ember 900ms cubic-bezier(0.2, 0.7, 0.3, 1) both; }
 
   @media (prefers-reduced-motion: reduce) {
-    .animate-flame-sway, .animate-flame-core, .animate-streak-ember,
-    .animate-streak-idle-pulse, .animate-streak-fire { animation: none; }
+    .animate-streak-ember, .animate-streak-idle-pulse, .animate-streak-fire,
+    .streak-icon, .streak-aura, .streak-spark,
+    .streak-flame[data-cold] .streak-icon, .streak-flame[data-cold] .streak-aura { animation: none; }
     .animate-streak-pop { animation-duration: 1ms; }
   }
 }
@@ -841,8 +911,107 @@
 .cta-spot:hover .cta-arrow { animation: none; transform: translateX(6px); }
 .cta-spot:active { transform: translateY(0) scale(0.98); }
 .cta-spot:focus-visible { outline: 3px solid color-mix(in oklab, var(--primary) 45%, white); outline-offset: 3px; }
+/* The same call to action, inverted: a light button on a dark surface, for
+   the dashboard's purple session card. `cta-spot` cannot be reused there —
+   its whole body is a purple gradient, which on a purple card is a button you
+   have to look for. So this keeps the motion vocabulary (the sweep, the arrow
+   nudge, the lift) and swaps the colours. */
+.cta-light {
+  position: relative;
+  isolation: isolate;
+  background: var(--brand-on-deep);
+  color: var(--brand-deep);
+  box-shadow: 0 10px 26px -12px rgb(0 0 0 / 45%), inset 0 -1px 0 rgb(0 0 0 / 6%);
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* A ring that breathes outward, so the button is noticed on a card the eye
+   otherwise reads as one block of colour. */
+.cta-light::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  border: 2px solid color-mix(in oklab, var(--brand-on-deep) 70%, transparent);
+  animation: cta-ripple 2.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  pointer-events: none;
+}
+/* The sweep is dark here: a white sheen on a white button is invisible. */
+.cta-light .cta-shine::after {
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--brand-deep) 16%, transparent), transparent);
+}
+.cta-light:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 34px -12px rgb(0 0 0 / 55%), 0 0 0 4px color-mix(in oklab, var(--brand-on-deep) 22%, transparent);
+}
+.cta-light:hover .cta-arrow { animation: none; transform: translateX(5px); }
+.cta-light:active { transform: translateY(0) scale(0.98); }
+.cta-light:focus-visible { outline: 3px solid var(--brand-on-deep); outline-offset: 3px; }
+
+/* The four ways into the app, under the dashboard's figures.
+
+   At rest they are plain white cards. On hover two things happen: the white
+   warms to a faint wash of brand, so the card stops being a neutral surface
+   and starts being a thing you are about to open; and a bright streak runs
+   across it once, left to right — the Resume button's sweep, scaled up to a
+   card. Fired by the pointer rather than looping, because four cards sweeping
+   on their own timers would be a disco, not a dashboard.
+
+   Both pseudo-elements sit at z-index -1 inside the card's own stacking
+   context: that paints them over the card's background but under its text,
+   which is what keeps the streak behind the label instead of washing it out. */
+.action-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.action-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(150deg, color-mix(in oklab, var(--primary) 10%, var(--card)), var(--card) 68%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+.action-card:hover::before,
+.action-card:focus-visible::before { opacity: 1; }
+
+.action-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 45%;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transform: skewX(-18deg);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--primary) 28%, transparent) 45%,
+    color-mix(in oklab, white 60%, transparent) 56%,
+    transparent
+  );
+}
+.action-card:hover::after,
+.action-card:focus-visible::after { animation: action-card-blaze 0.85s cubic-bezier(0.3, 0.1, 0.3, 1); }
+
+@keyframes action-card-blaze {
+  0% { left: -60%; opacity: 0; }
+  12% { opacity: 1; }
+  100% { left: 115%; opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cta-spot, .cta-spot::before, .cta-shine::after, .cta-arrow { animation: none; }
+  .cta-light, .cta-light::before { animation: none; }
+  /* The tint stays — it is a state, not motion. Only the streak stops. */
+  .action-card:hover::after, .action-card:focus-visible::after { animation: none; }
 }
 @utility auth-stage { margin-inline: auto; display: grid; min-height: calc(100vh - 145px); max-width: 80rem; align-items: center; gap: 4rem; padding: 3rem 1.25rem; @media (min-width: 768px) { grid-template-columns: 1fr 28rem; padding-inline: 2rem; } }
 @utility auth-aside { display: none; @media (min-width: 768px) { display: flex; flex-direction: column; gap: 1.5rem; } }

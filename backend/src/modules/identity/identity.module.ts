@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { StorageModule } from '../storage/storage.module';
 import { AccountRecoveryService } from './application/account-recovery.service';
 import { ProfileService } from './application/profile.service';
 import { AdminInvitationService } from './application/admin-invitation.service';
@@ -7,6 +8,7 @@ import { AuthService } from './application/auth.service';
 import { OAuthService } from './application/oauth.service';
 import { PhoneSignInService } from './application/phone-sign-in.service';
 import { TokenService } from './application/token.service';
+import { UserAvatarUploads } from './application/user-avatar-uploads';
 import { VerificationCodeService } from './application/verification-code.service';
 import { VerificationDeliveryService } from './application/verification-delivery.service';
 import { PasswordHasher } from './domain/password-hasher.port';
@@ -41,7 +43,11 @@ import { PhoneAuthController } from './http/phone-auth.controller';
  */
 @Global()
 @Module({
-  imports: [JwtModule.register({})],
+  // StorageModule for avatars: the "user.avatar" upload purpose reads and
+  // removes the stored file. UploadPurposeRegistry needs no import —
+  // UploadsModule is global and exports it, which is what keeps that
+  // dependency one-way.
+  imports: [JwtModule.register({}), StorageModule],
   controllers: [
     AuthController,
     PhoneAuthController,
@@ -67,6 +73,7 @@ import { PhoneAuthController } from './http/phone-auth.controller';
     AdminInvitationService,
     OAuthService,
     GoogleOAuthClient,
+    UserAvatarUploads,
     // The hasher is bound to its port, not injected concretely, so replacing
     // Argon2 later touches this line and nothing else.
     { provide: PasswordHasher, useClass: Argon2PasswordHasher },
@@ -77,6 +84,7 @@ import { PhoneAuthController } from './http/phone-auth.controller';
     PasswordHasher,
     VerificationCodeService,
     AccountRecoveryService,
+    UserAvatarUploads,
   ],
 })
 export class IdentityModule {}

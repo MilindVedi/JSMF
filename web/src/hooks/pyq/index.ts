@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import "@/lib/core";
-import { useStartSession as useCoreStartSession } from "@jsmf/core/hooks";
+import { useStartMock as useCoreStartMock, useStartSession as useCoreStartSession } from "@jsmf/core/hooks";
 import type { DailyLimitError } from "@jsmf/core/data-source";
 import { dataSource } from "@/lib/data-source";
 
@@ -41,6 +41,16 @@ export function useStartSession() {
   const router = useRouter();
   return useCoreStartSession({
     onStarted: (id, startIndex) => router.push(`/practice/${id}?i=${startIndex}`),
+    onDailyLimit: (error) => notifyDailyLimit(error, () => router.push("/subscription")),
+    getSourceHref: currentHref,
+  });
+}
+
+/** Starts a full mock and opens it on its instructions screen. */
+export function useStartMock() {
+  const router = useRouter();
+  return useCoreStartMock({
+    onStarted: (id) => router.push(`/practice/${id}`),
     onDailyLimit: (error) => notifyDailyLimit(error, () => router.push("/subscription")),
     getSourceHref: currentHref,
   });

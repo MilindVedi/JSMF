@@ -345,6 +345,11 @@ export class ImportQuestionDto {
   @IsEnum(QuestionStatus)
   status?: QuestionStatus;
 
+  @ApiPropertyOptional({ description: "Never shuffle the options. Omitted: unchanged (false for a new question)" })
+  @IsOptional()
+  @IsBoolean()
+  keepOptionOrder?: boolean;
+
   @ApiProperty({ type: [ImportOptionDto] })
   @IsArray()
   @ArrayMinSize(2)

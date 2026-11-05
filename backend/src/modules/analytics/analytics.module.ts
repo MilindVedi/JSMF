@@ -4,7 +4,8 @@ import { AnalyticsReportService } from './application/analytics-report.service';
 import { FinanceReportService } from './application/finance-report.service';
 import { AdminAnalyticsController } from './http/admin-analytics.controller';
 import { AnalyticsController } from './http/analytics.controller';
-import { plainTextBody } from './http/plain-text-body.middleware';
+import { plainTextBody } from '../../common/middleware/plain-text-body';
+import { MAX_BODY_BYTES } from './domain/analytics-event';
 
 /**
  * First-party activity analytics for the websites: a batch ingest endpoint and
@@ -16,6 +17,6 @@ import { plainTextBody } from './http/plain-text-body.middleware';
 })
 export class AnalyticsModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(plainTextBody).forRoutes({ path: 'analytics/events', method: RequestMethod.POST });
+    consumer.apply(plainTextBody(MAX_BODY_BYTES)).forRoutes({ path: 'analytics/events', method: RequestMethod.POST });
   }
 }

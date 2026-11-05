@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
+import { DEFAULT_DAILY_TARGET } from './learning.service';
 
 /** India is UTC+5:30 with no DST, so a fixed offset is exact. */
 const IST_OFFSET_MS = 330 * 60_000;
@@ -66,18 +67,33 @@ export class QuestionStateService {
         AND NOT flagged`;
   }
 
-  /** Rebuilds the user's answer count for the India-time day containing `at`. */
+  /**
+   * Rebuilds the user's answer count for the India-time day containing `at`,
+   * and records whether that day reached their daily goal — the thing the
+   * streak counts.
+   *
+   * `goal_met` is kept rather than recomputed on read because the goal is
+   * editable: comparing a past day's count against today's target would wipe
+   * out a streak the moment a student raised it. For the same reason the
+   * flag only ever goes true (`OR EXCLUDED.goal_met`) — a day earned at a
+   * target of ten stays earned when the target becomes twenty an hour later.
+   */
   async refreshDay(userId: string, at: Date, db: Db = this.prisma): Promise<void> {
     const shifted = at.getTime() + IST_OFFSET_MS;
     const start = new Date(shifted - (shifted % DAY_MS) - IST_OFFSET_MS);
     const end = new Date(start.getTime() + DAY_MS);
     const day = new Date(shifted - (shifted % DAY_MS)).toISOString().slice(0, 10);
     await db.$executeRaw`
-      INSERT INTO pyq.user_daily_activity (user_id, day, answered)
-      SELECT ${userId}::uuid, ${day}::date, count(*)::int
+      INSERT INTO pyq.user_daily_activity (user_id, day, answered, goal_met)
+      SELECT ${userId}::uuid, ${day}::date, count(*)::int,
+             count(*)::int >= COALESCE(
+               (SELECT p.daily_target FROM pyq.user_preferences p WHERE p.user_id = ${userId}::uuid),
+               ${DEFAULT_DAILY_TARGET})
       FROM pyq.attempts
       WHERE user_id = ${userId}::uuid AND answered_at >= ${start} AND answered_at < ${end}
-      ON CONFLICT (user_id, day) DO UPDATE SET answered = EXCLUDED.answered`;
+      ON CONFLICT (user_id, day) DO UPDATE
+        SET answered = EXCLUDED.answered,
+            goal_met = pyq.user_daily_activity.goal_met OR EXCLUDED.goal_met`;
   }
 
   /** Every row from scratch — for `npm run db:pyq:rebuild-read-models`. */
@@ -103,12 +119,19 @@ export class QuestionStateService {
         WHERE NOT (s.mode = 'TEST' AND s.status = 'IN_PROGRESS')
         GROUP BY a.user_id, a.question_id
         HAVING count(a.answered_at) > 0 OR bool_or(a.flagged)`;
+      // A full rebuild has no record of what each student's goal was on each
+      // past day — only what it is now — so days are judged by the current
+      // target. Routine refreshes keep the real thing; this is the fallback
+      // for a rebuild after a rollback, and matches the backfill shipped with
+      // the migration that added the column.
       const days = await tx.$executeRaw`
-        INSERT INTO pyq.user_daily_activity (user_id, day, answered)
-        SELECT user_id, (answered_at AT TIME ZONE 'Asia/Kolkata')::date, count(*)::int
-        FROM pyq.attempts
-        WHERE answered_at IS NOT NULL
-        GROUP BY 1, 2`;
+        INSERT INTO pyq.user_daily_activity (user_id, day, answered, goal_met)
+        SELECT a.user_id, (a.answered_at AT TIME ZONE 'Asia/Kolkata')::date, count(*)::int,
+               count(*)::int >= COALESCE(p.daily_target, ${DEFAULT_DAILY_TARGET})
+        FROM pyq.attempts a
+        LEFT JOIN pyq.user_preferences p ON p.user_id = a.user_id
+        WHERE a.answered_at IS NOT NULL
+        GROUP BY 1, 2, p.daily_target`;
       return { states, days };
     }, { timeout: 10 * 60_000 });
   }

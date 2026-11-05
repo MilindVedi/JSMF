@@ -13,6 +13,7 @@ import {
   LogOut,
   Menu,
   Shield,
+  User as UserIcon,
   UserPlus,
   X,
 } from "lucide-react";
@@ -87,9 +88,9 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
       target="_blank"
       rel="noreferrer"
       className={cn("nav-link", medPrepLink.highlight && "nav-new")}
-      aria-label="Visit JSMF Med Prep, the question practice site, in a new tab"
+      aria-label="Visit JSMF PYQs, the question practice site, in a new tab"
     >
-      <GraduationCap className="size-4" /> Med Prep
+      <GraduationCap className="size-4" /> PYQs
       {medPrepLink.highlight && <span className="nav-new-badge">New</span>}
     </a>
   ) : null;
@@ -123,7 +124,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
               <span className="truncate font-normal text-muted-foreground">Jab Studies Met Fun</span>
             </Link>
 
-            {/* Not `md`: with the Med Prep crossover the row runs over at
+            {/* Not `md`: with the PYQs crossover the row runs over at
                 768 and at 1024, so the ☰ menu holds until 1240. A measured
                 width — the content decides this, not the device sizes. */}
             <nav className="hidden items-center gap-2 min-[1240px]:flex" aria-label="Main navigation">
@@ -148,7 +149,15 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             <div className="hidden shrink-0 items-center gap-2 whitespace-nowrap md:flex">
               {user ? (
                 <>
-                  <span className="text-sm text-muted-foreground">{user.name}</span>
+                  {/* The name was already here; making it the way in to the
+                      profile saves a nav item for the thing people look for
+                      under their own name anyway. */}
+                  <Link
+                    href="/account/profile"
+                    className="truncate text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    {user.name}
+                  </Link>
                   <button
                     type="button"
                     className={storeButton({ variant: "ghost", size: "sm" })}
@@ -220,6 +229,14 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             {ready && !isAccountPage && (
               <>
                 {user ? (
+                  <>
+                  <Link
+                    href="/account/profile"
+                    className={cn("nav-link", pathname === "/account/profile" && "nav-link-active")}
+                  >
+                    <UserIcon className="size-4" />
+                    Profile
+                  </Link>
                   <button
                     type="button"
                     className="nav-link"
@@ -231,6 +248,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                     <LogOut className="size-4" />
                     Log out
                   </button>
+                  </>
                 ) : (
                   <>
                     <Link href="/account/login" className="nav-link">

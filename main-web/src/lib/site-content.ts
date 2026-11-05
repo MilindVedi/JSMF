@@ -26,9 +26,9 @@ export const links = {
   /** The PDF store, where the planner that comes with a seat appears. */
   store: process.env.NEXT_PUBLIC_STORE_URL ?? "https://resources.jsmf.me",
   /**
-   * The Med Prep site (PYQ practice). Linked from the header, behind the
+   * The PYQs site (prep.jsmf.me). Linked from the header, behind the
    * `medPrepLinkEnabled` setting. Configurable so a staging deploy points at a
-   * staging Med Prep rather than the live one.
+   * staging PYQs rather than the live one.
    */
   medPrep: process.env.NEXT_PUBLIC_MED_PREP_URL ?? "https://prep.jsmf.me",
 };

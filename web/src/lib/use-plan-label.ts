@@ -14,5 +14,5 @@ export function usePlanLabel(): string | null {
 
   if (DATA_SOURCE_KIND === "mock") return getPlanById(mockPlanId)?.name ?? null;
   if (!data) return null;
-  return data.plan?.title ?? "Free";
+  return data.plan?.title ?? (data.trial ? "Free trial" : "Free");
 }

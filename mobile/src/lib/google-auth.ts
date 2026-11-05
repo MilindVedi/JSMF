@@ -1,5 +1,6 @@
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
+import { create } from "zustand";
 import { API_BASE_URL } from "./env";
 import { useAuthStore } from "./auth-store";
 
@@ -16,9 +17,19 @@ import { useAuthStore } from "./auth-store";
  */
 export const GOOGLE_CALLBACK_PATH = "auth/callback";
 
-/** True while this module's own flow is waiting, so the deep-link screen never exchanges the code a second time. */
-let flowActive = false;
-export const isGoogleFlowActive = () => flowActive;
+/**
+ * This module's own flow, observable so the deep-link screen can react when it
+ * ends. `active` while it waits (the screen must not exchange the code a second
+ * time); `handledCode` is the code the flow took for itself, and `error` why
+ * that failed. A flow that was dismissed leaves handledCode null, and the
+ * screen exchanges the link's code itself instead of waiting forever.
+ */
+export const useGoogleFlow = create<{ active: boolean; handledCode: string | null; error: string | null }>(() => ({
+  active: false,
+  handledCode: null,
+  error: null,
+}));
+export const isGoogleFlowActive = () => useGoogleFlow.getState().active;
 
 export type GoogleSignInResult =
   | { status: "signed-in" }
@@ -28,7 +39,7 @@ export type GoogleSignInResult =
 export async function signInWithGoogle(): Promise<GoogleSignInResult> {
   const redirect = Linking.createURL(GOOGLE_CALLBACK_PATH);
   const startUrl = `${API_BASE_URL}/auth/google/start?${new URLSearchParams({ redirect }).toString()}`;
-  flowActive = true;
+  useGoogleFlow.setState({ active: true, handledCode: null, error: null });
   try {
     const result = await WebBrowser.openAuthSessionAsync(startUrl, redirect);
     if (result.type !== "success") return { status: "cancelled" };
@@ -36,11 +47,14 @@ export async function signInWithGoogle(): Promise<GoogleSignInResult> {
     const error = typeof params.error === "string" ? params.error : null;
     const code = typeof params.code === "string" ? params.code : null;
     if (error || !code) return { status: "error", message: error ?? "This sign-in link is missing its code." };
+    useGoogleFlow.setState({ handledCode: code });
     await useAuthStore.getState().googleExchange(code);
     return { status: "signed-in" };
   } catch (caught) {
-    return { status: "error", message: caught instanceof Error ? caught.message : "Could not complete sign-in." };
+    const message = caught instanceof Error ? caught.message : "Could not complete sign-in.";
+    useGoogleFlow.setState({ error: message });
+    return { status: "error", message };
   } finally {
-    flowActive = false;
+    useGoogleFlow.setState({ active: false });
   }
 }

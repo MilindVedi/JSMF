@@ -1,10 +1,10 @@
-# JSMF Med Prep — mobile app (`mobile/`)
+# JSMF PYQs — mobile app (`mobile/`)
 
 The Android + iOS app for the PYQ product (the same product as `web/`), built with **Expo SDK 57** (React Native 0.86, React 19.2.3), **Expo Router**, **NativeWind 4** and the shared **`@jsmf/core`** package. It talks to the same NestJS backend and the same platform-wide JSMF account as web, jsmf.me and the store.
 
 | | |
 |---|---|
-| App name | JSMF Med Prep |
+| App name | JSMF PYQs |
 | Slug / scheme | `jsmf-med-prep` / `jsmfmedprep` |
 | Bundle id / package | `me.jsmf.medprep` (iOS and Android) |
 | Workspace | `mobile` is an npm workspace of the repo root, next to `packages/*` and `web` |
@@ -34,6 +34,7 @@ npx expo export --platform android   # production bundle, no device needed
 | Variable | Meaning | Default |
 |---|---|---|
 | `EXPO_PUBLIC_API_URL` | The backend's **absolute** URL, ending in `/api`. Public (inlined into the bundle) — never a secret. | `http://localhost:4000/api` |
+| `EXPO_PUBLIC_CLIENT_ERRORS_ENABLED` | Crash reports (JS errors and screens that crash) sent to the backend's `POST /client-errors` — see [Observability](../observability/README.md). `"false"` turns them off. | *(unset — on)* |
 
 Where the backend is from the device's point of view:
 
@@ -50,21 +51,44 @@ Put it in `mobile/.env.local` (ignored by git) or prefix the command: `EXPO_PUBL
 
 ## Screens (V1)
 
-Tabs: **Home · Practice · Revision · Stats · Profile**. Pushed screens: practice runner, results, review, custom test, history, bookmarks, plan, legal documents. Auth screens: sign in, sign up, forgot / reset password, and the Google callback landing.
+Tabs: **Home · Practice · Revision · Stats · Profile**. Pushed screens: practice runner, results, review, custom test, history, bookmarks, reinforce, plan, legal documents. Auth screens: sign in, sign up, forgot / reset password, and the Google callback landing.
 
 | Area | What it does (mirrors web) |
 |---|---|
 | Home | Onboarding variant for a brand-new account (no session ever created), otherwise the dashboard: stat cards, continue / last-session card, streak card, quick actions, recent activity, focus areas. |
 | Practice | The question bank: status tabs, exam / year / subject / topic / collection filters (bottom sheets), debounced search, sort, a list that loads more as you scroll, "Practice these questions"; links to Custom test and History. |
-| Custom test | Count presets + stepper, optional timer with realistic / balanced / relaxed pace + stepper, then include / ordering / name in the confirm dialog. |
+| Custom test | A **Full mock test** card (each exam whose pattern is on and whose bank can fill it), then count presets + stepper, optional timer with realistic / balanced / relaxed pace + stepper, then include / ordering / name in the confirm dialog. |
 | Practice runner | One question per screen; Submit shows the verdict and explanation; bookmark, flag, report, palette sheet; Previous / Next buttons. |
-| Test mode | A timed custom test opens the **exam console**: exam title, candidate name, Time Left (warning colour in the last 5 minutes, auto-submit at zero); Answered / Not Answered / Not Visited / Marked for Review / Answered & Marked counts under the header; the legend + jump grid in a bottom sheet; Mark for Review & Next, Clear Response, Previous, Save & Next, Submit with the counts dialog. Clear Response follows web's rule — there is no un-answer API, so it only drops a choice that has not been saved. |
-| Results / Review | Accuracy, tiles that filter the question list, subject breakdown; review with All / Correct / Incorrect / Unattempted, a strip of questions and wrapping Previous / Next. |
-| Revision | Needs Practice (Wrong / Never corrected / By subject), Bookmarked, Your Collections, Reinforce — each with exam / year, date window, search, sort and "Practise N". (Web's calendar custom range is not offered on the phone; the presets are.) |
-| Stats | Overview tiles, coverage (tap for per-subject coverage), subject-wise accuracy bars, correct / incorrect / unattempted ring, accuracy-over-time line chart (react-native-svg), links onward. |
+| Test mode | A timed custom test opens the **exam console**: exam title, candidate name, Time Left (warning colour in the last 5 minutes, auto-submit at zero); Answered / Not Answered / Not Visited / Marked for Review / Answered & Marked counts under the header; the legend + jump grid in a bottom sheet; Mark for Review & Next, Clear Response, Previous, Save & Next, Submit with the counts dialog. Clear Response follows web's rule — there is no un-answer API, so it only drops a choice that has not been saved. Every test first shows the **instructions** with "I am ready to begin" (the clock starts there); a full mock adds a section strip, the running section's own clock and palette, and moves on by itself when a section's time ends. Same rules as web: [exam-mode.md](../pyq/exam-mode.md). |
+| Results / Review | Accuracy (and, for a full mock, marks and a per-section breakdown), tiles that filter the question list, subject breakdown; review with All / Correct / Incorrect / Unattempted, a strip of questions and wrapping Previous / Next. |
+| Revision | Needs Practice (Wrong / Never corrected / By subject), Bookmarked, Your Collections, Reinforce — each with a recent / By subject switch, exam / year, date window, search, sort and "Practise N". Reinforce's "View all" opens the **Reinforce** screen (All correct / Recently correct / Not revisited, as web's /reinforce). (Web's calendar custom range is not offered on the phone; the presets are.) |
+| Stats | Overview tiles, coverage (tap for per-subject coverage), subject-wise accuracy bars (weakest first, coloured weak / fair / strong as web), correct / incorrect / unattempted ring, accuracy-over-time line chart (react-native-svg), links onward. |
 | Profile | Rename (the shared account name), email read-only, plan read-only, target exam, daily goal, legal links, contact support, sign out, request account deletion. |
 | Streak | Header chip on every tab (hidden at 0 days, as web), home streak card, and the daily-goal celebration: the badge pops with embers where the goal was reached (in place on the practice screens) or flies on an arc into the header chip, which pulses on landing; milestones ring. The flame is always fire-coloured; the box takes the tier colour. Reduce-motion skips the flicker, embers and flight. |
-| Legal | Terms / Privacy / Refund screens fetched from `legal/documents/:type?app=PYQ` and drawn with core's parsers. The acceptance gate opens when `legal/me` reports a document as `required`, and again whenever the API answers 403 `LEGAL_ACCEPTANCE_REQUIRED`: unticked boxes, Accept disabled until all are ticked, recorded with `app: "PYQ"`, the documents readable inside the gate, Sign out as the only other way out. A minor update shows a dismissible notice instead. |
+| Legal | Terms / Privacy / Refund screens fetched from `legal/documents/:type?app=PYQ` and drawn with core's parsers, each with **Previous versions** (the archive list and earlier versions, marked as such). The acceptance gate opens when `legal/me` reports a document as `required`, and again whenever the API answers 403 `LEGAL_ACCEPTANCE_REQUIRED`: unticked boxes, Accept disabled until all are ticked, recorded with `app: "PYQ"`, the documents readable inside the gate, Sign out as the only other way out. A minor update shows a dismissible notice instead. |
+
+### Kept in step with web (parity pass, November 2026)
+
+A side-by-side audit of web and mobile found these differences, now closed on the phone:
+
+- **Timed tests:** a test (or a full mock's section) reopened after its time ran out now auto-submits / moves on instead of showing no clock; Submit and time-up wait for an answer that is still saving, so it counts; Save & Next keeps the review mark when the daily limit stopped the save.
+- **Results and history:** a full mock's results show the per-section marks; history rows show a full mock's marks; history can filter by collection.
+- **Fresh data:** tabs stay mounted on a phone, so screens now refetch what a write marked stale when they come back into view (the question bank's statuses and tabs after a session, home, revision, stats, history, bookmarks).
+- **Streak:** the header chip no longer freezes on yesterday's count after the celebration; Home no longer celebrates behind a practice session; a 0-day streak shows web's dimmed, smouldering flame.
+- **Errors:** a screen that crashes shows the error screen in its own place (the rest of the app keeps working) with **Try again** and **Go home**; unhandled promise rejections are crash-reported in release builds; a failed legal acceptance shows its error inside the gate; the Google callback screen no longer spins forever when the in-app flow ends without signing in.
+
+A second pass closed the smaller differences:
+
+- **Home:** web's masthead — the streak eyebrow and the check-in line ("3 of 10 done today — 7 to go."), now shared from core (`streakCheckInLine`, `streakEyebrow`) so both apps say the same thing — and the exams pill; stat cards with web's hints and no "10/187" fraction; Today's goal with one pip per question (a bar past 24); the chip and badge breathe at the hotter tiers and the chip glows (iOS); the first-run hero waits for the saved exam instead of assuming NEET-PG.
+- **Revision and stats:** Stats → Wrong / Collections opens Revision on that section, expanded and scrolled to (`/revision?section=…`), and the tiles do the same; By subject keeps the chosen sort; correct bookmark empty-state wording, "View all N bookmarks" only past 5; "+N more" under a long collection; "Go to Question Bank" on the empty Needs Practice list; tap the accuracy chart to read a test's values; History has the Unattempted tile and its Retry reloads both queries.
+- **Exam console:** an **Instructions** button reopens the instructions mid-test; section tabs show question counts and say why a tab is locked; web's fuller instructions copy (negative marking, palette jump, answers changeable until submit) and the candidate on the begin screen; the full-mock dialog stays open with its spinner until the mock is created ("Continue to instructions"); opened-but-unsaved questions stay **Not Answered** after the OS kills the app (kept in AsyncStorage per session, removed on submit).
+- **Legal:** **Previous versions** under each document, the versions list, and an earlier version with web's banner (`legal/[slug]/versions`, `legal/[slug]/v/[version]`, using core's new `legalApi.versions` / `legalApi.version`); an in-document link to a website-only page reads as plain text instead of a dead link; the minor-update notice can no longer be pushed out of the toast queue by later toasts.
+- **App shell:** an unknown route or deep link shows the app's own "This page doesn't exist" screen (`+not-found.tsx`) instead of expo-router's developer screen, and `/_sitemap` redirects home; after a lost session, signing in again returns to the screen the student was on (web's `?next=`); React Query pauses while the phone is offline and reloads on reconnect (`expo-network`); a failed "load more" in the question bank keeps the loaded rows and offers Try again; "Member since" is a per-user query (`pyqKeys.memberSince`, web too) so switching accounts never shows the last one's; exam chips wrap on sign-up and profile; text fields carry their label for screen readers.
+- **Crash reports:** the reporter is installed from `mobile/index.js` (the app's entry, before any app module loads), queued reports are sent when the app goes to the background, and a screen that crashes on its first render is reported under its own route.
+
+New native dependencies: `expo-network` and `@react-native-async-storage/async-storage` (installed with `npx expo install`). They need a fresh development / store build — nothing has been released yet, so there is no over-the-air update to break.
+
+The free-trial offer is deliberately not shown on the phone (store rules) — a product decision, to be confirmed against the store rules.
 
 ## What is shared and what is app-only
 

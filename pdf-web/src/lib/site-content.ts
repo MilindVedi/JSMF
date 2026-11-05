@@ -47,7 +47,7 @@ export const mainWebsiteUrl =
   process.env.NEXT_PUBLIC_MAIN_SITE_URL?.replace(/\/$/, "") ?? "https://jsmf.me";
 
 /**
- * The Med Prep site (PYQ practice). Linked from the store header, behind the
+ * The PYQs site (prep.jsmf.me). Linked from the store header, behind the
  * `medPrepLinkEnabled` setting. Configurable for the same reason as above.
  */
 export const medPrepUrl =

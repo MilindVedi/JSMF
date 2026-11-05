@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { BookOpen, ExternalLink, GraduationCap, Home, Library, LogIn, LogOut, Mail, Menu, Users, Video, X } from "lucide-react";
+import { BookOpen, ExternalLink, GraduationCap, Home, Library, LogIn, LogOut, Mail, Menu, User as UserIcon, Users, Video, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { buttonVariants } from "@/components/ui/button";
 import { ContactDialog } from "@/components/contact-dialog";
@@ -18,7 +18,7 @@ import { useSessionStore } from "@/store/session-store";
  * `sm`, where the initials alone carry it and the row is tight.
  *
  * The same lockup is in web/src/components/common/logo.tsx and pdf-web's
- * store layout; those add the product name ("Med Prep", "Resources").
+ * store layout; those add the product name ("PYQs", "Resources").
  */
 function Brand() {
   return (
@@ -109,7 +109,15 @@ function SiteHeader() {
 
   const account = !ready ? null : user ? (
     <>
-      <span className="hidden text-sm font-semibold text-muted-foreground lg:inline">{user.name}</span>
+      {/* The name was already here; making it the way in to the profile
+          saves a nav item for the thing people look for under their own
+          name anyway. */}
+      <Link
+        href="/account/profile"
+        className="hidden max-w-[12rem] truncate text-sm font-semibold text-muted-foreground hover:text-foreground lg:inline"
+      >
+        {user.name}
+      </Link>
       <button onClick={() => void logout()} className={buttonVariants({ variant: "ghost", size: "sm" })}>
         <LogOut size={14} /> Sign out
       </button>
@@ -153,7 +161,7 @@ function SiteHeader() {
             {/* The study resources live on the store, a separate site: opened
                 in a new tab, and the trailing icon says it leaves this one.
                 `nav-keep-icon` exempts it from the compact nav's icon hiding,
-                so it carries the same shelf icon as the Med Prep site's header
+                so it carries the same shelf icon as the PYQs site's header
                 and a visitor recognises the same destination on both. */}
             <a href={links.store} target="_blank" rel="noreferrer" className={`${navClass(false)} nav-keep-icon`}>
               <Library size={16} /> Study Resources <ExternalLink size={12} className="opacity-60" />
@@ -165,7 +173,7 @@ function SiteHeader() {
                 rel="noreferrer"
                 className={`${navClass(false)} nav-keep-icon ${medPrepLink.highlight ? "nav-new" : ""}`}
               >
-                <GraduationCap size={16} /> Med Prep
+                <GraduationCap size={16} /> PYQs
                 {medPrepLink.highlight && <span className="nav-new-badge">New</span>}
                 <ExternalLink size={12} className="opacity-60" />
               </a>
@@ -218,16 +226,21 @@ function SiteHeader() {
               rel="noreferrer"
               className={`${navClass(false)} ${medPrepLink.highlight ? "nav-new" : ""}`}
             >
-              <GraduationCap size={16} /> Med Prep
+              <GraduationCap size={16} /> PYQs
               {medPrepLink.highlight && <span className="nav-new-badge">New</span>}
               <ExternalLink size={12} className="opacity-60" />
             </a>
           )}
           <div className="mt-1 flex flex-col gap-2 border-t border-border pt-3 md:hidden">
             {ready && user ? (
-              <button onClick={() => void logout()} className="nav-link">
-                <LogOut size={16} /> Sign out ({user.name})
-              </button>
+              <>
+                <Link href="/account/profile" className="nav-link">
+                  <UserIcon size={16} /> Profile
+                </Link>
+                <button onClick={() => void logout()} className="nav-link">
+                  <LogOut size={16} /> Sign out ({user.name})
+                </button>
+              </>
             ) : (
               <>
                 <Link href="/account/login" className="nav-link">

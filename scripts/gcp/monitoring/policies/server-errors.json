@@ -1,0 +1,26 @@
+{
+  "displayName": "JSMF - server error",
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "An API or website server logged an ERROR (or worse).\n\nOpen Logs Explorer with `severity>=ERROR` for the service named in this alert, then open the entry and click its trace or copy its `jsonPayload.requestId` to see every line of the same request. Grouped issues: Error Reporting. Runbook: docs/observability/README.md."
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "ERROR in a JSMF Cloud Run service",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"cloud_run_revision\"\nresource.labels.service_name=(\"jsmf-backend\" OR \"jsmf-web-main\" OR \"jsmf-pdf-web\" OR \"jsmf-web-pyqs\")\nseverity>=ERROR\n-jsonPayload.activity=\"client.error\"",
+        "labelExtractors": {
+          "service": "EXTRACT(resource.labels.service_name)",
+          "activity": "EXTRACT(jsonPayload.activity)"
+        }
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "300s" },
+    "autoClose": "1800s"
+  },
+  "severity": "ERROR",
+  "notificationChannels": ["${CHANNEL}"]
+}

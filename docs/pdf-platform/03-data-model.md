@@ -275,7 +275,7 @@ One row per reader and product, overwritten as they read: it is a reading positi
 ### Reader and download columns (added 2026-10-25)
 
 - `platform_settings.med_prep_link_enabled` / `med_prep_link_highlight` (both default true):
-  whether the header of jsmf.me and the store carries the **Med Prep** link to the PYQ
+  whether the header of jsmf.me and the store carries the **PYQs** link to the PYQ
   practice site, and whether it still wears its "New" badge. Two switches rather than one
   because a new thing stops being new long before it stops being worth linking to. The
   highlight is ignored while the link is off.

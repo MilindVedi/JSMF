@@ -16,10 +16,10 @@ import { Reflector } from "@nestjs/core";
 import { randomUUID } from "node:crypto";
 import { RolesGuard } from "../../../common/guards/roles.guard";
 import { PrismaService } from "../../../shared/prisma/prisma.service";
-import { EntitlementService } from "../../entitlements/application/entitlement.service";
 import { AdminQuestionContentController } from "../http/admin-question-content.controller";
 import { AdminQuestionsController } from "../http/admin-questions.controller";
 import { PracticeService } from "./practice.service";
+import type { ExamSetupService } from "./exam-setup.service";
 import { ProgressService } from "./progress.service";
 import { PyqAccessService } from "./pyq-access.service";
 import { PyqTaxonomyAdminService } from "./pyq-taxonomy-admin.service";
@@ -30,6 +30,8 @@ import {
 import { CacheService } from '../../../shared/cache/cache.service';
 import { QuestionStateService } from './question-state.service';
 import { QuestionBankService } from "./question-bank.service";
+import { AuditService } from "../../../shared/audit/audit.service";
+import { PyqSubscriptionService } from "./pyq-subscription.service";
 
 /**
  * Admin content editing against a real Postgres. What matters: invalid
@@ -45,15 +47,15 @@ const config = {
 } as never;
 
 const prisma = new PrismaService();
-const access = new PyqAccessService(
-  prisma,
-  new EntitlementService(prisma),
-  config,
-);
+// Pass-through cache: these tests change settings between reads.
+const subscriptions = new PyqSubscriptionService(prisma, new AuditService(prisma), { wrap: (_key: string, _ttl: number, load: () => unknown) => load(), del: async () => {} } as never, config);
+const access = new PyqAccessService(prisma, config, subscriptions);
 const cache = new CacheService({ get: () => false } as never);
 const bank = new QuestionBankService(prisma, cache);
 const states = new QuestionStateService(prisma);
-const practice = new PracticeService(prisma, bank, access, states);
+// Options in written order here; shuffling has its own spec (exam-mode.integration.spec.ts).
+const examSetup = { settings: async () => ({ shuffleOptions: false }) } as unknown as ExamSetupService;
+const practice = new PracticeService(prisma, bank, access, states, examSetup);
 const progress = new ProgressService(prisma, bank);
 const admin = new QuestionAdminService(prisma);
 const taxonomy = new PyqTaxonomyAdminService(prisma);
@@ -268,10 +270,11 @@ describe("soft delete", () => {
   it("hides the question but keeps past sessions and their review working", async () => {
     const created = await admin.create(input(), actorId);
     const student = await createUser();
-    const session = await practice.start(student.id, {
+    const started = await practice.start(student.id, {
       mode: PracticeMode.TEST,
       questionIds: [created.id],
     });
+    const session = await practice.begin(student.id, started.id);
     await practice.answer(student.id, session.id, {
       questionId: created.id,
       selectedOptionId: created.correctOptionId!,

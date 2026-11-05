@@ -62,12 +62,14 @@ export function StreakGoalCelebrator({ inPlace = false }: { inPlace?: boolean })
     if (previous !== false || !streak.todayDone || streak.celebratedToday) return;
     if (pathname === "/dashboard") return;
 
-    // The server counts today in the streak from the day's first answer, so
-    // the topbar already shows today's count: it stays at that value through
-    // the flight and pulses as the badge lands, rather than dipping by one.
+    // Reaching the goal is what earns the day, so the server advances the
+    // streak in the same response that turns todayDone true: the count in
+    // hand is already today's. The topbar holds at yesterday's through the
+    // flight and arrives at today's as the badge lands — the same N-1 → N
+    // journey mobile makes.
     const days = Math.max(streak.currentStreak, 1);
     markCelebrated(streak.lastCompletedDate ?? new Date().toISOString().slice(0, 10));
-    if (!inPlace) beginPending(days, days);
+    if (!inPlace) beginPending(Math.max(days - 1, 0), days);
     timers.current.push(
       setTimeout(() => setBadgeDays(days), 0),
       setTimeout(() => {
@@ -106,8 +108,8 @@ export function StreakGoalCelebrator({ inPlace = false }: { inPlace?: boolean })
           }}
         >
           <StreakEmbers />
-          <StreakFlame className="size-6" glow={Math.max(level.glowIntensity, 2)} />
-          <span className="text-sm font-semibold" style={{ color: level.accent }}>
+          <StreakFlame days={badgeDays} size={24} />
+          <span className="text-sm font-semibold text-foreground">
             {badgeDays} day{badgeDays === 1 ? "" : "s"}
           </span>
         </div>

@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Bookmark, CheckCircle2, ChevronDown, ChevronRight, Library, Search, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
+import { FilterTabs } from "@/components/common/filter-tabs";
 import { EmptyState } from "@/components/common/empty-state";
 import { SubjectBadge } from "@/components/common/subject-badge";
 import { QuestionListRow } from "@/components/question-bank/question-list-row";
@@ -13,7 +14,6 @@ import { DateRangePicker } from "@/components/common/date-range-picker";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageLoading, QueryError } from "@/components/pyq/query-states";
 import { useCollections, useRevision, useStartSession, useTaxonomyLookup } from "@/hooks/pyq";
 import type { RevisionItem } from "@jsmf/core/data-source";
@@ -610,18 +610,7 @@ export default function RevisionPage() {
           )
         )}
       >
-          <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
-            <TabsList>
-              {MODES.map((m) => (
-                <TabsTrigger key={m.value} value={m.value}>
-                  {m.label}
-                  {m.count !== undefined && (
-                    <span className="ml-1.5 text-xs text-muted-foreground">{m.count}</span>
-                  )}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+          <FilterTabs label="Filter by revision list" value={mode} options={MODES} onChange={setMode} />
 
           <ExamYearFilterRow
             examIds={wrongExamIds}
@@ -745,15 +734,15 @@ export default function RevisionPage() {
           )
         )}
       >
-          <Tabs value={bookmarkedMode} onValueChange={(v) => setBookmarkedMode(v as SimpleMode)}>
-            <TabsList>
-              <TabsTrigger value="recent">
-                Recently Bookmarked
-                <span className="ml-1.5 text-xs text-muted-foreground">{bookmarkedInRange.length}</span>
-              </TabsTrigger>
-              <TabsTrigger value="subject">By subject</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <FilterTabs
+            label="Filter bookmarked questions"
+            value={bookmarkedMode}
+            onChange={setBookmarkedMode}
+            options={[
+              { value: "recent" as SimpleMode, label: "Recently Bookmarked", count: bookmarkedInRange.length },
+              { value: "subject" as SimpleMode, label: "By subject" },
+            ]}
+          />
 
           <ExamYearFilterRow
             examIds={bookmarkedExamIds}
@@ -909,15 +898,15 @@ export default function RevisionPage() {
                 onChange={setSelectedCollectionIds}
               />
 
-              <Tabs value={collectionsMode} onValueChange={(v) => setCollectionsMode(v as SimpleMode)}>
-                <TabsList>
-                  <TabsTrigger value="recent">
-                    Recently added
-                    <span className="ml-1.5 text-xs text-muted-foreground">{collectionsInRange.length}</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="subject">By subject</TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <FilterTabs
+                label="Filter collection questions"
+                value={collectionsMode}
+                onChange={setCollectionsMode}
+                options={[
+                  { value: "recent" as SimpleMode, label: "Recently added", count: collectionsInRange.length },
+                  { value: "subject" as SimpleMode, label: "By subject" },
+                ]}
+              />
 
               <ExamYearFilterRow
                 examIds={collectionsExamIds}
@@ -1054,15 +1043,15 @@ export default function RevisionPage() {
           )
         )}
       >
-          <Tabs value={reinforceMode} onValueChange={(v) => setReinforceMode(v as SimpleMode)}>
-            <TabsList>
-              <TabsTrigger value="recent">
-                Recently attempted
-                <span className="ml-1.5 text-xs text-muted-foreground">{reinforceInRange.length}</span>
-              </TabsTrigger>
-              <TabsTrigger value="subject">By subject</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <FilterTabs
+            label="Filter reinforce questions"
+            value={reinforceMode}
+            onChange={setReinforceMode}
+            options={[
+              { value: "recent" as SimpleMode, label: "Recently attempted", count: reinforceInRange.length },
+              { value: "subject" as SimpleMode, label: "By subject" },
+            ]}
+          />
 
           <ExamYearFilterRow
             examIds={reinforceExamIds}

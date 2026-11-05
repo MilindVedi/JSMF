@@ -1,3 +1,5 @@
+import type { ExamPattern, ExamSectionWindow } from "./exam-pattern";
+
 /**
  * Core data model for the JSMF mock UI prototype.
  *
@@ -115,7 +117,7 @@ export interface Collection {
 // Practice sessions / attempts
 // ---------------------------------------------------------------------------
 
-export type SessionMode = "browse" | "custom-test" | "bookmarks" | "wrong-questions";
+export type SessionMode = "browse" | "custom-test" | "full-mock" | "bookmarks" | "wrong-questions";
 
 export interface SessionFilters {
   examIds?: ExamId[];
@@ -155,6 +157,24 @@ export interface TestSession {
   completedAt?: string;
   /** Page the session was launched from, so "Save & exit" returns there instead of always the dashboard. */
   sourceHref?: string;
+  /**
+   * A test waiting on its instructions screen: its clock has not started and
+   * its questions are withheld (`questionIds` is empty until it is begun).
+   */
+  awaitingBegin?: boolean;
+  /** When the clock started; absent means at `startedAt`. */
+  clockStartedAt?: string;
+  /**
+   * Server time minus this device's, measured when the session was loaded.
+   * Deadlines are the server's, so every countdown adds this to `Date.now()`.
+   */
+  clockOffsetMs?: number;
+  /** How many questions the session holds — known even while they are withheld. */
+  totalQuestions?: number;
+  /** A full mock's exam pattern, as it was when the mock started. */
+  pattern?: ExamPattern;
+  /** When each of a full mock's sections is open; present once it has begun. */
+  sections?: ExamSectionWindow[];
 }
 
 // ---------------------------------------------------------------------------

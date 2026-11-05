@@ -84,9 +84,10 @@ export default function SignUpScreen() {
           <Txt weight={700} className="text-[13px]">
             Which exam are you preparing for? <Txt className="text-destructive">*</Txt>
           </Txt>
-          <View className="flex-row gap-2">
+          {/* Wraps like web's grid, so a fourth or fifth exam stays readable. */}
+          <View className="flex-row flex-wrap gap-2">
             {exams.map((exam) => (
-              <Chip key={exam.id} label={exam.shortName} selected={targetExamId === exam.id} onPress={() => setTargetExamId(exam.id)} className="flex-1 justify-center" />
+              <Chip key={exam.id} label={exam.shortName} selected={targetExamId === exam.id} onPress={() => setTargetExamId(exam.id)} className={exams.length === 2 ? "grow basis-[45%] justify-center" : "grow basis-[30%] justify-center"} />
             ))}
           </View>
           {errors.targetExamId ? <Txt className="text-xs text-destructive">{errors.targetExamId}</Txt> : null}

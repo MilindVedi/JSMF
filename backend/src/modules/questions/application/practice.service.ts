@@ -16,18 +16,35 @@ import { randomInt } from 'node:crypto';
 import { activity } from '../../../shared/logging/activity';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import {
+  marksFor,
+  maxMarksFor,
+  patternTotals,
+  readExamPattern,
+  sectionWindows,
+  windowForPosition,
+  type ExamPattern,
+} from '../domain/exam-pattern';
+import { IN_APP_PATH } from '../domain/in-app-path';
+import { optionOrderLock, optionSeed, seededOrder } from '../domain/option-order';
+import {
   QUESTION_VIEW_INCLUDE,
   VISIBLE_QUESTION,
   toAnsweredQuestionView,
   toQuestionView,
+  type QuestionView,
+  type QuestionWithRelations,
 } from '../domain/question-view';
+import { ExamSetupService } from './exam-setup.service';
 import { QuestionStateService } from './question-state.service';
 import { QuestionBankService, type QuestionFilters } from './question-bank.service';
 import { PyqAccessService } from './pyq-access.service';
 
 export const MAX_SESSION_QUESTIONS = 200;
-/** Network and clock slack after a timed test's deadline before answers are refused. */
-const DEADLINE_GRACE_MS = 30_000;
+/** Network and clock slack around a deadline (the paper's, or a section's) before answers are refused. */
+export const DEADLINE_GRACE_MS = 30_000;
+const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F'];
+/** `config.uiMode` of a full mock. Only startMock may set it. */
+const FULL_MOCK_UI_MODE = 'full-mock';
 
 export const SESSION_ORDERS = [
   'random',
@@ -56,6 +73,12 @@ export interface StartSessionInput {
   timeLimitSec?: number | null;
   /** Free-form context the web app wants back (e.g. its own mode, sourceHref). */
   meta?: Record<string, unknown>;
+}
+
+export interface StartMockInput {
+  /** Exam slug. */
+  examId: string;
+  sourceHref?: string;
 }
 
 export interface AnswerInput {
@@ -114,6 +137,12 @@ function scoreFromCounts(total: number, attempted: number, correct: number, time
  * A practice session: a fixed, ordered set of questions, answered one at a
  * time. Every read and write is scoped to the owner — another user's session
  * id is a 404, not a 403, so ids cannot be probed.
+ *
+ * A TEST (a timed custom test or a full mock) is a computer-based exam: its
+ * clock starts only when the student begins it from the instructions screen,
+ * and until then its questions are withheld. A full mock also carries its
+ * exam's pattern — sections, their timings, marking — and the server, not
+ * the browser, decides which section is open.
  */
 @Injectable()
 export class PracticeService {
@@ -124,6 +153,7 @@ export class PracticeService {
     private readonly bank: QuestionBankService,
     private readonly access: PyqAccessService,
     private readonly states: QuestionStateService,
+    private readonly examSetup: ExamSetupService,
   ) {}
 
   async start(userId: string, input: StartSessionInput) {
@@ -139,64 +169,89 @@ export class PracticeService {
       questionIds = requested.filter((id) => ok.has(id));
     } else {
       const count = Math.min(input.count ?? 20, MAX_SESSION_QUESTIONS);
-      const order = input.order ?? 'random';
-      const [pool, group] = await Promise.all([
-        this.bank.matchingIds(userId, input.filters ?? {}),
-        order === 'random'
-          ? Promise.resolve<string[]>([])
-          : this.bank.matchingIds(userId, { ...input.filters, status: PRIORITY_STATUS[order] }),
-      ]);
-      // The priority group goes first and the rest fills in behind it, each
-      // shuffled, so "incorrect first" with few wrong answers still gives a
-      // full test, and neither part comes out in a predictable order.
-      const first = new Set(group);
-      questionIds = [...shuffle(group), ...shuffle(pool.filter((id) => !first.has(id)))].slice(
-        0,
-        count,
-      );
+      questionIds = (await this.draw(userId, input.filters ?? {}, input.order ?? 'random')).slice(0, count);
     }
 
     if (questionIds.length === 0) {
       throw new BadRequestException('No questions match this selection');
     }
 
-    // Starting a session the student cannot answer anything in is a dead end.
-    await this.access.assertCanAnswer(userId);
-
+    // A client may describe its own screens, but never claim to be a mock,
+    // and "Save & exit" may only ever lead back into the app.
+    const { uiMode, sourceHref, ...meta } = input.meta ?? {};
     const config = {
+      ...meta,
+      ...(uiMode !== undefined && uiMode !== FULL_MOCK_UI_MODE ? { uiMode } : {}),
+      ...(typeof sourceHref === 'string' && IN_APP_PATH.test(sourceHref) ? { sourceHref } : {}),
       filters: input.questionIds?.length ? undefined : (input.filters ?? {}),
       order: input.questionIds?.length ? undefined : (input.order ?? 'random'),
-      ...(input.meta ?? {}),
     } as Prisma.InputJsonObject;
 
-    const session = await this.prisma.practiceSession.create({
-      data: {
-        userId,
-        mode: input.mode,
-        label: input.label?.trim() || 'Practice session',
-        config,
-        timeLimitSec: input.timeLimitSec ?? null,
-        totalQuestions: questionIds.length,
-        questions: {
-          create: questionIds.map((questionId, position) => ({
-            questionId,
-            position,
-          })),
-        },
-      },
+    return this.create(userId, {
+      mode: input.mode,
+      label: input.label?.trim() || 'Practice session',
+      config,
+      timeLimitSec: input.timeLimitSec ?? null,
+      questionIds,
+      pattern: null,
     });
+  }
 
-    activity(this.logger, 'practice.session_started', {
-      userId,
-      sessionId: session.id,
-      mode: session.mode,
-      questions: questionIds.length,
+  /**
+   * A full mock of one exam: as many questions as its pattern holds, fresh
+   * ones first, laid out section after section in the pattern's order.
+   */
+  async startMock(userId: string, input: StartMockInput) {
+    const { exam, pattern } = await this.examSetup.patternForMock(input.examId);
+    const total = patternTotals(pattern);
+    const filters: QuestionFilters = { examIds: [exam.slug] };
+    const questionIds = (await this.draw(userId, filters, 'unattempted-first')).slice(0, total.questions);
+    if (questionIds.length < total.questions) {
+      throw new ConflictException({
+        code: 'PYQ_MOCK_UNAVAILABLE',
+        message: `A full ${exam.shortName} mock needs ${total.questions} questions; the bank has ${questionIds.length} so far.`,
+      });
+    }
+    return this.create(userId, {
+      mode: PracticeMode.TEST,
+      label: `${exam.shortName} Full Mock`,
+      config: {
+        uiMode: FULL_MOCK_UI_MODE,
+        examId: exam.slug,
+        filters: { examIds: [exam.slug] },
+        ...(input.sourceHref ? { sourceHref: input.sourceHref } : {}),
+      },
+      timeLimitSec: total.minutes * 60,
+      questionIds,
+      pattern,
     });
-    return this.get(userId, session.id);
+  }
+
+  /**
+   * "I am ready to begin": starts a test's clock. Idempotent — the clock
+   * starts once, and a second tap (or a second device) changes nothing.
+   */
+  async begin(userId: string, sessionId: string) {
+    const session = await this.owned(userId, sessionId);
+    if (!session.clockStartedAt && session.status === PracticeSessionStatus.IN_PROGRESS) {
+      const started = await this.prisma.practiceSession.updateMany({
+        where: { id: sessionId, clockStartedAt: null, status: PracticeSessionStatus.IN_PROGRESS },
+        data: { clockStartedAt: new Date() },
+      });
+      if (started.count === 1) {
+        activity(this.logger, 'practice.test_begun', { userId, sessionId, mock: session.pattern != null });
+      }
+    }
+    return this.get(userId, sessionId);
   }
 
   async get(userId: string, sessionId: string) {
     const session = await this.owned(userId, sessionId);
+    // A test's questions stay hidden behind its instructions screen: reading
+    // them must not be possible while the clock is not running.
+    if (!session.clockStartedAt) {
+      return { ...this.summary(session, []), questions: [], attempts: {} };
+    }
     const reveal = revealsAnswers(session);
     const [entries, attempts] = await Promise.all([
       this.prisma.sessionQuestion.findMany({
@@ -213,9 +268,11 @@ export class PracticeService {
       questions: entries.map(({ question }) => {
         // In practice modes an answer is revealed per question, once answered.
         const answered = Boolean(attemptByQuestion.get(question.id)?.answeredAt);
-        return reveal && (answered || session.status === PracticeSessionStatus.SUBMITTED)
-          ? toAnsweredQuestionView(question)
-          : toQuestionView(question);
+        const view =
+          reveal && (answered || session.status === PracticeSessionStatus.SUBMITTED)
+            ? toAnsweredQuestionView(question)
+            : toQuestionView(question);
+        return this.withOptionOrder(session, question, view);
       }),
       attempts: Object.fromEntries(
         attempts.map((attempt) => [attempt.questionId, attemptView(attempt, reveal)]),
@@ -226,7 +283,8 @@ export class PracticeService {
   async answer(userId: string, sessionId: string, input: AnswerInput) {
     const session = await this.owned(userId, sessionId);
     this.assertOpen(session);
-    await this.assertInSession(sessionId, input.questionId);
+    const entry = await this.assertInSession(sessionId, input.questionId);
+    this.assertSectionOpen(session, entry.position);
 
     const option = await this.prisma.questionOption.findFirst({
       where: { id: input.selectedOptionId, questionId: input.questionId },
@@ -300,7 +358,8 @@ export class PracticeService {
   async flag(userId: string, sessionId: string, questionId: string, flagged: boolean) {
     const session = await this.owned(userId, sessionId);
     this.assertOpen(session);
-    await this.assertInSession(sessionId, questionId);
+    const entry = await this.assertInSession(sessionId, questionId);
+    this.assertSectionOpen(session, entry.position);
     const attempt = await this.prisma.$transaction(async (tx) => {
       const saved = await tx.attempt.upsert({
         where: { sessionId_questionId: { sessionId, questionId } },
@@ -344,11 +403,13 @@ export class PracticeService {
         return result;
       });
       if (updated.count === 1) {
+        const pattern = readExamPattern(session.pattern);
         activity(this.logger, 'practice.session_submitted', {
           userId,
           sessionId,
           mode: session.mode,
           ...score,
+          ...(pattern ? { marks: marksFor(pattern, score.correct, score.incorrect) } : {}),
         });
       }
     }
@@ -457,12 +518,93 @@ export class PracticeService {
     };
   }
 
+  // --- internals ----------------------------------------------------------------
+
+  /**
+   * Matching ids, shuffled. With a priority order that group goes first and
+   * the rest fills in behind it, each part shuffled, so "incorrect first"
+   * with few wrong answers still gives a full test, and neither part comes
+   * out in a predictable order.
+   */
+  private async draw(userId: string, filters: QuestionFilters, order: SessionOrder): Promise<string[]> {
+    const [pool, group] = await Promise.all([
+      this.bank.matchingIds(userId, filters),
+      order === 'random'
+        ? Promise.resolve<string[]>([])
+        : this.bank.matchingIds(userId, { ...filters, status: PRIORITY_STATUS[order] }),
+    ]);
+    const first = new Set(group);
+    return [...shuffle(group), ...shuffle(pool.filter((id) => !first.has(id)))];
+  }
+
+  private async create(
+    userId: string,
+    input: {
+      mode: PracticeMode;
+      label: string;
+      config: Prisma.InputJsonObject;
+      timeLimitSec: number | null;
+      questionIds: string[];
+      pattern: ExamPattern | null;
+    },
+  ) {
+    // Starting a session the student cannot answer anything in is a dead end.
+    await this.access.assertCanAnswer(userId);
+    const settings = await this.examSetup.settings();
+
+    const session = await this.prisma.practiceSession.create({
+      data: {
+        userId,
+        mode: input.mode,
+        label: input.label,
+        config: input.config,
+        timeLimitSec: input.timeLimitSec,
+        totalQuestions: input.questionIds.length,
+        shuffleOptions: settings.shuffleOptions,
+        // A test's clock waits for its instructions screen; practice starts now.
+        clockStartedAt: input.mode === PracticeMode.TEST ? null : new Date(),
+        pattern: input.pattern ? (input.pattern as unknown as Prisma.InputJsonObject) : Prisma.DbNull,
+        questions: {
+          create: input.questionIds.map((questionId, position) => ({
+            questionId,
+            position,
+          })),
+        },
+      },
+    });
+
+    activity(this.logger, 'practice.session_started', {
+      userId,
+      sessionId: session.id,
+      mode: session.mode,
+      questions: input.questionIds.length,
+      mock: input.pattern != null,
+      shuffleOptions: session.shuffleOptions,
+    });
+    return this.get(userId, session.id);
+  }
+
+  /** The session's own option order for this question, relabelled A, B, C… by position. */
+  private withOptionOrder<T extends QuestionView>(
+    session: PracticeSession,
+    question: QuestionWithRelations,
+    view: T,
+  ): T {
+    if (!session.shuffleOptions || optionOrderLock(question)) return view;
+    const options = seededOrder(view.options, optionSeed(session.id, question.id)).map((option, index) => ({
+      ...option,
+      label: OPTION_LABELS[index] ?? option.label,
+    }));
+    return { ...view, options };
+  }
+
   private summary(session: PracticeSession, attempts: Attempt[]) {
     return this.summaryOf(session, scoreOf(session.totalQuestions, attempts));
   }
 
   private summaryOf(session: PracticeSession, score: ReturnType<typeof scoreFromCounts>) {
     const reveal = revealsAnswers(session);
+    const pattern = readExamPattern(session.pattern);
     return {
       id: session.id,
       mode: session.mode,
@@ -472,9 +614,30 @@ export class PracticeService {
       status: session.status,
       startedAt: session.startedAt,
       submittedAt: session.submittedAt,
+      /** Null while a test waits on its instructions screen. */
+      clockStartedAt: session.clockStartedAt,
+      /** So a client can correct its own clock against the deadlines below. */
+      serverTime: new Date(),
+      pattern,
+      sectionWindows:
+        pattern && session.clockStartedAt
+          ? sectionWindows(pattern, session.clockStartedAt).map(({ index, name, firstPosition, questions, opensAt, closesAt }) => ({
+              index,
+              name,
+              firstPosition,
+              questions,
+              opensAt,
+              closesAt,
+            }))
+          : null,
       // An unsubmitted test reports progress, never correctness.
       ...(reveal
-        ? score
+        ? {
+            ...score,
+            ...(pattern
+              ? { marks: { scored: marksFor(pattern, score.correct, score.incorrect), max: maxMarksFor(pattern) } }
+              : {}),
+          }
         : {
             totalQuestions: score.totalQuestions,
             attempted: score.attempted,
@@ -492,22 +655,49 @@ export class PracticeService {
     return session;
   }
 
-  private assertOpen(session: PracticeSession): void {
+  private assertOpen(session: PracticeSession, now = Date.now()): void {
     if (session.status !== PracticeSessionStatus.IN_PROGRESS) {
       throw new ConflictException('This session has already been submitted');
     }
+    if (!session.clockStartedAt) {
+      throw new ConflictException({
+        code: 'PYQ_TEST_NOT_BEGUN',
+        message: 'Read the instructions and begin the test first',
+      });
+    }
     if (
       session.timeLimitSec &&
-      Date.now() > session.startedAt.getTime() + session.timeLimitSec * 1000 + DEADLINE_GRACE_MS
+      now > session.clockStartedAt.getTime() + session.timeLimitSec * 1000 + DEADLINE_GRACE_MS
     ) {
       throw new ConflictException('Time is up for this session — submit it to see your score');
     }
   }
 
-  private async assertInSession(sessionId: string, questionId: string): Promise<void> {
+  /** In a mock with time-bound sections, only the section whose time is running takes answers. */
+  private assertSectionOpen(session: PracticeSession, position: number, now = Date.now()): void {
+    const pattern = readExamPattern(session.pattern);
+    if (!pattern?.sectionsLocked || !session.clockStartedAt) return;
+    const window = windowForPosition(sectionWindows(pattern, session.clockStartedAt), position);
+    if (!window) throw new BadRequestException('That question is not part of this paper');
+    if (now < window.opensAt.getTime() - DEADLINE_GRACE_MS) {
+      throw new ConflictException({
+        code: 'PYQ_SECTION_NOT_OPEN',
+        message: `${window.name} opens when the current section's time ends`,
+      });
+    }
+    if (now > window.closesAt.getTime() + DEADLINE_GRACE_MS) {
+      throw new ConflictException({
+        code: 'PYQ_SECTION_CLOSED',
+        message: `${window.name} is closed — its time is up`,
+      });
+    }
+  }
+
+  private async assertInSession(sessionId: string, questionId: string) {
     const entry = await this.prisma.sessionQuestion.findUnique({
       where: { sessionId_questionId: { sessionId, questionId } },
     });
     if (!entry) throw new BadRequestException('That question is not part of this session');
+    return entry;
   }
 }

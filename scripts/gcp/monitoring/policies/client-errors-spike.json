@@ -1,0 +1,31 @@
+{
+  "displayName": "JSMF - app crashes spiking",
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "More than ${CLIENT_ERROR_THRESHOLD} crash reports from one app (website or phone) in 10 minutes. One student's broken page does not reach this; a bad deploy or a broken page many people visit does. The service label names the app. Open Error Reporting for the grouped issues, or Logs Explorer with `jsonPayload.activity=\"client.error\"`. Runbook: docs/observability/README.md."
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "client.error per app, 10 minutes",
+      "conditionThreshold": {
+        "filter": "resource.type = \"cloud_run_revision\" AND metric.type = \"logging.googleapis.com/user/jsmf_client_errors\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "600s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": ["metric.label.service"]
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": ${CLIENT_ERROR_THRESHOLD},
+        "duration": "0s",
+        "trigger": { "count": 1 }
+      }
+    }
+  ],
+  "alertStrategy": { "autoClose": "3600s" },
+  "severity": "WARNING",
+  "notificationChannels": ["${CHANNEL}"]
+}

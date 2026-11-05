@@ -23,7 +23,7 @@ import {
   type StreakSummary,
   type Taxonomy,
 } from "../data-source/types";
-import type { ReportReason } from "../domain/types";
+import type { ExamId, ReportReason } from "../domain/types";
 
 /**
  * The only way screens reach PYQ data. Each hook is a thin react-query wrapper
@@ -47,6 +47,8 @@ export const pyqKeys = {
   taxonomy: ["pyq", "taxonomy"] as const,
   user: ["pyq", "user"] as const,
   access: ["pyq", "user", "access"] as const,
+  /** The account's join date. Per user, so signing in as someone else never shows the last account's. */
+  memberSince: ["pyq", "user", "member-since"] as const,
   questions: (query: QuestionQuery, page: number, pageSize: number) =>
     ["pyq", "user", "questions", query, page, pageSize] as const,
   sessionsAll: ["pyq", "user", "sessions"] as const,
@@ -64,6 +66,7 @@ export const pyqKeys = {
   reinforce: (recentDays: number) => ["pyq", "user", "reinforce", recentDays] as const,
   preferences: ["pyq", "user", "preferences"] as const,
   plans: ["pyq", "plans"] as const,
+  mocks: ["pyq", "user", "mocks"] as const,
 };
 
 /** The data port the hooks talk to: the configured one, else the API adapter. */
@@ -145,6 +148,33 @@ export function useSessionDetail(sessionId: string) {
   return useQuery({ queryKey: pyqKeys.session(sessionId), queryFn: () => getDataSource().getSession(sessionId) });
 }
 
+/** Full mocks on offer — empty where the data source has none. */
+export function useMocks() {
+  const source = getDataSource();
+  return useQuery({
+    queryKey: pyqKeys.mocks,
+    queryFn: () => source.listMocks(),
+    enabled: source.capabilities.mocks,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * "I am ready to begin": starts the test's clock and puts the begun session
+ * (now with its questions) straight into the cache the runner reads.
+ */
+export function useBeginSession(sessionId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => getDataSource().beginSession(sessionId),
+    onSuccess: (detail) => {
+      client.setQueryData(pyqKeys.session(sessionId), detail);
+      void client.invalidateQueries({ queryKey: pyqKeys.sessionsAll, refetchType: "none" });
+    },
+    onError: (error) => notifyError(error.message),
+  });
+}
+
 export function useSessionReview(sessionId: string) {
   return useQuery({ queryKey: pyqKeys.review(sessionId), queryFn: () => getDataSource().getReview(sessionId) });
 }
@@ -203,6 +233,19 @@ export function usePlans() {
 }
 
 // --- Writes --------------------------------------------------------------------
+
+/**
+ * Starts the student's one free trial. The response is their new access, so
+ * the cache is set from it directly: every limit and badge updates at once,
+ * with no second request.
+ */
+export function useStartTrial() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => getDataSource().startTrial(),
+    onSuccess: (access) => client.setQueryData(pyqKeys.access, access),
+  });
+}
 
 /**
  * Marks every user query stale without refetching any: each reloads when a
@@ -433,6 +476,35 @@ export function useStartSession(handlers: StartSessionHandlers) {
       }
     },
     [mutation, invalidate, onStarted, onDailyLimit, getSourceHref]
+  );
+
+  return Object.assign(start, { isPending: mutation.isPending });
+}
+
+/**
+ * Starts a full mock of one exam and hands it to the platform to open (on
+ * its instructions screen). Same handlers as `useStartSession`.
+ */
+export function useStartMock(handlers: StartSessionHandlers) {
+  const client = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (input: { examId: ExamId; sourceHref?: string }) =>
+      getDataSource().startMock(input.examId, input.sourceHref),
+  });
+  const { onStarted, onDailyLimit, getSourceHref } = handlers;
+
+  const start = useCallback(
+    async (examId: ExamId) => {
+      try {
+        const id = await mutation.mutateAsync({ examId, sourceHref: getSourceHref?.() });
+        void client.invalidateQueries({ queryKey: pyqKeys.sessionsAll, refetchType: "none" });
+        onStarted(id, 0);
+      } catch (error) {
+        if (error instanceof DailyLimitError) onDailyLimit(error);
+        else notifyError(error instanceof Error ? error.message : "Could not start the mock.");
+      }
+    },
+    [mutation, client, onStarted, onDailyLimit, getSourceHref]
   );
 
   return Object.assign(start, { isPending: mutation.isPending });

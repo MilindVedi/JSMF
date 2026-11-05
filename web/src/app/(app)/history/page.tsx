@@ -4,10 +4,10 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { History as HistoryIcon, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
+import { FilterTabs } from "@/components/common/filter-tabs";
 import { EmptyState } from "@/components/common/empty-state";
 import { Card } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SessionHistoryRow, SESSION_MODE_LABEL } from "@/components/history/session-history-row";
 import { MultiSelectPopover } from "@/components/question-bank/multi-select-popover";
 import { SortDropdown } from "@/components/common/sort-dropdown";
@@ -85,6 +85,7 @@ export default function HistoryPage() {
       all: allCompletedSessions.length,
       browse: 0,
       "custom-test": 0,
+      "full-mock": 0,
       bookmarks: 0,
       "wrong-questions": 0,
       collections: 0,
@@ -159,25 +160,22 @@ export default function HistoryPage() {
 
       {allCompletedSessions.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Tabs value={modeFilter} onValueChange={(v) => setModeFilter(v as ModeFilter)}>
-            <TabsList>
-              <TabsTrigger value="all">
-                All<span className="ml-1.5 text-xs text-muted-foreground">{modeCounts.all}</span>
-              </TabsTrigger>
-              {(Object.keys(SESSION_MODE_LABEL) as SessionMode[]).map((mode) => (
-                <TabsTrigger key={mode} value={mode}>
-                  {SESSION_MODE_LABEL[mode]}
-                  <span className="ml-1.5 text-xs text-muted-foreground">{modeCounts[mode]}</span>
-                </TabsTrigger>
-              ))}
-              {collections.length > 0 && (
-                <TabsTrigger value="collections">
-                  Collections
-                  <span className="ml-1.5 text-xs text-muted-foreground">{modeCounts.collections}</span>
-                </TabsTrigger>
-              )}
-            </TabsList>
-          </Tabs>
+          <FilterTabs
+            label="Filter by session type"
+            value={modeFilter}
+            onChange={setModeFilter}
+            options={[
+              { value: "all" as ModeFilter, label: "All", count: modeCounts.all },
+              ...(Object.keys(SESSION_MODE_LABEL) as SessionMode[]).map((mode) => ({
+                value: mode as ModeFilter,
+                label: SESSION_MODE_LABEL[mode],
+                count: modeCounts[mode],
+              })),
+              ...(collections.length > 0
+                ? [{ value: "collections" as ModeFilter, label: "Collections", count: modeCounts.collections }]
+                : []),
+            ]}
+          />
 
           <div className="flex flex-wrap items-center gap-2">
             {PERIODS.map((p) => (
@@ -257,6 +255,7 @@ export default function HistoryPage() {
                   correct={summary.correct}
                   incorrect={summary.incorrect}
                   unattempted={summary.unattempted}
+                  marks={summary.marks}
                 />
               );
             })}

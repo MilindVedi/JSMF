@@ -2,6 +2,7 @@ import { SkipLegalCheck } from '../../../common/decorators/skip-legal-check.deco
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -11,6 +12,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { ProfileService, type Profile } from '../application/profile.service';
+import { UserAvatarUploads } from '../application/user-avatar-uploads';
 import { UpdateNameDto, UpdateProfileDto } from './dto/profile.dto';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -54,6 +56,7 @@ export class AuthController {
     private readonly phone: PhoneSignInService,
     private readonly delivery: VerificationDeliveryService,
     private readonly profiles: ProfileService,
+    private readonly avatars: UserAvatarUploads,
   ) {}
 
   /**
@@ -282,6 +285,20 @@ export class AuthController {
     @Body() dto: UpdateProfileDto,
   ): Promise<AuthenticatedUser> {
     return this.profiles.update(user.id, dto);
+  }
+
+  /**
+   * Removes the profile picture. Setting one is not here: it goes straight to
+   * storage through POST /uploads with purpose "user.avatar", so the bytes
+   * never pass through this app.
+   */
+  @Delete('me/avatar')
+  @ApiBearerAuth()
+  @HttpCode(204)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Remove your profile picture' })
+  async removeAvatar(@CurrentUser() user: AuthenticatedUser): Promise<void> {
+    await this.avatars.remove(user.id);
   }
 
   @Patch('me/name')

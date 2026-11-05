@@ -8,7 +8,7 @@ import { storeButton } from "@/components/store/store-button";
 import { accountApi } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
 import type { AuthUser } from "@/lib/api/types";
-import { EMPTY_PHONE, validatePhone, type PhoneValue } from "@/lib/phone";
+import { EMPTY_PHONE, phoneFromStored, validatePhone, type PhoneValue } from "@/lib/phone";
 
 /** Fallbacks if the options request fails; the API validates against its own list either way. */
 const DEFAULT_EXAMS = ["NEET-PG", "INI-CET", "FMGE"];
@@ -31,9 +31,35 @@ type FieldKey = keyof Values | "mobileNumber";
  * Kept in step with main-web/src/components/profile-form.tsx â€” identity
  * is platform-wide.
  */
-export function ProfileForm({ onSaved }: { onSaved: (user: AuthUser) => void }) {
-  const [form, setForm] = useState<Values>({ name: "", preparingFor: "", currentStage: "" });
-  const [phone, setPhone] = useState<PhoneValue>(EMPTY_PHONE);
+export function ProfileForm({
+  onSaved,
+  initial,
+  submitLabel = "Finish",
+}: {
+  onSaved: (user: AuthUser) => void;
+  /**
+   * What the account already holds, for the profile page. Absent during
+   * signup, where there is nothing to prefill yet.
+   */
+  initial?: {
+    name?: string | null;
+    mobileE164?: string | null;
+    preparingFor?: string | null;
+    currentStage?: string | null;
+  };
+  submitLabel?: string;
+}) {
+  // Lazy initialisers rather than an effect: `initial` is settled before this
+  // mounts (the page waits for the profile), and seeding state in an effect
+  // would flash an empty form and discard anything typed in between.
+  const [form, setForm] = useState<Values>(() => ({
+    name: initial?.name ?? "",
+    preparingFor: initial?.preparingFor ?? "",
+    currentStage: initial?.currentStage ?? "",
+  }));
+  const [phone, setPhone] = useState<PhoneValue>(() =>
+    initial?.mobileE164 ? phoneFromStored(initial.mobileE164) : EMPTY_PHONE,
+  );
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -124,7 +150,7 @@ export function ProfileForm({ onSaved }: { onSaved: (user: AuthUser) => void }) 
       )}
 
       <button type="submit" className={storeButton({ className: "w-full" })} disabled={busy}>
-        {busy ? "Savingâ€¦" : "Finish"}
+        {busy ? "Savingâ€¦" : submitLabel}
         {!busy && <ArrowRight className="size-4" />}
       </button>
     </form>

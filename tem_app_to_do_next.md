@@ -1,4 +1,4 @@
-# JSMF Med Prep — mobile app: what's next
+# JSMF PYQs — mobile app: what's next
 
 Status as of 11 October 2026. Nothing below is committed yet.
 

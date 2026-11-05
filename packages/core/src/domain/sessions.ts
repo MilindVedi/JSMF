@@ -13,6 +13,7 @@ export const MAX_SESSION_QUESTIONS = 200;
 export const SESSION_MODE_LABEL: Record<SessionMode, string> = {
   browse: "Question Bank",
   "custom-test": "Custom Test",
+  "full-mock": "Full Mock",
   bookmarks: "Bookmarks Revision",
   "wrong-questions": "Wrong Questions Revision",
 };
@@ -47,6 +48,8 @@ export function completionKicker(session: TestSession): string {
   switch (session.mode) {
     case "custom-test":
       return "Test completed";
+    case "full-mock":
+      return "Mock completed";
     case "wrong-questions":
       return "Revision complete";
     case "bookmarks":
@@ -62,6 +65,7 @@ export type ResultsNextTarget = "custom-test" | "revision" | "question-bank";
 export function resultsNextAction(session: TestSession): { label: string; target: ResultsNextTarget } {
   switch (session.mode) {
     case "custom-test":
+    case "full-mock":
       return { label: "Start another test", target: "custom-test" };
     case "wrong-questions":
     case "bookmarks":
@@ -142,11 +146,20 @@ export function neighborIndex(indices: number[], current: number, direction: 1 |
 
 // --- Running a session -----------------------------------------------------------
 
-/** Seconds left on a timed session, measured from when it started. */
-export function remainingSeconds(session: Pick<TestSession, "config" | "startedAt">, now = Date.now()): number {
+/**
+ * Seconds left on a timed session, measured on the server's clock from when
+ * its clock started (a test's starts on "I am ready to begin", not when it
+ * was created). A test still on its instructions screen has all of it left.
+ */
+export function remainingSeconds(
+  session: Pick<TestSession, "config" | "startedAt" | "clockStartedAt" | "clockOffsetMs" | "awaitingBegin">,
+  now = Date.now()
+): number {
   const { durationSec } = session.config;
   if (!durationSec) return 0;
-  const elapsed = Math.floor((now - new Date(session.startedAt).getTime()) / 1000);
+  if (session.awaitingBegin) return durationSec;
+  const startedAt = new Date(session.clockStartedAt ?? session.startedAt).getTime();
+  const elapsed = Math.floor((now + (session.clockOffsetMs ?? 0) - startedAt) / 1000);
   return Math.max(0, durationSec - elapsed);
 }
 

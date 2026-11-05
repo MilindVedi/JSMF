@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { storeButton } from "@/components/ui/store-button";
 import type { MarketingPlan } from "@/lib/server/marketing-plans";
 
-export function PricingCard({ plan }: { plan: MarketingPlan }) {
+export function PricingCard({ plan, trialDays }: { plan: MarketingPlan; trialDays?: number }) {
   return (
     <div
       className={cn(
@@ -29,6 +29,11 @@ export function PricingCard({ plan }: { plan: MarketingPlan }) {
             ₹{plan.price.toLocaleString("en-IN")}
           </span>
           <span className="text-sm text-muted-foreground">/{plan.periodLabel}</span>
+          {plan.compareAtPrice !== undefined && (
+            <span className="ml-1 text-sm text-muted-foreground line-through">
+              ₹{plan.compareAtPrice.toLocaleString("en-IN")}
+            </span>
+          )}
         </div>
         {plan.note && <p className="mt-1 text-xs text-muted-foreground">{plan.note}</p>}
       </div>
@@ -48,7 +53,7 @@ export function PricingCard({ plan }: { plan: MarketingPlan }) {
           storeButton({ variant: plan.highlight ? "primary" : "secondary" })
         )}
       >
-        Get started
+        {trialDays ? `Start ${trialDays}-day free trial` : "Get started"}
       </Link>
     </div>
   );

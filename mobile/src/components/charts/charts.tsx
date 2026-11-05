@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View, type LayoutChangeEvent } from "react-native";
-import Svg, { Circle, Line, Polyline, Text as SvgText, Circle as Dot } from "react-native-svg";
+import Svg, { Circle, Line, Polyline, Rect, Text as SvgText, Circle as Dot } from "react-native-svg";
 import { format } from "date-fns";
 import type { SubjectPerformance } from "@jsmf/core/domain";
 import { useTaxonomyLookup } from "@jsmf/core/hooks";
@@ -24,6 +24,15 @@ export function AccuracyTrendChart({ data }: { data: { date: string; accuracy: n
   const x = (i: number) => pad.left + (data.length <= 1 ? innerW / 2 : (i / (data.length - 1)) * innerW);
   const y = (v: number) => pad.top + (1 - v / 100) * innerH;
   const points = (key: "accuracy" | "cumulativeAccuracy") => data.map((d, i) => `${x(i)},${y(d[key])}`).join(" ");
+  // Tap to read a point (web's hover tooltip); a second tap on it clears it.
+  // Tied to the data it was read from, so new data never shows a stale point.
+  const [picked, setPicked] = useState<{ data: typeof data; index: number } | null>(null);
+  const active = picked && picked.data === data ? picked.index : null;
+  const inspect = (index: number) => setPicked(active === index ? null : { data, index });
+  // Each point owns the strip of chart nearest to it, so a tap anywhere reads
+  // the closest test (no touch coordinates needed — they differ by platform).
+  const slot = data.length <= 1 ? innerW : innerW / (data.length - 1);
+  const point = active !== null ? data[active] : undefined;
 
   return (
     <View onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}>
@@ -52,10 +61,34 @@ export function AccuracyTrendChart({ data }: { data: { date: string; accuracy: n
           {data.map((d, i) => (
             <Dot key={i} cx={x(i)} cy={y(d.accuracy)} r={3} fill={colors["chart-1"]} />
           ))}
+          {data.map((d, i) => (
+            <Rect
+              key={`hit-${i}`}
+              x={Math.max(x(i) - slot / 2, 0)}
+              y={0}
+              width={slot}
+              height={height}
+              fill="transparent"
+              onPress={() => inspect(i)}
+              accessibilityLabel={`${format(new Date(d.date), "MMM d")}: ${d.accuracy}% this test`}
+            />
+          ))}
+          {point && active !== null ? (
+            <>
+              <Line x1={x(active)} x2={x(active)} y1={pad.top} y2={pad.top + innerH} stroke={colors["muted-foreground"]} strokeWidth={1} />
+              <Dot cx={x(active)} cy={y(point.cumulativeAccuracy)} r={5} fill={colors["chart-3"]} />
+              <Dot cx={x(active)} cy={y(point.accuracy)} r={5} fill={colors["chart-1"]} />
+            </>
+          ) : null}
         </Svg>
       ) : (
         <View style={{ height }} />
       )}
+      <Txt className="mt-1 text-xs text-muted-foreground" accessibilityLiveRegion="polite">
+        {point
+          ? `${format(new Date(point.date), "MMM d")} · ${point.accuracy}% this test · ${point.cumulativeAccuracy}% overall accuracy`
+          : "Tap the chart to see a test's numbers."}
+      </Txt>
     </View>
   );
 }
@@ -71,13 +104,22 @@ function Legend({ color, label, dashed = false }: { color: string; label: string
   );
 }
 
-/** Subject-wise accuracy as horizontal bars. */
+/**
+ * The subject chart's own bands, as web's subject-performance-chart (not core's
+ * accuracyTone, which session badges use): under 50% weak, under 75% fair.
+ */
+function subjectTone(accuracy: number): "error" | "flag" | "success" {
+  return accuracy < 50 ? "error" : accuracy < 75 ? "flag" : "success";
+}
+
+/** Subject-wise accuracy as horizontal bars, weakest first and coloured by band (web's order and colours). */
 export function SubjectBars({ data }: { data: SubjectPerformance[] }) {
   const { subject } = useTaxonomyLookup();
   const colors = useColors();
+  const sorted = [...data].sort((a, b) => a.accuracy - b.accuracy);
   return (
     <View className="gap-3">
-      {data.map((s) => (
+      {sorted.map((s) => (
         <View key={s.subjectId} className="gap-1.5">
           <View className="flex-row items-center justify-between gap-2">
             <Txt weight={500} className="flex-1 text-sm" numberOfLines={1}>
@@ -91,7 +133,7 @@ export function SubjectBars({ data }: { data: SubjectPerformance[] }) {
             </Txt>
           </View>
           <View className="h-2 overflow-hidden rounded-full bg-muted">
-            <View className="h-full rounded-full" style={{ width: `${s.accuracy}%`, backgroundColor: colors["chart-1"] }} />
+            <View className="h-full rounded-full" style={{ width: `${s.accuracy}%`, backgroundColor: colors[`${subjectTone(s.accuracy)}-foreground`] }} />
           </View>
         </View>
       ))}

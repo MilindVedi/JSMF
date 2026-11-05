@@ -5,9 +5,11 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import compression from 'compression';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { REQUEST_ID_HEADER, requestContext } from './common/middleware/request-context';
 import { requestLogger } from './common/middleware/request-logger';
 import { requireHttps } from './common/middleware/require-https';
 import { AppConfig } from './config/config.module';
+import { resolveTraceProject } from './shared/logging/gcp-project';
 import { StructuredLogger } from './shared/logging/structured-logger';
 
 /**
@@ -28,10 +30,25 @@ async function bootstrap(): Promise<void> {
   // messages are logged through it. Both values are also declared in
   // config/env.ts so they are validated and documented with everything else.
   const production = process.env.NODE_ENV === 'production';
-  const structuredLogger = new StructuredLogger(
-    (process.env.LOG_FORMAT ?? (production ? 'json' : 'text')) === 'json' ? 'json' : 'text',
-    process.env.LOG_DEBUG === 'true',
-  );
+  const structuredLogger = new StructuredLogger({
+    format: (process.env.LOG_FORMAT ?? (production ? 'json' : 'text')) === 'json' ? 'json' : 'text',
+    debug: process.env.LOG_DEBUG === 'true',
+    traceProject: await resolveTraceProject(),
+  });
+
+  // A crash still crashes — this listener only observes, and Node's default
+  // (print and exit, so Cloud Run starts a fresh instance) is unchanged. What
+  // it adds is one structured CRITICAL line with the stack, which Error
+  // Reporting picks up, instead of plain stderr text nothing can alert on.
+  // Covers unhandled promise rejections too: Node raises those as uncaught
+  // exceptions by default.
+  process.on('uncaughtExceptionMonitor', (error, origin) => {
+    structuredLogger.fatal(
+      error instanceof Error ? error : new Error(String(error)),
+      error instanceof Error ? error.stack : undefined,
+      `Process:${origin}`,
+    );
+  });
 
   const app = await NestFactory.create(AppModule, {
     // The raw body is required to verify payment webhook signatures: the HMAC is
@@ -55,6 +72,8 @@ async function bootstrap(): Promise<void> {
   // empty configuration is asking for.
   app.getHttpAdapter().getInstance().set('trust proxy', trustedProxies.length > 0 ? trustedProxies : false);
 
+  // First, so every line logged while serving a request carries its id.
+  app.use(requestContext);
   app.use(requestLogger);
   // Before anything reads a cookie or a bearer token: in production, a request
   // the proxy says arrived over plain HTTP is refused rather than served.
@@ -67,6 +86,8 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: config.get('CORS_ORIGINS'),
     credentials: true,
+    // Readable by a cross-origin caller, so an error screen can show it.
+    exposedHeaders: [REQUEST_ID_HEADER],
   });
 
   app.setGlobalPrefix('api');

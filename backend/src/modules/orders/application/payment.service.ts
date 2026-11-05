@@ -23,7 +23,7 @@ import { MailService } from '../../../shared/mail/application/mail.service';
 import { WhatsAppService } from '../../../shared/whatsapp/application/whatsapp.service';
 import { purchaseConfirmation, refundConfirmation } from '../../../shared/mail/templates/mail-templates';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
-import { extendedExpiry, readPyqPlan } from '../../../shared/pyq-plan';
+import { IS_PYQ_PLAN, extendedExpiry, readPyqPlan } from '../../../shared/pyq-plan';
 import { OrderEvents, type OrderPaidEvent } from './order-events';
 import {
   PaymentProvider,
@@ -582,7 +582,13 @@ export class PaymentService {
         // Only the call that moved the order to PAID may extend a plan, so a
         // redelivered webhook or the racing browser callback never adds days twice.
         if (transitioned.count === 1) {
-          const term = await this.applyPlanTerm(tx, granted, item.product.metadata, payment.orderId);
+          const term = await this.applyPlanTerm(
+            tx,
+            granted,
+            item.product.metadata,
+            payment.orderId,
+            payment.order.userId,
+          );
           if (term) planPurchases.push({ productId: item.productId, ...term });
         }
 
@@ -662,9 +668,15 @@ export class PaymentService {
 
   /**
    * The subscription hook: when the product just paid for is a PYQ plan, set
-   * the entitlement's expiry to `durationDays` from the later of now and its
-   * current expiry (renewing early keeps the remaining days). The grant itself
-   * stays the ordinary idempotent one; this only stamps a term on it.
+   * the entitlement's expiry to one term (calendar months, or days on older
+   * plans) from the latest of:
+   *  - now;
+   *  - the furthest expiry of any plan the buyer already holds — this one
+   *    renewed early, or another plan, including an older version of this one
+   *    that was retired when its price changed — so paying early never loses
+   *    paid-for days;
+   *  - the end of a running free trial, so paying during it never loses trial days.
+   * The grant itself stays the ordinary idempotent one; this only stamps a term on it.
    *
    * The renewed row is re-pointed at this order, so refunding the latest order
    * revokes the plan (refunds are all-or-nothing, as for every product).
@@ -677,6 +689,7 @@ export class PaymentService {
     entitlement: { id: string; expiresAt: Date | null; sourceOrderId: string | null },
     metadata: unknown,
     orderId: string,
+    userId: string,
   ): Promise<{ expiresAt: Date; renewal: boolean } | null> {
     const plan = readPyqPlan(metadata);
     if (!plan) return null;
@@ -684,7 +697,26 @@ export class PaymentService {
     const fresh = entitlement.sourceOrderId === orderId && entitlement.expiresAt === null;
     if (!fresh && entitlement.expiresAt === null) return null;
 
-    const expiresAt = extendedExpiry(fresh ? null : entitlement.expiresAt, plan.durationDays);
+    const now = new Date();
+    const [otherPlans, trial] = await Promise.all([
+      tx.entitlement.findFirst({
+        where: {
+          userId,
+          id: { not: entitlement.id },
+          status: EntitlementStatus.ACTIVE,
+          expiresAt: { gt: now },
+          product: IS_PYQ_PLAN,
+        },
+        orderBy: { expiresAt: 'desc' },
+        select: { expiresAt: true },
+      }),
+      tx.pyqTrial.findUnique({ where: { userId }, select: { endsAt: true } }),
+    ]);
+    const held = [fresh ? null : entitlement.expiresAt, otherPlans?.expiresAt ?? null]
+      .filter((d): d is Date => d !== null)
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+
+    const expiresAt = extendedExpiry(held, plan, now, trial?.endsAt ?? null);
     await tx.entitlement.update({
       where: { id: entitlement.id },
       data: { expiresAt, sourceOrderId: orderId },

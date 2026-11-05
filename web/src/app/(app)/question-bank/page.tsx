@@ -1,8 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
-import { PageHeader } from "@/components/common/page-header";
+import {
+  ArrowRight,
+  BookOpen,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  ListFilter,
+  Play,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import {
   EMPTY_QUESTION_FILTERS,
@@ -117,25 +126,46 @@ export default function QuestionBankPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Question Bank"
-        description="Browse memory-based PYQs by exam, year, subject, and topic."
-      />
+      {/* The page's own masthead rather than the shared PageHeader: this is
+          the screen students live in, so it gets the eyebrow, the full title
+          and the one claim worth making about the bank's contents. */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <span className="eyebrow">
+            <BookOpen className="size-3.5" /> The practice desk
+          </span>
+          <h1 className="mt-3 font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            Question Bank<span className="text-primary">.</span>
+          </h1>
+          <p className="mt-2 max-w-xl text-muted-foreground">
+            Build confidence, one clinical question at a time.
+          </p>
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-2 self-start rounded-full border border-border bg-card px-3.5 py-2 text-xs font-semibold text-muted-foreground">
+          <CheckCircle2 className="size-4 text-primary" /> Memory-based PYQs
+        </span>
+      </header>
 
       <StatusTabs value={status} onChange={setStatus} />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* The filters sit in their own labelled block, so a student reads them
+          as one tool rather than a row of loose controls above the list. */}
+      <section className="space-y-3 rounded-xl border border-border bg-card p-4">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <SlidersHorizontal className="size-4 text-primary" /> Refine your practice
+        </h2>
         <FilterPanel value={filters} onChange={setFilters} />
         {(pyqCapabilities.search || pyqCapabilities.sort) && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             {pyqCapabilities.search && (
-              <div className="relative w-full sm:w-64">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search questions"
+                  placeholder="Search clinical cases, conditions, keywords…"
+                  aria-label="Search questions"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-8"
+                  className="pl-9"
                 />
               </div>
             )}
@@ -144,16 +174,18 @@ export default function QuestionBankPage() {
             )}
           </div>
         )}
-      </div>
+        <ActiveFilterChips value={filters} onChange={setFilters} />
+      </section>
 
-      <ActiveFilterChips value={filters} onChange={setFilters} />
-
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <ListFilter className="size-4 shrink-0 text-primary" />
           {isPending ? "Loading questions…" : `${total} question${total === 1 ? "" : "s"} match your filters`}
         </p>
         <Button onClick={practiceAll} disabled={total === 0 || startSession.isPending}>
+          <Play className="size-4" />
           Practice these questions
+          <ArrowRight className="size-4" />
         </Button>
       </div>
 

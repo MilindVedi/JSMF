@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Trophy } from "lucide-react";
+import { CheckCircle2, Target, Trophy } from "lucide-react";
 import { StreakEmbers } from "@/components/streak/streak-embers";
 import { StreakFlame } from "@/components/streak/streak-flame";
 import { Progress } from "@/components/ui/progress";
@@ -54,10 +54,13 @@ export function StreakCard() {
 
   function completeToday() {
     const today = streak.lastCompletedDate ?? new Date().toISOString().slice(0, 10);
-    // Live data already counts today, so the count shown everywhere is already
-    // right and only celebrates; the mock demo extends the streak here.
-    const fromStreak = streak.currentStreak;
+    // Live, the server advances the streak in the same response that turns
+    // todayDone true — reaching the goal is what earns the day — so the count
+    // already in hand is the new one and the badge flies from the day before
+    // it. The mock demo steps the count forward itself; either way the flight
+    // runs from N-1 to N, as it does on mobile.
     const newStreak = isApiDataSource ? Math.max(streak.currentStreak, 1) : streak.currentStreak + 1;
+    const fromStreak = Math.max(newStreak - 1, 0);
 
     setBurst(true);
     setTimeout(() => setBurst(false), 900);
@@ -151,17 +154,10 @@ export function StreakCard() {
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Today&apos;s streak progress
-          </p>
-          <p className="mt-1 font-heading text-2xl font-semibold text-foreground">
-            {shown}{" "}
-            <span className="text-base font-medium text-muted-foreground">
-              / {streak.dailyTarget} questions
-            </span>
-          </p>
-        </div>
+        <p className="flex items-center gap-2 font-heading text-base font-semibold text-foreground">
+          <Target className="size-4.5 text-primary" strokeWidth={2} />
+          Today&apos;s goal
+        </p>
 
         <div
           ref={badgeRef}
@@ -177,14 +173,43 @@ export function StreakCard() {
           }}
         >
           {burst && <StreakEmbers />}
-          <StreakFlame className="size-4" glow={level.glowIntensity} />
-          <span className="text-xs font-semibold" style={{ color: level.accent }}>
+          <StreakFlame days={streak.currentStreak} size={15} />
+          <span className="text-xs font-semibold text-foreground">
             {streak.currentStreak} day{streak.currentStreak === 1 ? "" : "s"}
           </span>
         </div>
       </div>
 
-      <Progress value={percent} className="mt-4" aria-label="Progress toward today's goal" />
+      <p className="mt-4 font-heading text-3xl leading-none font-semibold tracking-tight text-foreground">
+        {shown}{" "}
+        <span className="text-base font-medium text-muted-foreground">
+          / {streak.dailyTarget} questions
+        </span>
+      </p>
+
+      {/* One pip per question rather than a continuous bar: at a target of ten
+          a bar asks you to estimate, where pips can be counted — and each one
+          filling is a step you took. Past a couple of dozen they would be too
+          thin to read, so the bar comes back. */}
+      {streak.dailyTarget <= 24 ? (
+        <div
+          className="mt-3 flex gap-1"
+          role="img"
+          aria-label={`${shown} of ${streak.dailyTarget} questions done today`}
+        >
+          {Array.from({ length: streak.dailyTarget }, (_, i) => (
+            <span
+              key={i}
+              className={cn(
+                "h-2 flex-1 rounded-full transition-colors duration-300",
+                i < shown ? "bg-primary" : "bg-muted"
+              )}
+            />
+          ))}
+        </div>
+      ) : (
+        <Progress value={percent} className="mt-3" aria-label="Progress toward today's goal" />
+      )}
 
       {isComplete ? (
         <div className="mt-3 space-y-1">
@@ -197,17 +222,17 @@ export function StreakCard() {
           </p>
           <p className="flex items-center gap-1 pl-[1.375rem] text-xs text-muted-foreground">
             <Trophy className="size-3.5" />
-            Best: {streak.bestStreak} day{streak.bestStreak === 1 ? "" : "s"}
+            Best streak: {streak.bestStreak} day{streak.bestStreak === 1 ? "" : "s"}
           </p>
         </div>
       ) : (
-        <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="mt-3 space-y-1.5">
           <p className="text-sm text-muted-foreground">
             {streak.dailyTarget - shown} more to reach today&apos;s goal.
           </p>
-          <p className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Trophy className="size-3.5" />
-            Best: {streak.bestStreak}d
+            Best streak: {streak.bestStreak} day{streak.bestStreak === 1 ? "" : "s"}
           </p>
         </div>
       )}

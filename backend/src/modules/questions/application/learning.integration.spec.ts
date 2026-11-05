@@ -3,16 +3,18 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Difficulty, PracticeMode, QuestionStatus, UserStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
-import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import { CollectionsService } from './collections.service';
 import { LearningService, computeStreak, istDay } from './learning.service';
 import { PracticeService } from './practice.service';
+import type { ExamSetupService } from './exam-setup.service';
 import { ProgressService } from './progress.service';
 import { PyqAccessService } from './pyq-access.service';
 import { CacheService } from '../../../shared/cache/cache.service';
 import { QuestionStateService } from './question-state.service';
 import { QuestionBankService } from './question-bank.service';
 import { QuestionImportService } from './question-import.service';
+import { AuditService } from '../../../shared/audit/audit.service';
+import { PyqSubscriptionService } from './pyq-subscription.service';
 
 /**
  * Phase 2 learning features against a real Postgres: collections (and that
@@ -28,13 +30,16 @@ const config = {
 } as never;
 
 const prisma = new PrismaService();
-const entitlements = new EntitlementService(prisma);
-const access = new PyqAccessService(prisma, entitlements, config);
+// Pass-through cache: these tests change settings between reads.
+const subscriptions = new PyqSubscriptionService(prisma, new AuditService(prisma), { wrap: (_key: string, _ttl: number, load: () => unknown) => load(), del: async () => {} } as never, config);
+const access = new PyqAccessService(prisma, config, subscriptions);
 const cache = new CacheService({ get: () => false } as never);
 const bank = new QuestionBankService(prisma, cache);
 const states = new QuestionStateService(prisma);
 const importer = new QuestionImportService(prisma);
-const practice = new PracticeService(prisma, bank, access, states);
+// Options in written order here; shuffling has its own spec (exam-mode.integration.spec.ts).
+const examSetup = { settings: async () => ({ shuffleOptions: false }) } as unknown as ExamSetupService;
+const practice = new PracticeService(prisma, bank, access, states, examSetup);
 const progress = new ProgressService(prisma, bank);
 const collections = new CollectionsService(prisma);
 const learning = new LearningService(prisma);
@@ -174,6 +179,9 @@ describe('streak', () => {
 
   it('builds current/longest/today from attempts across IST midnight', async () => {
     const user = await createUser();
+    // A goal of one answer a day, so each instant below is a day earned —
+    // the streak counts days that reached the goal, not days with an answer.
+    await learning.updatePreferences(user.id, { dailyTarget: 1 });
     const session = await practiceSession(user.id);
     await answerAt(user.id, session.id, 0, true, new Date('2026-03-09T18:20:00Z')); // IST 9th 23:50
     await answerAt(user.id, session.id, 1, true, new Date('2026-03-09T18:40:00Z')); // IST 10th 00:10
@@ -185,8 +193,8 @@ describe('streak', () => {
       longestStreak: 3,
       today: '2026-03-11',
       todayCount: 1,
-      dailyTarget: 10,
-      todayDone: false,
+      dailyTarget: 1,
+      todayDone: true,
     });
 
     // Late on the 12th (IST) the run is still alive...
@@ -200,8 +208,49 @@ describe('streak', () => {
       longestStreak: 3,
     });
 
-    await learning.updatePreferences(user.id, { dailyTarget: 1 });
-    expect(await learning.streak(user.id, new Date('2026-03-11T10:00:00Z'))).toMatchObject({ todayDone: true });
+    // Raising the goal cannot take away days already earned under the old one.
+    await learning.updatePreferences(user.id, { dailyTarget: 20 });
+    expect(await learning.streak(user.id, new Date('2026-03-11T10:00:00Z'))).toMatchObject({
+      currentStreak: 3,
+      longestStreak: 3,
+      todayDone: true,
+    });
+  });
+
+  it('counts a day only once the daily goal is reached', async () => {
+    const user = await createUser();
+    const session = await practiceSession(user.id);
+    const day = new Date('2026-04-02T06:00:00Z'); // IST 2nd, mid-morning
+
+    // Three answers against the default goal of ten: a day's work, but not
+    // the day's goal, so nothing to show on the flame.
+    for (const i of [0, 1, 2]) {
+      await answerAt(user.id, session.id, i, true, new Date(day.getTime() + i * 60_000));
+    }
+    expect(await learning.streak(user.id, day)).toMatchObject({
+      currentStreak: 0,
+      longestStreak: 0,
+      todayCount: 3,
+      dailyTarget: 10,
+      todayDone: false,
+    });
+
+    // Lowering the goal to what they have done counts the day at once,
+    // without waiting for another answer.
+    await learning.updatePreferences(user.id, { dailyTarget: 3 }, day);
+    expect(await learning.streak(user.id, day)).toMatchObject({
+      currentStreak: 1,
+      longestStreak: 1,
+      todayDone: true,
+    });
+
+    // And a day short of the goal earns nothing, leaving the run to lapse.
+    await answerAt(user.id, session.id, 3, true, new Date('2026-04-03T06:00:00Z'));
+    expect(await learning.streak(user.id, new Date('2026-04-03T06:00:00Z'))).toMatchObject({
+      currentStreak: 1,
+      todayCount: 1,
+      todayDone: false,
+    });
   });
 });
 
@@ -267,13 +316,14 @@ describe('preferences', () => {
 describe('custom test as TEST mode', () => {
   it('hides correctness until submit and keeps answers off the revision list meanwhile', async () => {
     const user = await createUser();
-    const session = await practice.start(user.id, {
+    const started = await practice.start(user.id, {
       mode: PracticeMode.TEST,
       filters,
       count: 3,
       timeLimitSec: 600,
       meta: { uiMode: 'custom-test' },
     });
+    const session = await practice.begin(user.id, started.id);
     const first = (await questions()).find((q) => q.id === session.questions[0].id)!;
     const wrong = first.options.find((o) => !o.isCorrect)!;
 

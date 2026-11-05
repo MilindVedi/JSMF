@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 import { activity } from '../../shared/logging/activity';
+import { currentRequestContext, runWithRequestContext } from '../../shared/logging/request-context';
 
 const logger = new Logger('Http');
 
@@ -11,8 +12,9 @@ const QUIET_PATHS = new Set(['/api/health', '/api/health/ready']);
  * Logged only when they fail. Website analytics batches arrive every few
  * seconds from every open tab; a line for each successful one would be most of
  * the log volume and say nothing the analytics table does not already hold.
+ * Client error reports get their own `client.error` line per error already.
  */
-const QUIET_WHEN_OK_PATHS = new Set(['/api/analytics/events']);
+const QUIET_WHEN_OK_PATHS = new Set(['/api/analytics/events', '/api/client-errors']);
 
 /**
  * One `http.request` line per API call: method, path, status, how long it took
@@ -28,30 +30,39 @@ const QUIET_WHEN_OK_PATHS = new Set(['/api/analytics/events']);
  */
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const started = process.hrtime.bigint();
+  // Captured now and re-entered on 'finish': whether an event listener runs
+  // inside the request's async context depends on what triggered the event,
+  // and this line must carry the request id whatever did.
+  const context = currentRequestContext();
 
   res.on('finish', () => {
-    const path = (req.originalUrl ?? req.url).split('?')[0];
-    if (QUIET_PATHS.has(path)) return;
-
-    const status = res.statusCode;
-    if (status < 400 && QUIET_WHEN_OK_PATHS.has(path)) return;
-    const user = (req as Request & { user?: { id?: string } }).user;
-
-    activity(
-      logger,
-      'http.request',
-      {
-        method: req.method,
-        path,
-        status,
-        durationMs: Math.round(Number(process.hrtime.bigint() - started) / 1e5) / 10,
-        userId: user?.id,
-        ip: req.ip,
-        userAgent: req.get('user-agent')?.slice(0, 160),
-      },
-      status >= 500 ? 'error' : status >= 400 ? 'warn' : 'log',
-    );
+    if (context) runWithRequestContext(context, () => logRequest(req, res, started));
+    else logRequest(req, res, started);
   });
 
   next();
+}
+
+function logRequest(req: Request, res: Response, started: bigint): void {
+  const path = (req.originalUrl ?? req.url).split('?')[0];
+  if (QUIET_PATHS.has(path)) return;
+
+  const status = res.statusCode;
+  if (status < 400 && QUIET_WHEN_OK_PATHS.has(path)) return;
+  const user = (req as Request & { user?: { id?: string } }).user;
+
+  activity(
+    logger,
+    'http.request',
+    {
+      method: req.method,
+      path,
+      status,
+      durationMs: Math.round(Number(process.hrtime.bigint() - started) / 1e5) / 10,
+      userId: user?.id,
+      ip: req.ip,
+      userAgent: req.get('user-agent')?.slice(0, 160),
+    },
+    status >= 500 ? 'error' : status >= 400 ? 'warn' : 'log',
+  );
 }

@@ -115,8 +115,11 @@ From any question card: `useBookmarkToggle` → `PUT`/`DELETE pyq/bookmarks/:qid
 Everything else is the ordinary session flow above, with three differences the reader should expect:
 
 - Nothing reveals correctness until submit (see the table in §2).
-- The clock is server-enforced. The browser counts down, but the authority is `assertOpen`: `started_at + time_limit_sec + 30s`. Past that, answers are refused with 409 `Time is up for this session — submit it to see your score` — a 409, not a silent discard, so the UI can route to submit.
+- The clock is server-enforced. The browser counts down (on the server's clock, via `serverTime`), but the authority is `assertOpen`: `clock_started_at + time_limit_sec + 30s`. Past that, answers are refused with 409 `Time is up for this session — submit it to see your score` — a 409, not a silent discard, so the UI can route to submit.
 - A TEST answer may be changed, and changing it does not spend free allowance. Only the first answer to a question does.
+- A TEST is created with no clock (`clock_started_at` null): the runner shows the instructions screen, and `POST pyq/sessions/:id/begin` ("I am ready to begin") starts the clock and returns the questions. Deadlines count from that moment, not from creation.
+
+A **full mock** (`POST pyq/mocks`, from the Full mock test card) is the same flow with the exam's pattern copied onto the session: in a pattern with time-bound sections the server takes answers only for the running section, and the console shows only that section and its clock, moving on by itself when the time ends. Details in [exam-mode.md](./exam-mode.md).
 
 ## 4. The revision loop
 
@@ -152,7 +155,7 @@ Hitting the limit mid-session does not destroy the session: already-answered que
 
 `/subscription` (`web/src/app/(app)/subscription/page.tsx`) branches on `isApiDataSource`: mock mode keeps illustrative plans backed by the zustand auth store, api mode renders `web/src/components/subscription/api-subscription.tsx` on `usePlans` (core) and `usePlanCheckout` (`web/src/hooks/pyq/plans.ts`).
 
-A plan is not a special entity. It is an ordinary `COURSE` product, `PUBLISHED`, `accessType PAID`, whose `metadata` carries `{"pyqSubscription": true, "durationDays": N, …}`. `backend/src/shared/pyq-plan.ts` is the only file that reads that shape — `readPyqPlan`, the `IS_PYQ_PLAN` / `NOT_A_PYQ_PLAN` Prisma filters that hide plans from the PDF storefront and the library, and `extendedExpiry`.
+A plan is not a special entity. It is an ordinary `COURSE` product, `PUBLISHED`, `accessType PAID`, whose `metadata` carries `{"pyqSubscription": true, "durationMonths": N, …}` (older plans: `durationDays`). Plans are created and repriced from the admin's **PYQ → Plans & trial** page — see [subscriptions.md](./subscriptions.md). `backend/src/shared/pyq-plan.ts` is the only file that reads that shape — `readPyqPlan`, the `IS_PYQ_PLAN` / `NOT_A_PYQ_PLAN` Prisma filters that hide plans from the PDF storefront and the library, and `extendedExpiry`.
 
 The purchase is therefore the ordinary checkout:
 
@@ -189,13 +192,16 @@ A settlement replayed after a refund returns early, so a redelivered capture nev
 ```ts
 const fresh = entitlement.sourceOrderId === orderId && entitlement.expiresAt === null;
 if (!fresh && entitlement.expiresAt === null) return null;   // admin gift: never shortened
-const expiresAt = extendedExpiry(fresh ? null : entitlement.expiresAt, plan.durationDays);
+// held = furthest expiry among this entitlement (if renewing) and every other live plan the student holds
+const expiresAt = extendedExpiry(held, plan, now, trial?.endsAt ?? null);
 await tx.entitlement.update({ where: { id }, data: { expiresAt, sourceOrderId: orderId } });
 ```
 
-- Not a plan (`readPyqPlan` returns null, including a missing or non-positive `durationDays`) → nothing happens.
-- **First purchase**: the entitlement was just created by this order and has no expiry, so the term starts from now: `expiresAt = now + durationDays`.
-- **Renewal**: `extendedExpiry(current, days)` bases from the current expiry when it is still in the future, otherwise from now. Renewing early loses no paid-for days; renewing after expiry starts from today. The entitlement row is re-pointed at the newest order.
+- Not a plan (`readPyqPlan` returns null, including a missing or nonsense length) → nothing happens.
+- The term (calendar months, or days on older plans) starts at the **latest** of now, the furthest expiry of any plan the student holds, and the end of a running free trial.
+- **First purchase** with nothing else held: from now.
+- **Renewal, or a different plan bought while one runs** (including a newer version of the same plan after a price change): from the furthest current expiry, so no paid-for days are lost. The entitlement row is re-pointed at the newest order.
+- **Bought during a free trial**: from the trial's end, so no trial days are lost.
 - **Admin-gifted perpetual grant** (`expiresAt` null but not from this order) → returns null, so a purchase can never shorten a gift.
 
 Access checks treat a past `expiresAt` as no access, so no sweeper job is needed. Both `isSubscribed` and `currentPlan` use the same predicate: `ACTIVE` and (`expiresAt IS NULL OR expiresAt > now()`).

@@ -10,6 +10,7 @@ import type {
   Subject,
   TestSession,
 } from "../domain/types";
+import type { ExamPattern, Marks } from "../domain/exam-pattern";
 
 /**
  * The port every PYQ screen talks to. Two adapters implement it — `api` (the
@@ -84,9 +85,21 @@ export interface CreateSessionInput {
 
 export interface SessionDetail {
   session: TestSession;
-  /** In session order; answers present once revealed. */
+  /** In session order; answers present once revealed. Empty while a test waits to be begun. */
   questions: SessionQuestion[];
   submitted: boolean;
+  /** A submitted full mock's score under its exam's marking. */
+  marks?: Marks;
+}
+
+/** A full mock a student can start: an exam's pattern, once the bank can fill it. */
+export interface MockOffer {
+  examId: ExamId;
+  name: string;
+  shortName: string;
+  totalQuestions: number;
+  totalMinutes: number;
+  pattern: ExamPattern;
 }
 
 export interface SessionListItem {
@@ -99,6 +112,8 @@ export interface SessionListItem {
   unattempted: number;
   accuracy: number;
   totalTimeSec: number;
+  /** A submitted full mock's score under its exam's marking. */
+  marks?: Marks;
   /** What the session covers; empty means "not narrowed" (all). */
   examIds: string[];
   subjectIds: string[];
@@ -136,8 +151,21 @@ export interface PyqAccess {
   dailyLimit: number | null;
   usedToday: number;
   remainingToday: number | null;
-  /** The plan behind `subscribed` (api mode); null/absent for free users. */
+  /** The plan behind `subscribed` (api mode); null/absent for free and trial users. */
   plan?: { productId: string; title: string; expiresAt: string | null } | null;
+  /**
+   * The running free trial. Can sit alongside `plan` when a plan was bought
+   * during the trial: the plan's time starts when the trial ends.
+   */
+  trial?: PyqTrial | null;
+  /** A free trial this student may start now (`startTrial`); null when none is on offer to them. */
+  trialOffer?: { days: number } | null;
+}
+
+export interface PyqTrial {
+  startedAt: string;
+  endsAt: string;
+  days: number;
 }
 
 /** A subscription plan on sale. `id` is what checkout takes. */
@@ -147,9 +175,14 @@ export interface PyqPlan {
   tagline: string | null;
   /** Rupees, for display; the server prices the order itself. */
   price: number;
+  /** The struck-through "was" price in rupees, when the plan has one. Display only. */
+  compareAtPrice: number | null;
   currency: string;
+  /** Calendar months per purchase; null on older day-based plans. */
+  durationMonths: number | null;
+  /** About how many days one purchase lasts — for display. */
   durationDays: number;
-  /** "month" | "quarter" | "year" when the plan says so. */
+  /** "month" | "quarter" | "year" on older plans that say so. */
   period: string | null;
   popular: boolean;
   features: string[];
@@ -174,7 +207,7 @@ export interface PaymentConfirmation {
   razorpaySignature: string;
 }
 
-/** Streak by India-time day; a day counts once it has at least one answer. */
+/** Streak by India-time day; a day counts once it reaches `dailyTarget`. */
 export interface StreakSummary {
   currentStreak: number;
   longestStreak: number;
@@ -232,6 +265,8 @@ export interface DataSourceCapabilities {
   collections: boolean;
   /** Smart ordering of custom tests (unattempted-first, ...). */
   sessionOrdering: boolean;
+  /** Full mocks following each exam's pattern. */
+  mocks: boolean;
 }
 
 export interface PyqDataSource {
@@ -244,6 +279,8 @@ export interface PyqDataSource {
   listPlans(): Promise<PyqPlan[]>;
   /** Creates the order for a plan (priced server-side). */
   startPlanCheckout(planId: string): Promise<PlanCheckout>;
+  /** Starts this student's one free trial and returns their access with it running. */
+  startTrial(): Promise<PyqAccess>;
   /** The browser callback after the Razorpay widget succeeds. The webhook is the authority. */
   confirmPayment(payment: PaymentConfirmation): Promise<void>;
   /** Stub payment driver only (dev): drives the order through the real verify path. */
@@ -254,6 +291,12 @@ export interface PyqDataSource {
   createSession(input: CreateSessionInput): Promise<string>;
   listSessions(page: number, pageSize: number, status?: SessionStatusFilter): Promise<Page<SessionListItem>>;
   getSession(sessionId: string): Promise<SessionDetail>;
+  /** "I am ready to begin": starts a test's clock (idempotent) and returns it with its questions. */
+  beginSession(sessionId: string): Promise<SessionDetail>;
+  /** Full mocks on offer now. */
+  listMocks(): Promise<MockOffer[]>;
+  /** Starts a full mock of one exam; returns the new session's id. It waits to be begun. */
+  startMock(examId: ExamId, sourceHref?: string): Promise<string>;
   answer(sessionId: string, questionId: string, optionId: string, timeSpentMs: number): Promise<AnswerResult>;
   setFlag(sessionId: string, questionId: string, flagged: boolean): Promise<void>;
   submitSession(sessionId: string): Promise<SessionDetail>;

@@ -63,7 +63,11 @@ services:
       # this compose network it must mean the other containers by service name.
       DATABASE_URL: postgresql://jsmf:jsmf@postgres:5432/jsmf?schema=public
       REDIS_URL: redis://redis:6379
-      CORS_ORIGINS: http://localhost:3001,http://localhost:3000
+      # Every web origin that may hold a browser talking to this API — the
+      # store, the admin panel, the main website and the PYQ app. It also
+      # decides which origin a direct-to-storage upload session answers,
+      # so an origin missing here cannot upload a profile picture.
+      CORS_ORIGINS: http://localhost:3001,http://localhost:3000,http://localhost:3002
     volumes:
       # STORAGE_DRIVER=local writes uploaded PDFs and covers under /app/.storage.
       # Without a volume those live only in the container's writable layer, so

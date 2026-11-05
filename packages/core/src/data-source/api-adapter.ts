@@ -11,6 +11,7 @@ import type {
   SubjectGroup,
   TestSession,
 } from "../domain/types";
+import type { ExamPattern, ExamSectionWindow, Marks } from "../domain/exam-pattern";
 import {
   DailyLimitError,
   NotFoundError,
@@ -27,6 +28,7 @@ import {
   type QuestionListItem,
   type QuestionQuery,
   type QuestionUserStatus,
+  type MockOffer,
   type SessionDetail,
   type SessionListItem,
   type Taxonomy,
@@ -45,7 +47,9 @@ interface WirePlan {
   title: string;
   subtitle: string | null;
   priceAmountMinor: string;
+  compareAtAmountMinor: string | null;
   currency: string;
+  durationMonths: number | null;
   durationDays: number;
   period: string | null;
   popular: boolean;
@@ -104,6 +108,12 @@ interface WireSessionSummary {
   unattempted: number;
   accuracy?: number;
   totalTimeSec: number;
+  /** Null while a test waits on its instructions screen. Absent from older APIs. */
+  clockStartedAt?: string | null;
+  serverTime?: string;
+  pattern?: ExamPattern | null;
+  sectionWindows?: ExamSectionWindow[] | null;
+  marks?: Marks;
 }
 
 /** History rows carry what the session covers, computed from its questions. */
@@ -130,7 +140,10 @@ interface WirePage<T> {
 
 // --- Translation ---------------------------------------------------------------
 
-const SESSION_MODES: SessionMode[] = ["browse", "custom-test", "bookmarks", "wrong-questions"];
+/** The in-app paths the API accepts as "Save & exit" targets (backend domain/in-app-path.ts). */
+const IN_APP_PATH = /^\/(?![/\\])[^\s]{0,199}$/;
+
+const SESSION_MODES: SessionMode[] = ["browse", "custom-test", "full-mock", "bookmarks", "wrong-questions"];
 const MAX_SESSION_QUESTIONS = 200;
 
 function toFigure(value: unknown): QuestionFigure | undefined {
@@ -189,6 +202,8 @@ function toTestSession(wire: WireSessionSummary, questions: WireQuestion[] = [],
     }
   }
   const filters = (wire.config?.filters ?? undefined) as TestSession["filters"];
+  // Measured once, here, when the response lands: close enough for a countdown.
+  const clockOffsetMs = wire.serverTime ? new Date(wire.serverTime).getTime() - Date.now() : 0;
   return {
     id: wire.id,
     mode: uiMode(wire.config),
@@ -205,6 +220,12 @@ function toTestSession(wire: WireSessionSummary, questions: WireQuestion[] = [],
     startedAt: wire.startedAt,
     completedAt: wire.submittedAt ?? undefined,
     sourceHref: typeof wire.config?.sourceHref === "string" ? wire.config.sourceHref : undefined,
+    awaitingBegin: wire.clockStartedAt === null && wire.status === "IN_PROGRESS",
+    clockStartedAt: wire.clockStartedAt ?? undefined,
+    clockOffsetMs,
+    totalQuestions: wire.totalQuestions,
+    pattern: wire.pattern ?? undefined,
+    sections: wire.sectionWindows ?? undefined,
   };
 }
 
@@ -213,6 +234,7 @@ function toDetail(wire: WireSession): SessionDetail {
     session: toTestSession(wire, wire.questions, wire.attempts),
     questions: wire.questions.map(toQuestion),
     submitted: wire.status === "SUBMITTED",
+    marks: wire.marks,
   };
 }
 
@@ -236,6 +258,7 @@ function toListItem(wire: WireSessionHistoryItem): SessionListItem {
     unattempted: wire.unattempted,
     accuracy: wire.accuracy ?? 0,
     totalTimeSec: wire.totalTimeSec,
+    marks: wire.marks,
   };
 }
 
@@ -318,7 +341,7 @@ interface WireRevisionItem {
 
 export const apiDataSource: PyqDataSource = {
   kind: "api",
-  capabilities: { search: true, sort: true, collections: true, sessionOrdering: true },
+  capabilities: { search: true, sort: true, collections: true, sessionOrdering: true, mocks: true },
 
   getTaxonomy: () =>
     call(async () => {
@@ -367,7 +390,9 @@ export const apiDataSource: PyqDataSource = {
           name: p.title,
           tagline: p.subtitle,
           price: Number(p.priceAmountMinor) / 100,
+          compareAtPrice: p.compareAtAmountMinor ? Number(p.compareAtAmountMinor) / 100 : null,
           currency: p.currency,
+          durationMonths: p.durationMonths ?? null,
           durationDays: p.durationDays,
           period: p.period,
           popular: p.popular,
@@ -375,6 +400,8 @@ export const apiDataSource: PyqDataSource = {
         })
       );
     }),
+
+  startTrial: () => call(() => api.post<PyqAccess>("/pyq/trial", {})),
 
   startPlanCheckout: (planId) =>
     call(async () => {
@@ -471,6 +498,23 @@ export const apiDataSource: PyqDataSource = {
     }),
 
   getSession: (sessionId) => call(async () => toDetail(await api.get<WireSession>(`/pyq/sessions/${sessionId}`))),
+
+  beginSession: (sessionId) =>
+    call(async () => toDetail(await api.post<WireSession>(`/pyq/sessions/${sessionId}/begin`))),
+
+  listMocks: () =>
+    call(async () => {
+      const offers = await api.get<(Omit<MockOffer, "examId"> & { examId: string })[]>("/pyq/mocks");
+      return offers.map((offer) => ({ ...offer, examId: offer.examId as ExamId }));
+    }),
+
+  startMock: (examId, sourceHref) =>
+    call(async () => {
+      // The API takes only an in-app path; anything else just means no "return to".
+      const back = sourceHref && IN_APP_PATH.test(sourceHref) ? { sourceHref } : {};
+      const session = await api.post<WireSession>("/pyq/mocks", { examId, ...back });
+      return session.id;
+    }),
 
   answer: (sessionId, questionId, optionId, timeSpentMs) =>
     call(async () => {

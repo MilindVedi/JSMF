@@ -1,6 +1,9 @@
 import { configureCore } from "@jsmf/core/config";
 import { createAuthSession } from "@jsmf/core/api";
 import { createQueryClient } from "@jsmf/core/query";
+import { onlineManager } from "@tanstack/react-query";
+import * as Network from "expo-network";
+import { Platform } from "react-native";
 import { create } from "zustand";
 import { API_BASE_URL } from "./env";
 import { appStorage } from "./storage";
@@ -28,6 +31,24 @@ configureCore({
   onLegalRequired: () => useLegalSignal.getState().bump(),
   notify: { error: (message) => toast.error(message) },
 });
+
+/**
+ * Tells React Query when the phone is offline, as the browser tells it on
+ * web: queries then wait instead of failing to an error screen, and the stale
+ * ones reload by themselves when the connection is back (refetchOnReconnect is
+ * on by default). The browser build keeps TanStack's own navigator.onLine wiring.
+ * Only a definite "not connected" counts as offline — an unknown state never
+ * pauses the app.
+ */
+if (Platform.OS !== "web") {
+  onlineManager.setEventListener((setOnline) => {
+    Network.getNetworkStateAsync()
+      .then((state) => setOnline(state.isConnected !== false))
+      .catch(() => {});
+    const subscription = Network.addNetworkStateListener((state) => setOnline(state.isConnected !== false));
+    return () => subscription.remove();
+  });
+}
 
 /** One query client for the app's lifetime (defaults shared with web). */
 export const queryClient = createQueryClient();

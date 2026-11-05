@@ -101,7 +101,7 @@ export function MarketingHeader() {
           <Link
             href="/"
             className="flex shrink-0 items-center gap-2.5 font-display text-base text-brand-deep dark:text-foreground"
-            aria-label="JSMF Med Prep — Jab Studies Met Fun, home"
+            aria-label="JSMF PYQs — Jab Studies Met Fun, home"
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- build-time constant from public/ */}
             <img src="/favicon.png" alt="JSMF logo" width={36} height={36} className="size-9 shrink-0 object-contain" />
@@ -116,7 +116,7 @@ export function MarketingHeader() {
                   the Sign in button. 1400 is where it fits again — measured,
                   not a Tailwind step, because the content decides this, not
                   the device sizes. */}
-              <span className="hidden font-normal text-muted-foreground sm:inline xl:hidden min-[1400px]:inline"> · Med Prep</span>
+              <span className="hidden font-normal text-muted-foreground sm:inline xl:hidden min-[1400px]:inline"> · PYQs</span>
             </span>
             {/* The full form shows only before the nav crowds in (sm–lg).
                 It used to come back at 2xl, when the row was one link shorter;

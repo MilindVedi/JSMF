@@ -25,11 +25,11 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://prep.jsmf.me";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "JSMF — Med Prep",
+  title: "JSMF — PYQs",
   description:
     "Practice PYQs. Master concepts. Prepare smarter. Memory-based previous-year questions for NEET-PG, FMGE and INI-CET, with explanations, revision and progress tracking.",
   openGraph: {
-    title: "JSMF — Med Prep",
+    title: "JSMF — PYQs",
     description: "Practice PYQs. Master concepts. Prepare smarter.",
     type: "website",
   },

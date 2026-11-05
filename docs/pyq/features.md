@@ -8,7 +8,7 @@ Every `(app)` route is behind the app shell; `practice/*` has its own full-scree
 
 | Route | What it does | Hook(s) | Backend endpoint(s) | api mode |
 |---|---|---|---|---|
-| `/dashboard` | Greeting, streak card, the session to resume and the last four finished, quick links | `useStats`, `useSessionHistory` (1 open + 4 submitted), `useStreak` (via `useStreakState`), `usePreferences` | `GET pyq/stats`, `pyq/sessions?status=…`, `pyq/streak`, `pyq/preferences` | Yes |
+| `/dashboard` | Masthead (dynamic greeting + check-in line), streak card, the session to resume and the last four finished, quick links | `useStats`, `useSessionHistory` (1 open + 4 submitted), `useStreak` (via `useStreakState`), `usePreferences` | `GET pyq/stats`, `pyq/sessions?status=…`, `pyq/streak`, `pyq/preferences` | Yes |
 | `/question-bank` | Filter the bank by exam, year, subject, topic and per-user status; search stems (debounced); sort by exam year or subject name; start a session from the result | `useQuestions`, `useStartSession` | `GET pyq/questions`, `POST pyq/sessions` | Yes |
 | `/custom-test/new` | Build a test: filters, question count, ordering (random / unattempted / incorrect / bookmarked first), optional timer; shows the live match count before starting | `useQuestionCount`, `useStartSession`, `useTaxonomyLookup` | `GET pyq/questions` (count only), `POST pyq/sessions` | Yes |
 | `/practice/[sessionId]` | The runner: one question at a time, palette, flagging, bookmarking, reporting, timer | `useSessionDetail`, `useAnswer`, `useSetFlag`, `useSubmitSession`, `useBookmarkToggle` | `GET/POST pyq/sessions/:id…` | Yes |
@@ -28,7 +28,7 @@ Every `(app)` route is behind the app shell; `practice/*` has its own full-scree
 The header carries two crossovers, **Study Resources** (the PDF store,
 `NEXT_PUBLIC_STORE_URL`) and **Visit our main website** (`NEXT_PUBLIC_MAIN_WEBSITE_URL`),
 each in a new tab, in that order. jsmf.me has the same pair worded the same
-way. Both the brand's "· Med Prep" suffix and the nav are width-dependent:
+way. Both the brand's "· PYQs" suffix and the nav are width-dependent:
 below `xl` the ☰ menu takes over, and between 1280 and 1400 the suffix steps
 aside, because seven links plus the lockup and two buttons do not fit a capped
 row any narrower.
@@ -58,11 +58,11 @@ Capabilities are declared on the data source and read by screens through `pyqCap
 
 ## 2. Access and subscriptions
 
-**What the student sees.** Free users may answer a fixed number of questions a day; the count and what is left are shown in the app, and the answer that would cross the line fails with a toast offering "See plans". A subscriber sees no limit and their plan's expiry on `/subscription`.
+**What the student sees.** Free users may answer a fixed number of questions a day; the count and what is left are shown in the app, and the answer that would cross the line fails with a toast offering "See plans". While an admin has the free trial on, a student who has never had a trial or a plan sees "Try everything free for N days" on `/subscription` and starts it with one tap. A subscriber or trial user sees no limit, and their plan's or trial's end date on `/subscription`. Plans, prices, the shared benefits and the trial are managed from the admin panel — see [subscriptions.md](./subscriptions.md).
 
 **The rules.** All of them live in [`pyq-access.service.ts`](../../backend/src/modules/questions/application/pyq-access.service.ts):
 
-- Subscribed means holding an `ACTIVE` entitlement, not expired, to a product whose `metadata` has `"pyqSubscription": true`. The metadata flag rather than a product type means a plan needs no schema change.
+- Subscribed means holding an `ACTIVE` entitlement, not expired, to a product whose `metadata` has `"pyqSubscription": true` — or having a running free trial (`pyq.trials`, `endsAt` in the future). The metadata flag rather than a product type means a plan needs no schema change.
 - The free allowance is `PYQ_FREE_DAILY_QUESTIONS` (default 20) answers per India-time day. The day boundary is `startOfIndiaDay()` in [`question-view.ts`](../../backend/src/modules/questions/domain/question-view.ts) — a fixed +05:30 shift, exact because India has no DST. "Used today" counts `attempts` rows with `answeredAt` after that instant, so it resets at IST midnight with no job to run.
 - `assertCanAnswer` runs before the write, in `PracticeService.start` (so a student is never dropped into a session they cannot answer) and on every first answer. Changing an answer inside a TEST does not spend allowance a second time.
 - Exceeding the limit is `403` with code `PYQ_DAILY_LIMIT_REACHED`; the adapter turns it into `DailyLimitError`, and `notifyDailyLimit` shows the upgrade toast.
@@ -70,8 +70,8 @@ Capabilities are declared on the data source and read by screens through `pyqCap
 
 **Buying.** A plan is an ordinary `COURSE` product; its terms are parsed only by [`backend/src/shared/pyq-plan.ts`](../../backend/src/shared/pyq-plan.ts) (`readPyqPlan`, `IS_PYQ_PLAN`, `NOT_A_PYQ_PLAN`, `extendedExpiry`). Checkout is the normal order flow. On settlement, `applyPlanTerm` in [`payment.service.ts`](../../backend/src/modules/orders/application/payment.service.ts) sets the entitlement's `expiresAt`:
 
-- A grant made by *this* order with a null expiry is "fresh" and gets `now + durationDays`.
-- Otherwise the term extends from `max(now, current expiry)`, so renewing early loses no paid days.
+- The term (calendar months, or `durationDays` on older plans) starts at the latest of: now; the furthest expiry of **any** plan the student holds — this one renewed early, another plan, or an older version of this plan retired by a price change; and the end of a running free trial. So paying early never loses paid days, and paying during a trial never loses trial days.
+- A month is a calendar month; a day that doesn't exist in the target month lands on its last day (31 Jan + 1 month = 28/29 Feb).
 - An entitlement that is already perpetual and was not created by this order is left alone — an admin gift is never shortened by a purchase.
 - Because the decision keys on `sourceOrderId`, a redelivered webhook racing the browser's verify call cannot add days twice.
 
@@ -108,6 +108,8 @@ A session is a fixed, ordered set of questions chosen when it starts; [`practice
 | Counts toward wrong-questions / revision | yes | not until submit |
 
 Practice answers are final once the explanation has been shown; otherwise "change it to the right one" would inflate every score.
+
+**The exam console, full mocks and shuffled options.** A TEST opens on an instructions screen and its clock starts only when the student begins it (its questions are withheld until then); a full mock follows its exam's pattern with server-enforced, time-bound sections and exact marking; every session shows options in its own stable shuffled order unless the question must keep its order. Rules, API and code map: [exam-mode.md](./exam-mode.md).
 
 **Flagging.** `PATCH …/questions/:qid/flag` upserts an attempt row with no selected option, which is why `Attempt.selectedOptionId` is nullable. A flag persists into the revision list.
 
@@ -151,13 +153,20 @@ The `/revision` screen stacks all of this into four sections — Needs Practice,
 
 `GET pyq/streak` returns `currentStreak`, `longestStreak`, `today`, `todayCount`, `dailyTarget`, `todayDone` and `lastActiveDay`. The counting rule, in `computeStreak()`:
 
-- A **day** is an India-time calendar day (`to_char(answered_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')`), and it counts as active with **one** answered attempt — the daily goal affects `todayDone`, not the streak.
-- The **current** streak counts back from today if today is active, otherwise from yesterday. A run therefore stays "current" for the whole of the day after its last active day: you have all of today to keep yesterday's streak alive.
-- The **longest** streak is the longest run of consecutive active days ever, recomputed on every read.
-- Days come from `user_daily_activity` (one row per active day), refreshed on each first answer, so the streak — shown in the topbar on every page — never scans attempts.
-- Unlike the rest of the learning queries, the streak does *not* exclude unsubmitted TEST attempts — answering inside a running test still keeps the day alive, which is the behaviour a student expects.
+- A **day** is an India-time calendar day (`to_char(answered_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')`), and it counts towards the streak only once it **reaches the student's daily goal** (`dailyTarget`, default 10). A single answer keeps nothing alive — the flame and the "x / 10 questions" card on the dashboard mean the same thing.
+- Whether a day made its goal is **recorded on the day**, in `user_daily_activity.goal_met`, not re-derived from today's target on read. The goal is editable, so comparing a past day against the current target would erase a long streak the moment a student raised their goal. For the same reason the flag only ever goes true: a day earned at a target of ten stays earned when the target becomes twenty an hour later.
+- Lowering the goal applies **to today only**, immediately: if today's count already clears the new target, today is done without waiting for another answer (`updatePreferences`). Past days are never re-judged in either direction.
+- The **current** streak counts back from today if today made its goal, otherwise from yesterday. A run therefore stays "current" for the whole of the day after its last completed day: you have all of today to keep yesterday's streak alive.
+- The **longest** streak is the longest run of consecutive completed days ever, recomputed on every read.
+- Days come from `user_daily_activity` (one row per day with any answer), refreshed on each answer, so the streak — shown in the topbar on every page — never scans attempts.
+- Unlike the rest of the learning queries, the streak does *not* exclude unsubmitted TEST attempts — answers inside a running test count towards the day's goal, which is the behaviour a student expects.
+- A full `npm run db:pyq:rebuild-read-models` has no record of past targets, so it judges every day by the student's current one — the same fallback the `20261027100000_streak_daily_goal` migration used to backfill existing rows.
 
-Preferences (`pyq.user_preferences`, one row per user, absent means defaults) hold `targetExam` (an exam slug, validated against `exams` but deliberately not a foreign key, so retiring an exam never cascades into preferences) and `dailyTarget` (default 10, 1–500). Set from `/profile`; `todayDone` is `todayCount >= dailyTarget`. The dashboard streak card celebrates when the real count reaches the goal.
+**The dashboard masthead** (added 2026-10-27) reads `Good morning, <first name>.` under an eyebrow, with a line beneath drawn from the same figures the page already holds: today's goal met (`that's N days in a row`), part-done (`4 of 10 done today — 6 to go`), a streak with nothing done yet (`A 3-day streak on the line`), or the one fixed line for an account with nothing at stake. The eyebrow becomes `Day N of your streak` once there is one. `checkInLine()` in the page holds every branch; the count itself is left to the topbar chip and Today's goal, which would otherwise show it three times on one screen.
+
+**The flame** (`components/streak/streak-flame.tsx`) is an aura breathing behind the fire, the fire flickering, and two sparks rising, on three different periods so nothing pulses in lockstep. Only the aura carries the tier's colour — `getStreakLevel` in `@jsmf/core/domain` is still the one place a day count becomes a colour, shared with mobile — while the fire stays fire-coloured at every tier. A streak of zero dims the fire and stops everything; `live={false}` stills it for a flame used as a label. The CSS is `.streak-flame` and friends in `globals.css`, all of it off under `prefers-reduced-motion`.
+
+Preferences (`pyq.user_preferences`, one row per user, absent means defaults) hold `targetExam` (an exam slug, validated against `exams` but deliberately not a foreign key, so retiring an exam never cascades into preferences) and `dailyTarget` (default 10, 1–500). Set from `/profile`; `todayDone` is today's `goal_met`. The dashboard streak card celebrates when the real count reaches the goal, which is now also the moment the streak advances.
 
 ## 9. Statistics
 
@@ -213,4 +222,6 @@ All routes are `@Roles('ADMIN')` and emit `activity` events. The panel lives und
 | [`pyq.integration.spec.ts`](../../backend/src/modules/questions/application/pyq.integration.spec.ts) | Import idempotency and stable option ids; listings never carry answers and hide drafts; PRACTICE returns feedback and locks the answer; TEST hides correctness until submit, then scores (and scores once); another user's session is a 404; the free daily allowance blocks answers unless subscribed; bookmarks and reports |
 | [`pyq-admin.integration.spec.ts`](../../backend/src/modules/questions/application/pyq-admin.integration.spec.ts) | Option validation on create and edit; unknown or cross-subject taxonomy rejected; edits keep option ids and refuse to remove a chosen option; soft delete hides the question but keeps a past session's review working; taxonomy rename/reorder and the delete-while-referenced 409; report counts and resolve/dismiss exactly once; every admin endpoint is ADMIN-only |
 | [`learning.integration.spec.ts`](../../backend/src/modules/questions/application/learning.integration.spec.ts) | Collections CRUD and cross-user isolation; streaks counted in India time, not UTC, across an IST midnight; revision and reinforce contents (wrong, flagged, stale-correct, bookmarked, collected) with their facts; preference defaults and exam validation; a timed custom test behaves as TEST and stays off the revision list until submit |
-| [`pyq-plan.integration.spec.ts`](../../backend/src/modules/orders/application/pyq-plan.integration.spec.ts) | Plans listed publicly with duration and features; buying grants unlimited access for `durationDays`; a redelivered webhook does not add days twice; expiry is respected and a post-expiry purchase starts fresh; renewing while active extends from the current expiry; a refund revokes access; plans stay out of the PDF library |
+| [`pyq-plan.integration.spec.ts`](../../backend/src/modules/orders/application/pyq-plan.integration.spec.ts) | Plans listed publicly with duration and the shared benefits; buying grants unlimited access for `durationDays`; a redelivered webhook does not add days twice; expiry is respected and a post-expiry purchase starts fresh; renewing while active extends from the current expiry; a refund revokes access; plans stay out of the PDF library |
+| [`exam-mode.integration.spec.ts`](../../backend/src/modules/questions/application/exam-mode.integration.spec.ts) | Seeded option order stable per session and different across sessions; "All of the above" / "Both A and C" / letter-naming explanations / the admin tick keep the written order, and the switch is decided per session; a shuffled correct answer still scores right; a TEST withholds questions and refuses answers until begun, begin is idempotent; clients can't pose as a mock or set an off-site "Save & exit"; mocks offered only when enabled and fillable; invalid patterns refused; a locked section refuses answers before it opens and after it closes (with grace), the whole paper after its end; editing a pattern never changes a running mock; exact +4/−1 and −⅓ marks; Exam setup is ADMIN only |
+| [`pyq-subscription.integration.spec.ts`](../../backend/src/modules/questions/application/pyq-subscription.integration.spec.ts) | Calendar-month maths; every admin write refused while `SUBSCRIPTION_MANAGEMENT_ENABLED` is off; a price change makes a new version while holders keep access and in-flight checkouts keep their terms; concurrent edits serialised; one plan per length on sale; the generic product endpoints refuse plans; trials: off, once per account (racing taps), never after any plan, survive being switched off, and a plan bought mid-trial starts at the trial's end; ADMIN-only roles |
