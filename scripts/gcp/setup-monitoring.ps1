@@ -34,8 +34,14 @@ function Invoke-Gcloud {
     Write-Host "  [dry run] gcloud $($Arguments -join ' ')" -ForegroundColor Yellow
     return ''
   }
-  $output = & gcloud @Arguments --project $ProjectId --quiet 2>&1
-  if ($LASTEXITCODE -ne 0) { throw "gcloud $($Arguments[0..2] -join ' ') failed:`n$output" }
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = 'SilentlyContinue'
+  try {
+    $output = & gcloud.cmd @Arguments --project $ProjectId --quiet 2>&1
+  } finally {
+    $ErrorActionPreference = $prev
+  }
+  if ($LASTEXITCODE -ne 0) { throw "gcloud $($Arguments[0..2] -join ' ') failed:`n$($output | Out-String)" }
   return ($output | Out-String).Trim()
 }
 
