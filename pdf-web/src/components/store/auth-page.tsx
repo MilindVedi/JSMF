@@ -48,13 +48,15 @@ const signupSchema = z
 type LoginValues = z.infer<typeof loginSchema>;
 type SignupValues = z.infer<typeof signupSchema>;
 
+// A first-time buyer is sent here mid-checkout, so nothing that assumes a
+// return visit.
 const LOGIN_CONTENT = {
   eyebrow: "Secure access",
-  title: "Your study desk, exactly as you left it.",
+  title: "Your study resources, one sign-in away.",
   description: "Keep purchased resources, focused revision, and your next milestone together.",
   benefits: [
-    "Access every resource you have bought",
-    "Return to your in-progress purchase",
+    "Access every resource you buy",
+    "Carry on with the purchase you started",
     "One account across your library",
   ],
 };
@@ -273,7 +275,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
                 ? "Check your email"
                 : signup
                   ? "Create your account"
-                  : "Welcome back"}
+                  : "Sign in"}
           </h2>
           {/* Only the code and profile steps carry a subheading — signup and
               login headings stand on their own, matching jsmf.me. */}

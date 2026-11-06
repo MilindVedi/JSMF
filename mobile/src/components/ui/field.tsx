@@ -1,52 +1,86 @@
-import { forwardRef, useState } from "react";
+import { forwardRef, useState, type ReactNode } from "react";
 import { Pressable, TextInput, View, type TextInputProps } from "react-native";
 import { Eye, EyeOff, Search } from "lucide-react-native";
 import { useColors } from "@/theme/theme";
+import type { IconComponent } from "./button";
 import { cn, Txt } from "./text";
 
 /**
- * A labelled text field in the shape of web's `field` / `field-label`
- * utilities: 16px text (no iOS zoom), brand-violet focus ring.
+ * A labelled text field.
+ * - `outline` (default): web's `field` / `field-label` utilities — a bordered
+ *   box, 16px text, a violet border while typing.
+ * - `filled`: the redesigned sign-in's look — a soft muted box that turns
+ *   white with a violet border and halo while typing, and tints its icon.
+ *
+ * `icon` sits at the start of the box; `trailing` at the end (the password
+ * show/hide toggle).
  */
 export interface FieldProps extends TextInputProps {
   label?: string;
   error?: string;
   className?: string;
   hint?: string;
+  variant?: "outline" | "filled";
+  icon?: IconComponent;
+  trailing?: ReactNode;
 }
 
-export const Field = forwardRef<TextInput, FieldProps>(function Field({ label, error, hint, className, onFocus, onBlur, editable = true, ...props }, ref) {
+export const Field = forwardRef<TextInput, FieldProps>(function Field(
+  { label, error, hint, className, onFocus, onBlur, editable = true, variant = "outline", icon: Icon, trailing, ...props },
+  ref
+) {
   const colors = useColors();
   const [focused, setFocused] = useState(false);
+  const filled = variant === "filled";
+  // A multi-line box sets its own height (the report sheet's notes).
+  const multiline = Boolean(props.multiline);
+  const border = focused ? "border-primary" : error ? "border-destructive/60" : filled ? "border-transparent" : "border-input";
+
   return (
     <View className={cn("gap-1.5", className)}>
       {label ? (
-        <Txt weight={700} className="text-[13px]">
+        <Txt weight={filled ? 600 : 700} className={filled ? "text-xs" : "text-[13px]"}>
           {label}
         </Txt>
       ) : null}
-      <TextInput
-        ref={ref}
-        placeholderTextColor={colors["muted-foreground"]}
-        editable={editable}
-        onFocus={(e) => {
-          setFocused(true);
-          onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          onBlur?.(e);
-        }}
-        className={cn(
-          "h-12 rounded-xl border bg-background px-4 text-base text-foreground",
-          focused ? "border-primary" : error ? "border-destructive/60" : "border-input",
-          !editable && "opacity-60"
-        )}
-        style={{ fontFamily: "Manrope_400Regular" }}
-        // The visible label, read out by screen readers (a caller's own label wins).
-        accessibilityLabel={label}
-        {...props}
-      />
+      <View>
+        {/* The halo around a focused filled field (web's 4px focus ring). */}
+        {filled && focused ? <View pointerEvents="none" className="absolute -inset-1 rounded-[18px] bg-primary/15" /> : null}
+        <View
+          className={cn(
+            "flex-row",
+            multiline ? "items-start" : "items-center",
+            filled
+              ? cn("gap-2.5 rounded-[14px] border-[1.5px] px-3.5", !multiline && "min-h-[50px]", focused ? "bg-card" : "bg-muted")
+              : cn("gap-2 rounded-xl border bg-background px-4", !multiline && "min-h-12"),
+            border,
+            !editable && "opacity-60"
+          )}
+        >
+          {Icon ? <Icon size={17} color={focused ? colors.primary : colors["muted-foreground"]} /> : null}
+          <TextInput
+            ref={ref}
+            placeholderTextColor={colors["muted-foreground"]}
+            editable={editable}
+            onFocus={(e) => {
+              setFocused(true);
+              onFocus?.(e);
+            }}
+            onBlur={(e) => {
+              setFocused(false);
+              onBlur?.(e);
+            }}
+            // Fills the box's height (the whole box takes the tap), and the box grows
+            // from its minimum when the phone's text size is turned up.
+            className={cn("min-w-0 flex-1 text-foreground", !multiline && "self-stretch", filled ? "text-[15px]" : "text-base")}
+            style={{ fontFamily: "Manrope_400Regular" }}
+            // The visible label, read out by screen readers (a caller's own label wins).
+            accessibilityLabel={label}
+            {...props}
+          />
+          {trailing}
+        </View>
+      </View>
       {error ? <Txt className="text-xs text-destructive">{error}</Txt> : hint ? <Txt className="text-xs text-muted-foreground">{hint}</Txt> : null}
     </View>
   );
@@ -57,19 +91,23 @@ export function PasswordField(props: FieldProps) {
   const colors = useColors();
   const [visible, setVisible] = useState(false);
   return (
-    <View>
-      <Field secureTextEntry={!visible} autoCapitalize="none" autoCorrect={false} {...props} />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={visible ? "Hide password" : "Show password"}
-        onPress={() => setVisible((v) => !v)}
-        hitSlop={8}
-        className="absolute right-3 size-8 items-center justify-center"
-        style={{ top: props.label ? 30 : 8 }}
-      >
-        {visible ? <EyeOff size={18} color={colors["muted-foreground"]} /> : <Eye size={18} color={colors["muted-foreground"]} />}
-      </Pressable>
-    </View>
+    <Field
+      secureTextEntry={!visible}
+      autoCapitalize="none"
+      autoCorrect={false}
+      {...props}
+      trailing={
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={visible ? "Hide password" : "Show password"}
+          onPress={() => setVisible((v) => !v)}
+          hitSlop={8}
+          className="-mr-1.5 size-8 items-center justify-center"
+        >
+          {visible ? <EyeOff size={18} color={colors["muted-foreground"]} /> : <Eye size={18} color={colors["muted-foreground"]} />}
+        </Pressable>
+      }
+    />
   );
 }
 

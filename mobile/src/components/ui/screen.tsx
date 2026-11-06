@@ -8,7 +8,8 @@ import { useColors } from "@/theme/theme";
 import { StreakChip } from "@/components/streak/streak-chip";
 import { cn, Eyebrow, Heading, Txt } from "./text";
 
-const LOGO = require("../../../assets/images/logo.png");
+/** The circular stethoscope mark. */
+export const LOGO = require("../../../assets/images/logo.png");
 
 /** The JSMF mark, name and product, as web's <Logo>. */
 export function Logo({ size = 30, showName = true }: { size?: number; showName?: boolean }) {
@@ -132,10 +133,18 @@ export function StackScreen({
   footer?: ReactNode;
   contentClassName?: string;
 }) {
+  const insets = useSafeAreaInsets();
   return (
     <View className="flex-1 bg-background">
       <StackHeader title={title} subtitle={subtitle} right={right} />
-      <ScrollView className="flex-1" contentContainerClassName={cn("px-5 pb-10 pt-4 gap-4", contentClassName)} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName={cn("px-5 pt-4 gap-4", contentClassName)}
+        // The app draws under Android's navigation bar (edge to edge): without
+        // a footer to take that space, the end of the page must clear it.
+        contentContainerStyle={{ paddingBottom: (footer ? 0 : insets.bottom) + 40 }}
+        keyboardShouldPersistTaps="handled"
+      >
         {children}
       </ScrollView>
       {footer}

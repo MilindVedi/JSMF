@@ -39,7 +39,7 @@ export default function DashboardPage() {
   /** "NEET-PG · FMGE · INI-CET" — empty until the taxonomy has loaded. */
   const examsCovered = taxonomy?.exams.map((exam) => exam.shortName).join(" · ") ?? "";
 
-  const greeting = useClientSnapshot(() => greetingForHour(new Date().getHours()), "Welcome back");
+  const greeting = useClientSnapshot(() => greetingForHour(new Date().getHours()), "Hello");
 
   const error = stats.error ?? open.error ?? finished.error;
   if (error) {

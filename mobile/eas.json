@@ -7,7 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "env": { "EXPO_PUBLIC_API_URL": "http://10.0.2.2:4000/api" },
+      "env": { "EXPO_PUBLIC_API_URL": "https://prep.jsmf.me/api" },
       "android": { "buildType": "apk" },
       "ios": { "simulator": true }
     },

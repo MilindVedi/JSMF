@@ -48,7 +48,7 @@ export default function LoginPage() {
 
   return (
     <AuthCard
-      title="Welcome back"
+      title="Sign in"
       aside={AUTH_ASIDES.login}
       footer={
         <>

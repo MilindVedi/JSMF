@@ -119,7 +119,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `GOOGLE_CLIENT_ID` | String | `<your-client-id>` | Cloud Run Env Var / Secret | Google Cloud OAuth Client ID (e.g. `569375141363-...apps.googleusercontent.com`). |
 | `GOOGLE_CLIENT_SECRET` | String | `<your-client-secret>` | GCP Secret: `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth Client Secret (`GOCSPX-...`). |
 | `GOOGLE_CALLBACK_URL` | URL | `https://resources.jsmf.me/api/auth/google/callback` | Cloud Run Env Var | Registered OAuth redirect URL matching Google Console. |
-| `OAUTH_ALLOWED_REDIRECTS` | CSV String | `https://resources.jsmf.me/auth/callback,https://jsmf.me/auth/callback` | Cloud Run Env Var | Strict allowlist of frontend URLs permitted to receive session tokens after OAuth. |
+| `OAUTH_ALLOWED_REDIRECTS` | CSV String | `https://resources.jsmf.me/auth/callback,https://jsmf.me/auth/callback,https://prep.jsmf.me/auth/callback,jsmfmedprep://auth/callback` | Cloud Run Env Var | Strict allowlist (exact match) of where a finished Google sign-in may be delivered: the three websites and the mobile app (`jsmfmedprep://` is the app's scheme). |
 | `OAUTH_STATE_SECRET` | String (min 16 chars) | `<Random_Secret>` | GCP Secret: `OAUTH_STATE_SECRET` | Cryptographic key used to sign and verify OAuth state parameter. |
 | `MAIL_DRIVER` | Enum | `resend` | Cloud Run Env Var | HTTPS API, not an SMTP socket — Cloud Run blocks outbound SMTP ports. `log` is **refused in production** by env validation. |
 | `RESEND_API_KEY` | String | `re_...` | GCP Secret: `RESEND_API_KEY` | Required when `MAIL_DRIVER=resend`. Create at https://resend.com/api-keys. |

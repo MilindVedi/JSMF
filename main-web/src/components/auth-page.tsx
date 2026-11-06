@@ -53,11 +53,12 @@ type SignupValues = z.infer<typeof signupSchema>;
 // and the storefront's own sign-in, so copy that names a seat or a planner
 // would read as off-topic the moment it was reached from anything but the
 // live-session page. Says what the account itself is for; the surrounding
-// product does the selling.
+// product does the selling. Nor does it assume a return visit: a first-timer
+// registering for a session lands on sign-in too.
 const LOGIN_CONTENT = {
   eyebrow: "Secure access",
-  title: "Welcome back to JSMF.",
-  description: "Continue your preparation right where you left off.",
+  title: "Sign in to JSMF.",
+  description: "One account for your sessions, resources and practice.",
   benefits: [
     "One account for your entire JSMF journey",
     "Your progress, always with you",
@@ -279,7 +280,7 @@ function AuthForm({ mode }: { mode: "login" | "signup" }) {
                 ? "Check your email"
                 : signup
                   ? "Create your account"
-                  : "Welcome back"}
+                  : "Sign in"}
           </h2>
           {/* Only the code and profile steps carry a subheading — the
               signup and login headings stand on their own, and the Google

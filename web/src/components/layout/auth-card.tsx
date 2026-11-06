@@ -16,10 +16,12 @@ const PYQ_BENEFITS = [
 ];
 
 export const AUTH_ASIDES = {
+  // Reached by first-timers too (a shared link to a signed-in page lands
+  // here), so nothing that assumes they've been here before.
   login: {
     eyebrow: "Secure access",
-    title: "Welcome back. Pick up where you left off.",
-    description: "Your practice, progress and revision queue — right where you left them.",
+    title: "Your PYQ practice, all in one place.",
+    description: "Your practice, progress and revision, on the web and on your phone.",
     benefits: PYQ_BENEFITS,
   },
   signup: {

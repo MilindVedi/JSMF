@@ -120,7 +120,11 @@ export class MentorshipMailer {
     }));
   }
 
-  /** The internal heads-up. Silently skipped when no address is configured. */
+  /**
+   * The internal heads-up, with the next steps — above all, setting the
+   * joining link, which the attendee's link email and reminder wait on.
+   * Silently skipped when no address is configured.
+   */
   async adminAlert(
     kind: 'BOOKED' | 'RESCHEDULED' | 'NEEDS_ATTENTION',
     booking: MailBooking,
@@ -132,6 +136,7 @@ export class MentorshipMailer {
     const rendered = mentorshipAdminAlert({
       kind,
       attendeeName: booking.attendeeName,
+      firstName: firstName(booking.attendeeName),
       email: booking.email,
       whatsappNumber: booking.whatsappNumber,
       exam: booking.exam,
@@ -140,6 +145,9 @@ export class MentorshipMailer {
       previousWhenLabel: previous
         ? callWhenLabel(previous.startsAt, previous.endsAt, booking.offering.timezone)
         : undefined,
+      platformLabel: booking.offering.platformLabel,
+      meetUrl: booking.meetUrl,
+      reminderLeadLabel: durationLabel(this.config.get('MENTORSHIP_REMINDER_LEAD_MINUTES')),
       adminUrl: `${this.config.get('ADMIN_APP_URL').replace(/\/$/, '')}/admin/mentorship/bookings/${booking.id}`,
     });
 

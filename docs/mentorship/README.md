@@ -53,7 +53,10 @@ direct inserts.
    (`PENDING_PAYMENT`) and starts the normal checkout. Picking another time replaces the
    person's earlier unpaid hold.
 2. **Paid.** The booking becomes `CONFIRMED`. One confirmation email goes out (the generic
-   receipt is skipped), plus an alert to `MENTORSHIP_ADMIN_NOTIFY_EMAIL`.
+   receipt is skipped), plus an alert to `MENTORSHIP_ADMIN_NOTIFY_EMAIL`. Every admin alert
+   (booked, moved, needs attention) ends with numbered **next steps** and a button to the booking.
+   While the call has no joining link, the subject says "(set the meeting link)" and the steps
+   are: create the meeting, then paste the link on the booking page.
    - **Late payment, slot still free:** a payment that lands after the hold lapsed is still
      confirmed.
    - **Late payment, slot taken (or time already passed):** the booking becomes

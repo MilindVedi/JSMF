@@ -10,7 +10,9 @@
     "ios": {
       "bundleIdentifier": "me.jsmf.medprep",
       "supportsTablet": false,
-      "config": { "usesNonExemptEncryption": false }
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "me.jsmf.medprep",
@@ -33,9 +35,12 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#faf9fe",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 120,
-          "dark": { "backgroundColor": "#100d1b", "image": "./assets/images/splash-icon.png" }
+          "image": "./assets/images/splash-logo.png",
+          "imageWidth": 180,
+          "dark": {
+            "backgroundColor": "#100d1b",
+            "image": "./assets/images/splash-logo.png"
+          }
         }
       ],
       "expo-secure-store",
@@ -45,6 +50,13 @@
     "experiments": {
       "typedRoutes": false,
       "reactCompiler": false
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "25f62a93-ef64-40bb-9540-355473eff2e5"
+      }
+    },
+    "owner": "milindvedi"
   }
 }

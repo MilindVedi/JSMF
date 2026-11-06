@@ -44,9 +44,10 @@ const settings: Record<string, unknown> = {
 };
 const config = { get: (key: string) => settings[key] } as never;
 
-const sent: Array<{ to: { email: string }; subject: string; tag?: string }> = [];
+type SentMail = { to: { email: string }; subject: string; text: string; tag?: string };
+const sent: SentMail[] = [];
 const mail = {
-  sendBestEffort(request: { to: { email: string }; subject: string; tag?: string }) {
+  sendBestEffort(request: SentMail) {
     sent.push(request);
     return Promise.resolve({ delivered: true as const, messageId: 'test' });
   },
@@ -204,6 +205,15 @@ describe('holding and paying', () => {
     // The generic receipt is skipped: one email to the buyer, not two.
     expect(sent.filter((m) => m.tag !== 'mentorship-admin-booked')).toHaveLength(1);
 
+    // The alert tells the admin what to do: set the joining link, in the booking.
+    const alert = sent.find((m) => m.tag === 'mentorship-admin-booked')!;
+    expect(alert.to.email).toBe('alerts@jsmf.test');
+    expect(alert.subject).toContain('set the meeting link');
+    expect(alert.text).toContain('Next steps:');
+    expect(alert.text).toContain('paste the joining link');
+    expect(alert.text).toContain('1 hour before the call');
+    expect(alert.text).toContain(`/admin/mentorship/bookings/${hold.bookingId}`);
+
     const owned = await prisma.entitlement.count({ where: { userId: alice, productId: created.productId } });
     expect(owned).toBe(0);
     // The time is no longer offered.
@@ -258,6 +268,7 @@ describe('holding and paying', () => {
     await pay(late);
     expect(await status(late.bookingId)).toBe(MentorshipBookingStatus.PAID_UNSCHEDULED);
     expect(sent.map((m) => m.tag)).toEqual(['mentorship-paid-unscheduled', 'mentorship-admin-needs_attention']);
+    expect(sent[1].text).toContain('Agree a new time with them');
 
     // An admin gives it a new time; it becomes a normal confirmed call.
     const free = (await openStarts())[20];

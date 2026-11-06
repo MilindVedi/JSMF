@@ -51,6 +51,7 @@ export default function SignUpScreen() {
 
   return (
     <AuthShell
+      watermark
       title="Create your account"
       description="One JSMF account for PYQ practice, explanations and revision."
       footer={

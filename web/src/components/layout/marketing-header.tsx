@@ -105,32 +105,32 @@ export function MarketingHeader() {
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- build-time constant from public/ */}
             <img src="/favicon.png" alt="JSMF logo" width={36} height={36} className="size-9 shrink-0 object-contain" />
-            {/* Name first, then what the initials stand for, divided by a drawn
-                rule rather than a typed "|" so it keeps the border colour and
-                sits at text height. */}
-            <span>
-              <span className="font-semibold">JSMF</span>
-              {/* Stands aside in the narrow band where the nav has just
-                  appeared but the row is still tight: with both crossovers in
-                  the nav, keeping it at 1280 pushed "Study Resources" under
-                  the Sign in button. 1400 is where it fits again — measured,
-                  not a Tailwind step, because the content decides this, not
-                  the device sizes. */}
-              <span className="hidden font-normal text-muted-foreground sm:inline xl:hidden min-[1400px]:inline"> · PYQs</span>
-            </span>
-            {/* The full form shows only before the nav crowds in (sm–lg).
-                It used to come back at 2xl, when the row was one link shorter;
-                with both crossovers in the nav there is no width where the two
-                fit together, because the row is capped however wide the window
-                is — past the cap, showing it again only pushed "Resources"
-                under the Sign in button. */}
-            <span aria-hidden="true" className="hidden h-4 w-px shrink-0 bg-border sm:block xl:hidden" />
-            <span className="hidden font-normal text-muted-foreground sm:inline xl:hidden">
-              Jab Studies Met Fun
+            {/* Name first, then what the initials stand for — the full form
+                jsmf.me and the store always show.
+                - sm–lg (no nav yet): one line, divided by a drawn rule rather
+                  than a typed "|" so it keeps the border colour and sits at
+                  text height.
+                - Once the nav is in the row there is no room for one line, so
+                  the full form drops under the name in small type: the lockup
+                  then costs only the width of that second line. Even that
+                  overruns the row at 1280–1365 (the nav ran under the Sign in
+                  button), so there the name stands alone. 1366 is measured,
+                  not a Tailwind step — the content decides it. */}
+            <span className="flex items-center gap-2.5 xl:flex-col xl:items-start xl:gap-0">
+              <span className="xl:leading-5">
+                <span className="font-semibold">JSMF</span>
+                <span className="hidden font-normal text-muted-foreground sm:inline xl:max-[1365px]:hidden"> · PYQs</span>
+              </span>
+              <span aria-hidden="true" className="hidden h-4 w-px shrink-0 bg-border sm:block xl:hidden" />
+              <span className="hidden font-normal text-muted-foreground sm:inline xl:text-xs xl:leading-4 xl:max-[1365px]:hidden">
+                Jab Studies Met Fun
+              </span>
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-2 xl:flex" aria-label="Main navigation">
+          {/* Links sit a little closer up to 1399, which is what lets the
+              stacked full form fit at the common 1366 laptop width. */}
+          <nav className="hidden items-center gap-2 max-[1399px]:gap-1 xl:flex" aria-label="Main navigation">
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.href}

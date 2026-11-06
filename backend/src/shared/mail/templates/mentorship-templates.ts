@@ -305,24 +305,74 @@ export function mentorshipCancelled(input: {
   return { subject: `JSMF - Your call on ${whenLabel} is cancelled`, text, html };
 }
 
-/** The internal alert: a call booked, moved, or needing a person. */
+type AdminAlertKind = 'BOOKED' | 'RESCHEDULED' | 'NEEDS_ATTENTION';
+
+/**
+ * What the admin has to do after an alert, in order. The joining link is the
+ * one step nothing else does for them: the attendee's link email and the
+ * reminder both wait on it.
+ */
+function adminNextSteps(input: {
+  kind: AdminAlertKind;
+  firstName: string;
+  whenLabel: string;
+  platformLabel: string;
+  meetUrl: string | null;
+  reminderLeadLabel: string;
+}): string[] {
+  const { kind, firstName, whenLabel, platformLabel, meetUrl, reminderLeadLabel } = input;
+  const addLink = [
+    `Create a ${platformLabel} meeting for ${whenLabel}.`,
+    `Open the booking and paste the joining link. ${firstName} is emailed it as soon as you save.`,
+    `The reminder email goes out ${reminderLeadLabel} before the call, but only once the link is set.`,
+  ];
+
+  if (kind === 'NEEDS_ATTENTION') {
+    return [
+      `${firstName} has paid, but the time they picked was taken or had already passed. They have been told we will contact them within a day.`,
+      `Agree a new time with them by email or WhatsApp.`,
+      `Open the booking and move it to that time (they are emailed the new time), or refund the order from Orders if no time works.`,
+      `Once it has a time, paste the joining link in the booking. ${firstName} is emailed it as soon as you save.`,
+    ];
+  }
+  if (!meetUrl) return addLink;
+  if (kind === 'RESCHEDULED') {
+    return [
+      `Move the ${platformLabel} meeting in your calendar to ${whenLabel}.`,
+      `If the joining link changes, update it in the booking. ${firstName} is emailed the new one.`,
+    ];
+  }
+  return [`The joining link is already set. Nothing else to do: the reminder goes out ${reminderLeadLabel} before the call.`];
+}
+
+/** The internal alert: a call booked, moved, or needing a person — and what to do next. */
 export function mentorshipAdminAlert(input: {
-  kind: 'BOOKED' | 'RESCHEDULED' | 'NEEDS_ATTENTION';
+  kind: AdminAlertKind;
   attendeeName: string;
+  /** How the next steps refer to them: "Riya". */
+  firstName: string;
   email: string | null;
   whatsappNumber: string | null;
   exam: string;
   notes: string | null;
   whenLabel: string;
   previousWhenLabel?: string;
+  platformLabel: string;
+  meetUrl: string | null;
+  /** "1 hour" — how long before the call its reminder goes out. */
+  reminderLeadLabel: string;
   adminUrl: string;
 }): RenderedMail {
-  const { kind, attendeeName, email, whatsappNumber, exam, notes, whenLabel, previousWhenLabel, adminUrl } = input;
+  const { kind, attendeeName, email, whatsappNumber, exam, notes, whenLabel, previousWhenLabel, meetUrl, adminUrl } = input;
+  const needsLink = kind !== 'NEEDS_ATTENTION' && !meetUrl;
   const heading = {
     BOOKED: 'New one-to-one booking',
     RESCHEDULED: 'One-to-one call moved',
     NEEDS_ATTENTION: 'Paid call needs a new time',
   }[kind];
+  const subjectHeading = needsLink ? `${heading} (set the meeting link)` : heading;
+  const steps = adminNextSteps(input);
+  const buttonLabel = needsLink ? 'Set the meeting link' : 'Open the booking';
 
   const rows: Array<[string, string]> = [
     ['Who', attendeeName],
@@ -339,7 +389,10 @@ export function mentorshipAdminAlert(input: {
     ...rows.map(([label, value]) => `${label}: ${value}`),
     ...(notes ? [``, `They want to discuss:`, notes] : []),
     ``,
-    adminUrl,
+    `Next steps:`,
+    ...steps.map((step, i) => `${i + 1}. ${step}`),
+    ``,
+    `${buttonLabel}: ${adminUrl}`,
   ].join('\n');
 
   const html = layout(
@@ -347,9 +400,14 @@ export function mentorshipAdminAlert(input: {
     `
     ${callBox(attendeeName, rows.slice(1))}
     ${notes ? `<p style="margin:0 0 8px;font-size:13px;color:#71717a;">They want to discuss:</p><p style="${P}">${escapeHtmlMultiline(notes)}</p>` : ''}
-    ${button(adminUrl, 'Open in admin')}
+    <p style="margin:0 0 8px;font-size:15px;font-weight:600;">Next steps</p>
+    <ol style="margin:0 0 20px;padding-left:20px;font-size:15px;line-height:1.55;">
+      ${steps.map((step) => `<li style="margin:0 0 6px;">${escapeHtml(step)}</li>`).join('\n      ')}
+    </ol>
+    ${button(adminUrl, buttonLabel)}
+    ${linkFallback(adminUrl)}
     `,
   );
 
-  return { subject: `JSMF admin - ${heading}: ${attendeeName}, ${whenLabel}`, text, html };
+  return { subject: `JSMF admin - ${subjectHeading}: ${attendeeName}, ${whenLabel}`, text, html };
 }
