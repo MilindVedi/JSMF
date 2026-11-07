@@ -1,24 +1,25 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronRight, CreditCard, FileText, LogOut, Mail, Minus, Plus, Trophy, UserX } from "lucide-react-native";
+import { ChevronRight, CreditCard, FileText, Globe, LogOut, Mail, Minus, Plus, Trophy, UserX } from "lucide-react-native";
 import { authApi } from "@jsmf/core/api";
 import type { PyqPreferences } from "@jsmf/core/data-source";
 import { initialsOf } from "@jsmf/core/domain";
 import { pyqKeys, useAccess, usePreferences, useTaxonomyLookup, useUpdatePreferences } from "@jsmf/core/hooks";
 import { useAuthStore } from "@/lib/auth-store";
-import { SUPPORT_EMAIL } from "@/lib/env";
+import { MAIN_WEBSITE_URL, SUPPORT_EMAIL } from "@/lib/env";
 import { useStreakState } from "@/lib/streak";
 import { toast } from "@/lib/toast";
-import { useColors } from "@/theme/theme";
-import { Button, type IconComponent } from "@/components/ui/button";
+import { useColors, withAlpha } from "@/theme/theme";
+import { BRAND_GRADIENT, Button, type IconComponent } from "@/components/ui/button";
+import { LinearGradientFill } from "@/components/ui/gradient";
 import { Field } from "@/components/ui/field";
 import { Badge, Card, Chip, Divider, Loading, QueryError } from "@/components/ui/primitives";
 import { Dialog } from "@/components/ui/sheet";
-import { TabScreen } from "@/components/ui/screen";
-import { Heading, Txt } from "@/components/ui/text";
+import { StackScreen } from "@/components/ui/screen";
+import { cn, Heading, Txt } from "@/components/ui/text";
 import { StreakFlame } from "@/components/streak/flame";
 
 const GOAL_PRESETS = [5, 10, 20, 30, 50];
@@ -37,29 +38,34 @@ export default function ProfileScreen() {
   const updatePreferences = useUpdatePreferences();
   const access = useAccess();
   const streak = useStreakState();
-  const { taxonomy, exam } = useTaxonomyLookup();
+  const { taxonomy, examName } = useTaxonomyLookup();
   const colors = useColors();
   const memberSince = useQuery({ queryKey: pyqKeys.memberSince, queryFn: () => authApi.memberSince(), staleTime: Infinity });
 
   const [name, setName] = useState(user?.name ?? "");
+  // A rename elsewhere (or the account loading) refills the field — during render, not in an effect.
+  const [shownName, setShownName] = useState(user?.name);
+  if (user?.name !== shownName) {
+    setShownName(user?.name);
+    setName(user?.name ?? "");
+  }
   const [examId, setExamId] = useState<string | null>(null);
   const [goal, setGoal] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  useEffect(() => setName(user?.name ?? ""), [user?.name]);
 
   if (preferences.error) {
     return (
-      <TabScreen title="Profile">
+      <StackScreen title="Profile">
         <QueryError error={preferences.error} onRetry={() => void preferences.refetch()} title="Couldn't load your profile" />
-      </TabScreen>
+      </StackScreen>
     );
   }
   if (!user || !preferences.data) {
     return (
-      <TabScreen title="Profile" scroll={false}>
+      <StackScreen title="Profile">
         <Loading />
-      </TabScreen>
+      </StackScreen>
     );
   }
 
@@ -100,11 +106,12 @@ export default function ProfileScreen() {
   }
 
   return (
-    <TabScreen title="Profile" subtitle="Your account and exam preference.">
+    <StackScreen title="Profile" subtitle="Your account and exam preference.">
       <Card className="gap-4">
         <View className="flex-row items-center gap-3.5">
-          <View className="size-14 items-center justify-center rounded-full bg-secondary">
-            <Txt font="display" weight={600} className="text-lg text-secondary-foreground">
+          <View className="size-14 items-center justify-center" style={{ borderRadius: 18, boxShadow: `0 8px 18px -8px ${withAlpha(BRAND_GRADIENT.vivid, 0.6)}` }}>
+            <LinearGradientFill radius={18} layers={[{ angle: 135, stops: [{ offset: 0, color: BRAND_GRADIENT.deep }, { offset: 1, color: BRAND_GRADIENT.vivid }] }]} />
+            <Txt font="display" weight={700} className="text-lg" style={{ color: BRAND_GRADIENT.onDeep }}>
               {initialsOf(user.name)}
             </Txt>
           </View>
@@ -115,7 +122,7 @@ export default function ProfileScreen() {
             <Txt className="text-sm text-muted-foreground" numberOfLines={1}>
               {user.email}
             </Txt>
-            <Txt className="text-sm text-muted-foreground">Preparing for {exam(savedExam)?.shortName ?? savedExam}</Txt>
+            <Txt className="text-sm text-muted-foreground">Preparing for {examName(savedExam)}</Txt>
           </View>
         </View>
         <View className="flex-row flex-wrap items-center gap-2">
@@ -186,12 +193,14 @@ export default function ProfileScreen() {
         <Button label="Save changes" disabled={!dirty || name.trim().length < 2 || saving} loading={saving} onPress={save} />
       </Card>
 
-      <View className="overflow-hidden rounded-2xl border border-border bg-card">
+      <View className="overflow-hidden rounded-[20px] border border-border bg-card">
         <Row icon={CreditCard} label="Plan" value={planLabel ?? undefined} href="/subscription" />
         <Row icon={FileText} label="Terms of Service" href={{ pathname: "/legal/[slug]", params: { slug: "terms" } }} />
         <Row icon={FileText} label="Privacy Policy" href={{ pathname: "/legal/[slug]", params: { slug: "privacy" } }} />
         <Row icon={FileText} label="Refund & Cancellation Policy" href={{ pathname: "/legal/[slug]", params: { slug: "refund" } }} />
         <Row icon={Mail} label="Contact support" onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)} />
+        {/* Web's "Visit JSMF website" (its account menu): the main site, not a place to buy this plan. */}
+        <Row icon={Globe} label="Visit JSMF website" onPress={() => void Linking.openURL(MAIN_WEBSITE_URL)} last />
       </View>
 
       <Button label="Sign out" icon={LogOut} variant="outline" onPress={() => void logout().then(() => router.replace("/sign-in"))} />
@@ -209,16 +218,16 @@ export default function ProfileScreen() {
           </>
         }
       />
-    </TabScreen>
+    </StackScreen>
   );
 }
 
-function Row({ icon: Icon, label, value, href, onPress }: { icon: IconComponent; label: string; value?: string; href?: Href; onPress?: () => void }) {
+function Row({ icon: Icon, label, value, href, onPress, last = false }: { icon: IconComponent; label: string; value?: string; href?: Href; onPress?: () => void; last?: boolean }) {
   const router = useRouter();
   const colors = useColors();
   return (
-    <Pressable accessibilityRole="button" onPress={onPress ?? (() => href && router.push(href))} className="flex-row items-center gap-3 border-b border-border px-4 py-3.5 active:bg-muted">
-      <Icon size={18} color={colors["muted-foreground"]} />
+    <Pressable accessibilityRole="button" onPress={onPress ?? (() => href && router.push(href))} className={cn("flex-row items-center gap-3 px-4 py-3.5 active:bg-muted", !last && "border-b border-border")}>
+      <Icon size={18} color={colors.primary} />
       <Txt className="flex-1 text-[15px]">{label}</Txt>
       {value ? <Txt className="text-sm text-muted-foreground">{value}</Txt> : null}
       <ChevronRight size={16} color={colors["muted-foreground"]} />

@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { MultiSelectPopover } from "./multi-select-popover";
-import { pyqCapabilities, useCollections, useTaxonomyLookup } from "@/hooks/pyq";
+import { examDisplayName, pyqCapabilities, useCollections, useTaxonomyLookup } from "@/hooks/pyq";
 import type { Exam, ExamId, SubjectGroup } from "@jsmf/core/domain";
 
 const SUBJECT_GROUP_LABEL: Record<SubjectGroup, string> = {
@@ -33,7 +33,7 @@ export const EMPTY_QUESTION_FILTERS: QuestionFiltersState = {
 
 function examTriggerLabel(examIds: ExamId[], exams: Exam[]) {
   if (examIds.length === 0 || examIds.length >= exams.length) return "All Exams";
-  const names = examIds.map((id) => exams.find((e) => e.id === id)?.shortName ?? id);
+  const names = examIds.map((id) => examDisplayName(id, exams.find((e) => e.id === id)?.shortName));
   return names.length <= 2 ? names.join(" + ") : `${names.length} exams`;
 }
 

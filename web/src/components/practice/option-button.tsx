@@ -5,9 +5,14 @@ import { cn } from "@/lib/utils";
 import { OPTION_LETTERS as LETTERS } from "@jsmf/core/domain";
 
 
+/**
+ * One answer option. An option can carry an image (the API sends `imageUrl`,
+ * as the app shows it), drawn under its text.
+ */
 export function OptionButton({
   index,
   text,
+  imageUrl,
   submitted,
   isSelected,
   isCorrectOption,
@@ -15,6 +20,7 @@ export function OptionButton({
 }: {
   index: number;
   text: string;
+  imageUrl?: string;
   submitted: boolean;
   isSelected: boolean;
   isCorrectOption: boolean;
@@ -53,14 +59,20 @@ export function OptionButton({
       >
         {showAsCorrect ? <Check className="size-3.5" strokeWidth={3} /> : showAsWrongSelection ? <X className="size-3.5" strokeWidth={3} /> : LETTERS[index]}
       </span>
-      <span
-        className={cn(
-          "prose-reading pt-0.5 text-foreground",
-          showAsCorrect && "text-success-foreground",
-          showAsWrongSelection && "text-error-foreground"
+      <span className="flex min-w-0 flex-1 flex-col gap-2">
+        <span
+          className={cn(
+            "prose-reading pt-0.5 text-foreground",
+            showAsCorrect && "text-success-foreground",
+            showAsWrongSelection && "text-error-foreground"
+          )}
+        >
+          {text}
+        </span>
+        {imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- an uploaded image on another host; next/image has no remote hosts configured
+          <img src={imageUrl} alt={`Option ${LETTERS[index]} image`} loading="lazy" className="max-h-48 w-full rounded-lg border border-border bg-background object-contain" />
         )}
-      >
-        {text}
       </span>
     </button>
   );

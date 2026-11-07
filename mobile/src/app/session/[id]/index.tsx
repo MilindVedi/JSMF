@@ -286,26 +286,46 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
 
   return (
     <View className="flex-1 bg-background">
-      <View className="border-b border-border bg-background px-3 pb-2.5" style={{ paddingTop: insets.top + 6 }}>
-        <View className="flex-row items-center gap-1">
-          <Pressable accessibilityRole="button" accessibilityLabel="Save and exit" onPress={exit} hitSlop={8} className="h-10 flex-row items-center gap-1.5 rounded-xl px-2 active:bg-muted">
+      {/* Back, how far through, the count — then the clock and the flag. */}
+      <View className="bg-background px-4 pb-3" style={{ paddingTop: insets.top + 8 }}>
+        <View className="flex-row items-center gap-3">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Save and exit"
+            onPress={exit}
+            hitSlop={8}
+            className="size-10 items-center justify-center rounded-full bg-muted active:opacity-70"
+          >
             <ArrowLeft size={19} color={colors.foreground} />
           </Pressable>
-          <View className="flex-1 items-center gap-1 px-2">
-            <Txt weight={600} className="text-xs text-muted-foreground">
-              Question {index + 1} of {total}
-            </Txt>
-            <ProgressBar value={((index + 1) / total) * 100} className="h-1.5 w-full" />
-          </View>
+          <ProgressBar value={((index + (submitted ? 1 : 0)) / total) * 100} className="flex-1" />
+          <Txt weight={700} className="text-xs text-muted-foreground" accessibilityLabel={`Question ${index + 1} of ${total}`}>
+            {index + 1}/{total}
+          </Txt>
           {/* Also at 0: a test reopened after its time ran out must still auto-submit. */}
           {timed ? <Timer durationSec={timeLeft} onTimeUp={handleFinish} /> : null}
-          <IconButton icon={Flag} label={flagged ? "Unflag" : "Flag for review"} active={flagged} filled activeColor={colors["error-foreground"]} onPress={() => writeFlag(!flagged)} />
-          <IconButton icon={Bookmark} label={isBookmarked ? "Remove bookmark" : "Bookmark question"} active={isBookmarked} filled activeColor={colors.primary} onPress={() => bookmarks.toggle(question.id, isBookmarked)} />
+          <IconButton icon={Flag} label={flagged ? "Unflag" : "Flag for review"} active={flagged} filled activeColor={colors["error-foreground"]} onPress={() => writeFlag(!flagged)} className="-mx-1" />
         </View>
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="px-5 pb-8 pt-5">
-        <QuestionCard question={revealed} submitted={submitted} selectedOptionId={selectedOptionId} onSelect={(id) => !submitted && setSelectedOptionId(id)} />
+      <ScrollView className="flex-1" contentContainerClassName="px-5 pb-8 pt-3">
+        <QuestionCard
+          question={revealed}
+          submitted={submitted}
+          selectedOptionId={selectedOptionId}
+          onSelect={(id) => !submitted && setSelectedOptionId(id)}
+          trailing={
+            <IconButton
+              icon={Bookmark}
+              label={isBookmarked ? "Remove bookmark" : "Bookmark question"}
+              active={isBookmarked}
+              filled
+              activeColor={colors.primary}
+              onPress={() => bookmarks.toggle(question.id, isBookmarked)}
+              className="-my-2 -mr-2"
+            />
+          }
+        />
         {submitted ? (
           <View className="mt-5">
             <ExplanationPanel question={revealed} status={isCorrect ? "correct" : "incorrect"} />
@@ -314,17 +334,17 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
         {limitReached ? <DailyLimitNotice className="mt-5" /> : null}
       </ScrollView>
 
-      <View className="flex-row items-center gap-2 border-t border-border bg-background px-3 pt-2.5" style={{ paddingBottom: Math.max(insets.bottom, 10) }}>
-        <Button accessibilityLabel="Previous" variant="outline" icon={ArrowLeft} className="w-12 px-0" disabled={isFirst} onPress={() => goTo(index - 1)} />
-        <Button accessibilityLabel="Question palette" variant="outline" icon={LayoutGrid} className="w-12 px-0" onPress={() => setPaletteOpen(true)} />
-        <Button accessibilityLabel="Report this question" variant="outline" icon={MessageSquareWarning} className="w-12 px-0" onPress={() => setReportOpen(true)} />
-        <View className="flex-1" />
+      {/* The tools on the left, the one thing to do next as the big violet button. */}
+      <View className="flex-row items-center gap-2 border-t border-border bg-background px-4 pt-3" style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
+        <Button accessibilityLabel="Previous" variant="outline" icon={ArrowLeft} className="w-11 px-0" disabled={isFirst} onPress={() => goTo(index - 1)} />
+        <Button accessibilityLabel="Question palette" variant="outline" icon={LayoutGrid} className="w-11 px-0" onPress={() => setPaletteOpen(true)} />
+        <Button accessibilityLabel="Report this question" variant="outline" icon={MessageSquareWarning} className="w-11 px-0" onPress={() => setReportOpen(true)} />
         {!submitted ? (
-          <Button label="Submit" icon={CircleCheck} disabled={!selectedOptionId || answer.isPending || limitReached} loading={answer.isPending} onPress={handleSubmit} />
+          <Button label="Submit" icon={CircleCheck} className="flex-1" disabled={!selectedOptionId || answer.isPending || limitReached} loading={answer.isPending} onPress={handleSubmit} />
         ) : isLast ? (
-          <Button label="Finish test" icon={FlagTriangleRight} loading={submitSession.isPending} onPress={handleFinish} />
+          <Button label="Finish test" icon={FlagTriangleRight} className="flex-1" loading={submitSession.isPending} onPress={handleFinish} />
         ) : (
-          <Button label="Next" iconRight={ArrowRight} onPress={() => goTo(index + 1)} />
+          <Button label="Next question" iconRight={ArrowRight} className="flex-1" onPress={() => goTo(index + 1)} />
         )}
       </View>
 

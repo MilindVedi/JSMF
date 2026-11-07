@@ -15,9 +15,11 @@ import {
 } from "@jsmf/core/domain";
 import { NotFoundError } from "@jsmf/core/data-source";
 import { useSessionDetail, useTaxonomyLookup } from "@jsmf/core/hooks";
-import { useColors } from "@/theme/theme";
-import { Button } from "@/components/ui/button";
-import { Badge, Card, EmptyState, Loading, ProgressBar, QueryError, StatTile } from "@/components/ui/primitives";
+import { useColors, withAlpha } from "@/theme/theme";
+import { BRAND_GRADIENT, Button } from "@/components/ui/button";
+import { Badge, Card, EmptyState, Loading, QueryError, StatTile } from "@/components/ui/primitives";
+import { HeroCard, HeroText, ProgressRing } from "@/components/ui/hero";
+import { BandLegend, ScoreBar, useBandColors } from "@/components/ui/score";
 import { StackScreen } from "@/components/ui/screen";
 import { cn, Heading, Txt } from "@/components/ui/text";
 import { SubjectBadge } from "@/components/question/badges";
@@ -37,6 +39,7 @@ export default function ResultsScreen() {
   const colors = useColors();
   const { data: detail, error, isPending, refetch } = useSessionDetail(id);
   const { subject } = useTaxonomyLookup();
+  const band = useBandColors(detail ? getSessionSummary(detail.session, detail.questions).accuracy : 0);
   const [filter, setFilter] = useState<ResultFilter>("all");
   const toggle = (next: ResultFilter) => setFilter((prev) => (prev === next ? "all" : next));
   const home = () => router.replace("/home");
@@ -73,27 +76,43 @@ export default function ResultsScreen() {
 
   return (
     <StackScreen title="Results" subtitle={session.label}>
-      <View className="items-center gap-1 pt-2">
-        <Txt weight={500} className="text-sm text-muted-foreground">
-          {completionKicker(session)}
-        </Txt>
-        {detail.marks && session.pattern ? (
-          <>
-            <Heading className="text-[30px] leading-9">
-              {formatMarks(detail.marks.scored)} / {formatMarks(detail.marks.max)}
-            </Heading>
-            <Txt className="text-sm text-muted-foreground">
-              marks · {summary.accuracy}% accuracy · {markingLabel(session.pattern)}
-            </Txt>
-          </>
-        ) : (
-          <Heading className="text-[30px] leading-9">{summary.accuracy}% accuracy</Heading>
-        )}
-        <Txt className="text-center text-sm text-muted-foreground">
-          {summary.correct} correct · {summary.incorrect} incorrect
-          {summary.unattempted > 0 ? ` · ${summary.unattempted} unattempted` : ""} out of {summary.totalQuestions} questions
-        </Txt>
-      </View>
+      {/* The score leads, on the violet hero; the ring is a score, so its band's colour. */}
+      <HeroCard>
+        <View className="flex-row items-center gap-4">
+          <ProgressRing
+            value={summary.accuracy}
+            color={band.solid}
+            track={withAlpha(BRAND_GRADIENT.onDeep, 0.18)}
+            label={`${summary.accuracy}%`}
+            labelColor={BRAND_GRADIENT.onDeep}
+            size={88}
+            stroke={8}
+          />
+          <View className="flex-1">
+            <HeroText dim weight={600} className="text-[11px] uppercase tracking-[1.2px]">
+              {completionKicker(session)}
+            </HeroText>
+            {detail.marks && session.pattern ? (
+              <>
+                <HeroText font="display" weight={700} className="mt-1 text-[26px] leading-8">
+                  {formatMarks(detail.marks.scored)} / {formatMarks(detail.marks.max)}
+                </HeroText>
+                <HeroText dim className="text-xs">
+                  marks · {summary.accuracy}% accuracy · {markingLabel(session.pattern)}
+                </HeroText>
+              </>
+            ) : (
+              <HeroText font="display" weight={700} className="mt-1 text-[24px] leading-8">
+                {summary.accuracy}% accuracy
+              </HeroText>
+            )}
+            <HeroText dim className="mt-1 text-xs">
+              {summary.correct} correct · {summary.incorrect} incorrect
+              {summary.unattempted > 0 ? ` · ${summary.unattempted} unattempted` : ""} out of {summary.totalQuestions}
+            </HeroText>
+          </View>
+        </View>
+      </HeroCard>
 
       <View className="flex-row gap-2.5">
         <StatTile label="Correct" value={summary.correct} tone="success" active={filter === "correct"} onPress={summary.correct > 0 ? () => toggle("correct") : undefined} />
@@ -157,16 +176,17 @@ export default function ResultsScreen() {
                   · {s.correct}/{s.attempted} correct
                 </Txt>
               </View>
-              <ProgressBar value={s.accuracy} />
+              <ScoreBar value={s.accuracy} />
             </View>
           ))}
+          <BandLegend className="mt-1" />
         </Card>
       ) : null}
 
       {rows.length === 0 ? (
         <EmptyState icon={filter === "correct" ? CircleCheck : filter === "incorrect" ? CircleX : Circle} title={`No ${filter} questions`} description="Nothing matches this filter in this session." />
       ) : (
-        <View className="overflow-hidden rounded-2xl border border-border bg-card">
+        <View className="overflow-hidden rounded-[20px] border border-border bg-card">
           {rows.map(({ q, i, attempt }, n) => (
             <Pressable
               key={q.id}
@@ -203,7 +223,7 @@ export default function ResultsScreen() {
         <Button label="Review answers" size="lg" onPress={() => router.push({ pathname: "/session/[id]/review", params: { id: session.id } })} />
         <View className="flex-row gap-2.5">
           <Button label={next.label} variant="outline" className="flex-1" onPress={() => router.replace(NEXT_ROUTE[next.target])} />
-          <Button label="View all history" variant="outline" className="flex-1" onPress={() => router.push("/history")} />
+          <Button label="View all history" variant="outline" className="flex-1" onPress={() => router.navigate({ pathname: "/progress", params: { view: "history" } })} />
         </View>
         <View className="flex-row items-center justify-center gap-1.5">
           <Txt className="text-xs text-muted-foreground">

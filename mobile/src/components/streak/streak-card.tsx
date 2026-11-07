@@ -58,7 +58,7 @@ export function StreakCard() {
     const fromStreak = Math.max(streak.currentStreak - 1, 0);
     const newStreak = fromStreak + 1;
     setBurst(true);
-    scale.value = withSequence(withTiming(1.1, { duration: 220 }), withTiming(1, { duration: 300 }));
+    scale.set(withSequence(withTiming(1.1, { duration: 220 }), withTiming(1, { duration: 300 })));
     burstTimer.current = setTimeout(() => setBurst(false), 900);
     // Only with a badge to fly from, as web: otherwise the chip would freeze
     // waiting for a flight that cannot start.
@@ -85,13 +85,13 @@ export function StreakCard() {
       <View className="flex-row items-start justify-between gap-3">
         <View className="flex-1">
           <View className="flex-row items-center gap-2">
-            <Target size={17} color={colors.primary} strokeWidth={2} />
-            <Txt font="display" weight={600} className="text-base">
+            <Target size={15} color={colors.primary} strokeWidth={2} />
+            <Txt weight={700} className="text-sm text-brand-ink">
               Today&apos;s goal
             </Txt>
           </View>
-          <Txt font="display" weight={600} className="mt-2 text-2xl">
-            {shown} <Txt className="text-base text-muted-foreground">/ {streak.dailyTarget} questions</Txt>
+          <Txt font="display" weight={700} className="mt-1 text-2xl leading-8">
+            {shown} <Txt className="text-xs text-muted-foreground">/ {streak.dailyTarget} questions</Txt>
           </Txt>
         </View>
         <Animated.View style={[badgeStyle, idleStyle]}>
@@ -115,7 +115,7 @@ export function StreakCard() {
       {streak.dailyTarget <= 24 ? (
         <View className="flex-row gap-1" accessible accessibilityRole="image" accessibilityLabel={`${shown} of ${streak.dailyTarget} questions done today`}>
           {Array.from({ length: streak.dailyTarget }, (_, i) => (
-            <View key={i} className={cn("h-2 flex-1 rounded-full", i < shown ? "bg-primary" : "bg-muted")} />
+            <View key={i} className={cn("h-2.5 flex-1 rounded-full", i < shown ? "bg-primary" : "bg-accent")} />
           ))}
         </View>
       ) : (
@@ -139,7 +139,7 @@ export function StreakCard() {
         </View>
       ) : (
         <View className="gap-1.5">
-          <Txt className="text-sm text-muted-foreground">{streak.dailyTarget - shown} more to reach today&apos;s goal.</Txt>
+          <Txt className="text-[11px] text-muted-foreground">{streak.dailyTarget - shown} more to reach today&apos;s goal.</Txt>
           <View className="flex-row items-center gap-1">
             <Trophy size={13} color={colors["muted-foreground"]} />
             <Txt className="text-xs text-muted-foreground">

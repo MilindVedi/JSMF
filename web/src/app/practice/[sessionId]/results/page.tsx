@@ -22,7 +22,7 @@ import { PageLoading, QueryError } from "@/components/pyq/query-states";
 import { NotFoundError } from "@jsmf/core/data-source";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { BandLegend, ScoreBar } from "@/components/common/score";
 import { SubjectBadge } from "@/components/common/subject-badge";
 import { cn } from "@/lib/utils";
 
@@ -206,9 +206,10 @@ export default function ResultsPage() {
                     {s.correct}/{s.attempted} correct
                   </p>
                 </div>
-                <Progress value={s.accuracy} aria-label={`${s.subjectId} accuracy`} />
+                <ScoreBar value={s.accuracy} className="h-2" />
               </div>
             ))}
+            <BandLegend className="pt-1" />
           </CardContent>
         </Card>
       )}

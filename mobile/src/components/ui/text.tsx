@@ -44,9 +44,16 @@ export function Txt({ className, font = "sans", weight = 400, style, ...props }:
   );
 }
 
-/** A screen or section heading. */
+/** Text size classes (`text-sm`, `text-[15px]`). */
+const SIZE_CLASS = /(^|\s)text-(xs|sm|base|lg|xl|[2-9]xl|\[\d)/;
+
+/**
+ * A screen or section heading: `text-lg` unless the caller gives a size — two
+ * size classes on one element would leave the winner to stylesheet order.
+ */
 export function Heading({ className, ...props }: TxtProps) {
-  return <Txt font="display" weight={600} className={cn("text-lg", className)} {...props} />;
+  const hasSize = className ? SIZE_CLASS.test(className) : false;
+  return <Txt font="display" weight={600} className={cn(!hasSize && "text-lg", className)} {...props} />;
 }
 
 /** The small uppercase label above a figure ("TODAY'S STREAK PROGRESS"). */

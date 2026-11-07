@@ -1,13 +1,18 @@
-import { Pressable, View } from "react-native";
+import { useEffect, useRef, type ReactNode } from "react";
+import { View } from "react-native";
+import { useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 import { Image } from "expo-image";
-import { Activity, Bone, Camera, Check, CircleCheck, Circle, CircleX, Microscope, Scan, ScanLine, Workflow, X } from "lucide-react-native";
+import { Activity, Bone, Camera, CircleCheck, Circle, CircleX, Microscope, Scan, ScanLine, Workflow } from "lucide-react-native";
 import { DIFFICULTY_LABEL, OPTION_LETTERS, type FigureKind, type QuestionFigure, type SessionQuestion } from "@jsmf/core/domain";
 import { useTaxonomyLookup } from "@jsmf/core/hooks";
+import { AnimatedPressable, AnimatedView } from "@/components/motion/animated";
+import { usePressScale } from "@/components/motion/loop";
+import { Rise } from "@/components/motion/rise";
 import type { IconComponent } from "@/components/ui/button";
 import { Badge } from "@/components/ui/primitives";
 import { cn, Txt } from "@/components/ui/text";
 import { useColors } from "@/theme/theme";
-import { ExamBadge, SubjectBadge } from "./badges";
+import { ExamBadge } from "./badges";
 
 const FIGURE_META: Record<FigureKind, { label: string; icon: IconComponent }> = {
   xray: { label: "Radiograph", icon: Bone },
@@ -43,13 +48,18 @@ export function FigurePlaceholder({ figure }: { figure: QuestionFigure }) {
 
 const DIFFICULTY_TONE = { easy: "success", medium: "flag", hard: "error" } as const;
 
-/** Stem, figure and options. `submitted` reveals correctness (never in a running test). */
+/**
+ * Stem, figure and options. `submitted` reveals correctness (never in a
+ * running test). The tag line reads like the question list's: "FMGE 2025",
+ * subject · topic, difficulty, then `trailing` (the bookmark) at the end.
+ */
 export function QuestionCard({
   question,
   submitted,
   selectedOptionId,
   onSelect,
   hideMeta = false,
+  trailing,
 }: {
   question: SessionQuestion;
   submitted: boolean;
@@ -57,23 +67,27 @@ export function QuestionCard({
   onSelect: (optionId: string) => void;
   /** Exam mode: no exam / subject / topic / difficulty tags, as on the real test screen. */
   hideMeta?: boolean;
+  trailing?: ReactNode;
 }) {
-  const topic = useTaxonomyLookup().topic(question.topicId);
+  const lookup = useTaxonomyLookup();
+  const subject = lookup.subject(question.subjectId)?.name;
+  const topic = question.topicId ? lookup.topic(question.topicId)?.name : undefined;
+  const where = [subject, topic].filter(Boolean).join(" · ");
   return (
     <View className="gap-4">
       {!hideMeta ? (
-        <View className="flex-row flex-wrap items-center gap-1.5">
-          <ExamBadge examId={question.examId} />
-          <SubjectBadge subjectId={question.subjectId} />
-          {topic ? (
-            <View className="rounded-full border border-border px-2 py-0.5">
-              <Txt className="text-[11px] text-muted-foreground">{topic.name}</Txt>
-            </View>
-          ) : null}
-          <Badge label={DIFFICULTY_LABEL[question.difficulty]} tone={DIFFICULTY_TONE[question.difficulty]} className="ml-auto" />
+        <View className="flex-row items-center gap-2">
+          <ExamBadge examId={question.examId} year={question.year} />
+          <Txt className="flex-1 text-[11px] text-muted-foreground" numberOfLines={1}>
+            {where}
+          </Txt>
+          <Badge label={DIFFICULTY_LABEL[question.difficulty]} tone={DIFFICULTY_TONE[question.difficulty]} />
+          {trailing}
         </View>
       ) : null}
-      <Txt className="text-[17px] leading-7">{question.stem}</Txt>
+      <Txt weight={500} className="text-[15px] leading-6">
+        {question.stem}
+      </Txt>
       {question.stemFigure ? <FigurePlaceholder figure={question.stemFigure} /> : null}
       <View accessibilityRole="radiogroup" className="gap-2.5">
         {question.options.map((option, i) => (
@@ -93,6 +107,34 @@ export function QuestionCard({
   );
 }
 
+type Verdict = "correct" | "wrong" | null;
+
+/**
+ * The answer's moment: the right option pops, a wrong pick shakes — only when
+ * it happens in front of the student, not when an answered question is
+ * reopened. Still under reduce-motion.
+ */
+function useVerdictMotion(verdict: Verdict) {
+  const reduceMotion = useReducedMotion();
+  const shownWith = useRef(verdict);
+  const scale = useSharedValue(1);
+  const shift = useSharedValue(0);
+  useEffect(() => {
+    if (reduceMotion || verdict === null || verdict === shownWith.current) return;
+    if (verdict === "correct") {
+      scale.set(withSequence(withTiming(0.96, { duration: 90 }), withTiming(1.03, { duration: 150 }), withTiming(1, { duration: 120 })));
+    } else {
+      shift.set(withSequence(withTiming(-6, { duration: 70 }), withTiming(6, { duration: 90 }), withTiming(-3, { duration: 80 }), withTiming(0, { duration: 70 })));
+    }
+  }, [verdict, reduceMotion, scale, shift]);
+  return useAnimatedStyle(() => ({ transform: [{ translateX: shift.value }, { scale: scale.value }] }));
+}
+
+/**
+ * One answer option: its letter in a small square, the text, and after the
+ * answer a tick or cross. Chosen (before submitting) it is violet-edged;
+ * revealed, the right one turns green, a wrong pick red, the rest fade.
+ */
 export function OptionButton({
   index,
   text,
@@ -111,76 +153,82 @@ export function OptionButton({
   onSelect: () => void;
 }) {
   const colors = useColors();
+  const press = usePressScale(0.98);
   const showCorrect = submitted && isCorrectOption;
   const showWrong = submitted && isSelected && !isCorrectOption;
   const muted = submitted && !isSelected && !isCorrectOption;
+  const chosen = !submitted && isSelected;
+  const verdictStyle = useVerdictMotion(showCorrect ? "correct" : showWrong ? "wrong" : null);
+  const ink = showCorrect ? "text-success-foreground" : showWrong ? "text-error-foreground" : chosen ? "text-primary" : "text-foreground";
   return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ checked: isSelected, disabled: submitted }}
-      accessibilityLabel={`Option ${OPTION_LETTERS[index]}: ${text}`}
-      disabled={submitted}
-      onPress={onSelect}
-      className={cn(
-        "flex-row items-start gap-3 rounded-2xl border px-4 py-3.5",
-        !submitted && !isSelected && "border-border bg-card active:bg-muted/60",
-        !submitted && isSelected && "border-primary bg-primary/5",
-        showCorrect && "border-success-foreground/30 bg-success",
-        showWrong && "border-error-foreground/30 bg-error",
-        muted && "border-border bg-card opacity-60"
-      )}
-      style={!submitted && isSelected ? { borderWidth: 1.5 } : undefined}
-    >
-      <View
+    <AnimatedView animatedStyle={verdictStyle}>
+      <AnimatedPressable
+        accessibilityRole="radio"
+        accessibilityState={{ checked: isSelected, disabled: submitted }}
+        accessibilityLabel={`Option ${OPTION_LETTERS[index]}: ${text}`}
+        disabled={submitted}
+        onPress={onSelect}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
         className={cn(
-          "mt-0.5 size-7 items-center justify-center rounded-full border",
-          !submitted && !isSelected && "border-border",
-          !submitted && isSelected && "border-primary bg-primary",
-          showCorrect && "border-transparent bg-success-foreground",
-          showWrong && "border-transparent bg-error-foreground",
-          muted && "border-border"
+          "flex-row items-center gap-3 rounded-2xl px-3.5 py-3",
+          !submitted && !isSelected && "border-border bg-card",
+          chosen && "border-primary bg-accent",
+          showCorrect && "border-success-foreground bg-success",
+          showWrong && "border-error-foreground bg-error",
+          muted && "border-border bg-card opacity-50"
         )}
+        style={{ borderWidth: 1.5 }}
+        animatedStyle={press.style}
       >
-        {showCorrect ? (
-          <Check size={14} strokeWidth={3} color={colors.success} />
-        ) : showWrong ? (
-          <X size={14} strokeWidth={3} color={colors.error} />
-        ) : (
-          <Txt weight={700} className={cn("text-xs", !submitted && isSelected ? "text-primary-foreground" : "text-muted-foreground")}>
+        <View
+          className={cn(
+            "size-7 items-center justify-center self-start rounded-[9px]",
+            chosen ? "bg-primary" : showCorrect ? "bg-success-foreground/15" : showWrong ? "bg-error-foreground/15" : "bg-muted"
+          )}
+        >
+          <Txt weight={700} className={cn("text-xs", chosen ? "text-primary-foreground" : ink)}>
             {OPTION_LETTERS[index]}
           </Txt>
-        )}
-      </View>
-      <View className="flex-1 gap-2 pt-0.5">
-        <Txt className={cn("text-base leading-6", showCorrect && "text-success-foreground", showWrong && "text-error-foreground")}>{text}</Txt>
-        {imageUrl ? <Image source={{ uri: imageUrl }} style={{ width: "100%", height: 140, borderRadius: 10 }} contentFit="contain" /> : null}
-      </View>
-    </Pressable>
+        </View>
+        <View className="flex-1 gap-2">
+          <Txt weight={chosen || showCorrect || showWrong ? 600 : 400} className={cn("text-sm leading-[21px]", ink)}>
+            {text}
+          </Txt>
+          {imageUrl ? <Image source={{ uri: imageUrl }} style={{ width: "100%", height: 140, borderRadius: 10 }} contentFit="contain" /> : null}
+        </View>
+        {showCorrect ? <CircleCheck size={19} color={colors["success-foreground"]} /> : null}
+        {showWrong ? <CircleX size={19} color={colors["error-foreground"]} /> : null}
+      </AnimatedPressable>
+    </AnimatedView>
   );
 }
 
-/** The verdict and explanation after answering (practice), or in review. */
+const VERDICT_LABEL = { correct: "Correct!", incorrect: "Incorrect", unattempted: "Not attempted" } as const;
+
+/**
+ * The verdict and explanation after answering (practice), or in review: a
+ * lavender panel with a violet edge, rising in when it appears.
+ */
 export function ExplanationPanel({ question, status }: { question: SessionQuestion; status: "correct" | "incorrect" | "unattempted" }) {
   const colors = useColors();
   const Icon = status === "correct" ? CircleCheck : status === "incorrect" ? CircleX : Circle;
   const color = status === "correct" ? colors["success-foreground"] : status === "incorrect" ? colors["error-foreground"] : colors["muted-foreground"];
   return (
-    <View
-      className={cn(
-        "rounded-2xl border p-4",
-        status === "correct" && "border-success-foreground/20 bg-success/60",
-        status === "incorrect" && "border-error-foreground/20 bg-error/60",
-        status === "unattempted" && "border-border bg-muted/50"
-      )}
-    >
-      <View className="mb-2 flex-row items-center gap-2">
-        <Icon size={18} color={color} />
-        <Txt weight={700} className="text-sm" style={{ color }}>
-          {status === "correct" ? "Correct" : status === "incorrect" ? "Incorrect" : "Not attempted"}
-        </Txt>
+    <Rise distance={12} durationMs={420}>
+      <View className="rounded-[18px] border-l-4 border-primary bg-accent px-4 py-3.5">
+        <View className="flex-row items-center gap-1.5">
+          <Icon size={15} color={color} strokeWidth={2.2} />
+          <Txt weight={700} className="text-xs uppercase tracking-wider" style={{ color }}>
+            {VERDICT_LABEL[status]}
+          </Txt>
+          <Txt weight={700} className="text-xs uppercase tracking-wider text-primary">
+            · Explanation
+          </Txt>
+        </View>
+        <Txt className="mt-1.5 text-sm leading-6">{question.explanation}</Txt>
+        {question.explanationFigure ? <FigurePlaceholder figure={question.explanationFigure} /> : null}
       </View>
-      <Txt className="text-base leading-7">{question.explanation}</Txt>
-      {question.explanationFigure ? <FigurePlaceholder figure={question.explanationFigure} /> : null}
-    </View>
+    </Rise>
   );
 }

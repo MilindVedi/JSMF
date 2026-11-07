@@ -11,3 +11,6 @@ export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? "http://localhos
 
 /** Where users write for help and to request account deletion. */
 export const SUPPORT_EMAIL = "support@jsmf.me";
+
+/** The main JSMF website (web's "Visit JSMF website"); EXPO_PUBLIC_MAIN_WEBSITE_URL overrides it, as web's NEXT_PUBLIC_MAIN_WEBSITE_URL does. */
+export const MAIN_WEBSITE_URL = process.env.EXPO_PUBLIC_MAIN_WEBSITE_URL ?? "https://jsmf.me";

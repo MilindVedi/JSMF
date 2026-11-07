@@ -32,8 +32,7 @@ export function OnboardingDashboard({
   hasStreak?: boolean;
   onStartFirstPractice: () => void;
 }) {
-  const { exam: examById } = useTaxonomyLookup();
-  const exam = examById(targetExamId);
+  const { examName } = useTaxonomyLookup();
 
   const checklist = [
     { label: "Choose your exam", done: true },
@@ -56,7 +55,7 @@ export function OnboardingDashboard({
               Your selected exam
             </p>
             <p className="mt-1 font-heading text-2xl font-semibold text-foreground">
-              {exam?.shortName ?? targetExamId}
+              {examName(targetExamId)}
             </p>
           </div>
           <StreakCard />

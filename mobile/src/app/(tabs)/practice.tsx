@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, View } from "react-native";
-import { useRouter } from "expo-router";
-import { History, Search, Sparkles } from "lucide-react-native";
+import { BookOpen, Search } from "lucide-react-native";
 import {
   MAX_SESSION_QUESTIONS,
   QUESTION_BANK_SORT_OPTIONS,
+  QUESTION_SORT_GROUPS,
   QUESTION_SORT_LABELS,
   type QuestionSortOption,
 } from "@jsmf/core/domain";
@@ -12,10 +12,11 @@ import type { QuestionListItem, QuestionQuery } from "@jsmf/core/data-source";
 import { useInfiniteQuestions } from "@jsmf/core/hooks";
 import { useStartSession } from "@/lib/start-session";
 import { useColors } from "@/theme/theme";
+import { useTabBarClearance } from "@/components/navigation/tab-bar";
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/field";
 import { EmptyState, QueryError } from "@/components/ui/primitives";
-import { Segmented, TabScreen } from "@/components/ui/screen";
+import { Segmented, TabHeader } from "@/components/ui/screen";
 import { Txt } from "@/components/ui/text";
 import {
   ActiveFilterChips,
@@ -35,16 +36,17 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "incorrect", label: "Incorrect" },
   { value: "bookmarked", label: "Bookmarked" },
 ];
-const SORT_OPTIONS = QUESTION_BANK_SORT_OPTIONS.map((value) => ({ value, label: QUESTION_SORT_LABELS[value] }));
+const SORT_OPTIONS = QUESTION_BANK_SORT_OPTIONS.map((value) => ({ value, label: QUESTION_SORT_LABELS[value], group: QUESTION_SORT_GROUPS[value] }));
 const PAGE_SIZE = 50;
 
 /**
  * The question bank (web's /question-bank): the same filters, status tabs,
- * debounced search and sort, as one list that loads more as you scroll.
+ * debounced search and sort, as one list that loads more as you scroll. The
+ * tab's header scrolls away with it.
  */
 export default function PracticeScreen() {
-  const router = useRouter();
   const colors = useColors();
+  const clearance = useTabBarClearance();
   const startSession = useStartSession();
   const [filters, setFilters] = useState<QuestionFiltersState>(EMPTY_QUESTION_FILTERS);
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -90,12 +92,9 @@ export default function PracticeScreen() {
 
   const header = (
     <View className="gap-3 pb-3">
-      <View className="flex-row gap-2">
-        <Button label="Custom test" icon={Sparkles} variant="secondary" size="sm" className="flex-1" onPress={() => router.push("/custom-test")} />
-        <Button label="History" icon={History} variant="outline" size="sm" className="flex-1" onPress={() => router.push("/history")} />
-      </View>
+      <TabHeader eyebrow="Memory-based PYQs" eyebrowIcon={BookOpen} title="Question bank" subtitle="Search, bookmark and solve — one tap at a time." className="-mx-5 mb-1" />
+      <SearchField value={search} onChangeText={setSearch} placeholder="Search topic or keyword" />
       <Segmented value={status} options={STATUS_OPTIONS} onChange={setStatus} />
-      <SearchField value={search} onChangeText={setSearch} />
       <View className="flex-row items-center gap-2">
         <View className="flex-1">
           <FilterBar value={filters} onChange={setFilters} />
@@ -115,17 +114,17 @@ export default function PracticeScreen() {
   );
 
   return (
-    <TabScreen title="Question Bank" subtitle="Memory-based PYQs by exam, year, subject and topic." scroll={false}>
+    <View className="flex-1 bg-background">
       <FlatList
         // A failed "load more" keeps what is already loaded (web's pager keeps
         // its place); only a first-page failure replaces the list.
         data={list.error && items.length === 0 ? [] : items}
         keyExtractor={(q) => q.id}
-        contentContainerClassName="px-5 pb-10"
-        ListHeaderComponent={header}
+        contentContainerStyle={{ paddingBottom: clearance }}
+        ListHeaderComponent={<View className="px-5">{header}</View>}
         keyboardShouldPersistTaps="handled"
         renderItem={({ item, index }) => (
-          <View className={index === 0 ? "overflow-hidden rounded-t-2xl border border-border bg-card" : "border-x border-b border-border bg-card"} style={index === items.length - 1 ? { borderBottomLeftRadius: 16, borderBottomRightRadius: 16 } : undefined}>
+          <View className="mb-3 px-5">
             <QuestionRow question={item} number={index + 1} status={item.userStatus} onPress={() => practiceFrom(item)} />
           </View>
         )}
@@ -136,6 +135,7 @@ export default function PracticeScreen() {
         }}
         refreshControl={<RefreshControl refreshing={list.isRefetching && !list.isFetchingNextPage} onRefresh={() => void list.refetch()} tintColor={colors.primary} />}
         ListEmptyComponent={
+          <View className="px-5">{
           list.error && items.length === 0 ? (
             <QueryError error={list.error} onRetry={() => void list.refetch()} title="Couldn't load questions" />
           ) : list.isPending ? (
@@ -146,19 +146,19 @@ export default function PracticeScreen() {
               title="No questions match these filters"
               description={status === "all" ? "Try widening your exam, year, subject, or topic selection." : "Nothing in this category yet — try a different status or widen your filters."}
             />
-          )
+          )}</View>
         }
         ListFooterComponent={
           list.isFetchingNextPage ? (
             <ActivityIndicator color={colors["muted-foreground"]} className="py-6" />
           ) : list.isFetchNextPageError ? (
-            <View className="flex-row items-center justify-between gap-3 py-4">
+            <View className="flex-row items-center justify-between gap-3 px-5 py-4">
               <Txt className="flex-1 text-sm text-muted-foreground">Couldn&apos;t load more questions.</Txt>
               <Button label="Try again" size="sm" variant="outline" onPress={() => void list.fetchNextPage()} />
             </View>
           ) : null
         }
       />
-    </TabScreen>
+    </View>
   );
 }

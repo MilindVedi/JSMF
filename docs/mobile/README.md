@@ -51,19 +51,20 @@ Put it in `mobile/.env.local` (ignored by git) or prefix the command: `EXPO_PUBL
 
 ## Screens (V1)
 
-Tabs: **Home · Practice · Revision · Stats · Profile**. Pushed screens: practice runner, results, review, custom test, history, bookmarks, reinforce, plan, legal documents. Auth screens: sign in, sign up, forgot / reset password, and the Google callback landing.
+Tabs (a floating bar, November 2026 redesign): **Dashboard · PYQs · Custom Test · Revision · My Progress**. Every tab opens with the brand lockup (logo, "JSMF PYQs", "Jab Studies Met Fun"), the streak chip and a violet avatar button that opens **Profile**. Pushed screens: Profile, practice runner, results, review, bookmarks, reinforce, plan, legal documents. `/history` redirects to My Progress (History). Auth screens: sign in, sign up, forgot / reset password, and the Google callback landing.
 
 | Area | What it does (mirrors web) |
 |---|---|
-| Home | Onboarding variant for a brand-new account (no session ever created), otherwise the dashboard: stat cards, continue / last-session card, streak card, quick actions, recent activity, focus areas. |
-| Practice | The question bank: status tabs, exam / year / subject / topic / collection filters (bottom sheets), debounced search, sort, a list that loads more as you scroll, "Practice these questions"; links to Custom test and History. |
-| Custom test | A **Full mock test** card (each exam whose pattern is on and whose bank can fill it), then count presets + stepper, optional timer with realistic / balanced / relaxed pace + stepper, then include / ordering / name in the confirm dialog. |
+| Dashboard (`/home`) | Onboarding variant for a brand-new account (no session ever created: the selected exam on the violet hero, "Start your first practice"), otherwise: the violet **next session** hero (session in progress with a % done ring and Resume, or "One question closer." with the last session's score ring), four stat tiles (wrong questions tinted red), today's goal, "Your study tools" (Question Bank, Custom Test, Revision, Bookmarks), recent activity (score pills), focus areas (score bars). |
+| PYQs (`/practice`) | The question bank: search, status chips, exam / year / subject / topic / collection filters (bottom sheets), sort, a list of question cards ("FMGE 2025" pill, subject, the stem, "Solve →", bookmark and collection in place) that loads more as you scroll, "Practice these questions". |
+| Custom Test (`/custom-test`) | A **Full mock test** card (each exam whose pattern is on and whose bank can fill it), then count presets, a slider and a typed number (as web), optional timer with realistic / balanced / relaxed pace, a slider and typed minutes, then "Start N-question test"; include / ordering / name in the confirm dialog. |
 | Practice runner | One question per screen; Submit shows the verdict and explanation; bookmark, flag, report, palette sheet; Previous / Next buttons. |
 | Test mode | A timed custom test opens the **exam console**: exam title, candidate name, Time Left (warning colour in the last 5 minutes, auto-submit at zero); Answered / Not Answered / Not Visited / Marked for Review / Answered & Marked counts under the header; the legend + jump grid in a bottom sheet; Mark for Review & Next, Clear Response, Previous, Save & Next, Submit with the counts dialog. Clear Response follows web's rule — there is no un-answer API, so it only drops a choice that has not been saved. Every test first shows the **instructions** with "I am ready to begin" (the clock starts there); a full mock adds a section strip, the running section's own clock and palette, and moves on by itself when a section's time ends. Same rules as web: [exam-mode.md](../pyq/exam-mode.md). |
 | Results / Review | Accuracy (and, for a full mock, marks and a per-section breakdown), tiles that filter the question list, subject breakdown; review with All / Correct / Incorrect / Unattempted, a strip of questions and wrapping Previous / Next. |
-| Revision | Needs Practice (Wrong / Never corrected / By subject), Bookmarked, Your Collections, Reinforce — each with a recent / By subject switch, exam / year, date window, search, sort and "Practise N". Reinforce's "View all" opens the **Reinforce** screen (All correct / Recently correct / Not revisited, as web's /reinforce). (Web's calendar custom range is not offered on the phone; the presets are.) |
-| Stats | Overview tiles, coverage (tap for per-subject coverage), subject-wise accuracy bars (weakest first, coloured weak / fair / strong as web), correct / incorrect / unattempted ring, accuracy-over-time line chart (react-native-svg), links onward. |
-| Profile | Rename (the shared account name), email read-only, plan read-only, target exam, daily goal, legal links, contact support, sign out, request account deletion. |
+| Revision | Four tiles (Wrong, Bookmarked, Collections, Reinforce — each opens its section), then collapsible section cards: Needs practice (Wrong / Never corrected / By subject), Bookmarked, Your collections, Reinforce — each with a recent / By subject switch, exam / year, date window (presets or a **custom range** on a calendar sheet, as web), search, sort, compact question cards and "Revise these N" (kept in the By-subject view for Bookmarked / Collections / Reinforce, as web). Reinforce's "View all" opens the **Reinforce** screen (All correct / Recently correct / Not revisited, as web's /reinforce). |
+| My Progress (`/progress`) | History and Statistics behind one switch (`?view=history|statistics`). History: totals, session type chips, All time / 30 / 7 days / **custom range**, sort, the sessions. Statistics: overall accuracy on the violet hero (ring in its score band), correct / incorrect / left, coverage (tap for per-subject coverage), subject-wise accuracy bars with the band legend, accuracy over time, the correct / incorrect / unattempted ring, links onward. |
+| Profile (`/profile`, from the avatar) | Rename (the shared account name), email read-only, plan read-only, target exam, daily goal, legal links, contact support, Visit JSMF website, sign out, request account deletion. |
+| Plan (`/subscription`) | The current plan, read-only, and **Start free trial** when the API offers one (`trialOffer`), as web. Buying stays on the website (store rules). |
 | Streak | Header chip on every tab (hidden at 0 days, as web), home streak card, and the daily-goal celebration: the badge pops with embers where the goal was reached (in place on the practice screens) or flies on an arc into the header chip, which pulses on landing; milestones ring. The flame is always fire-coloured; the box takes the tier colour. Reduce-motion skips the flicker, embers and flight. |
 | Legal | Terms / Privacy / Refund screens fetched from `legal/documents/:type?app=PYQ` and drawn with core's parsers, each with **Previous versions** (the archive list and earlier versions, marked as such). The acceptance gate opens when `legal/me` reports a document as `required`, and again whenever the API answers 403 `LEGAL_ACCEPTANCE_REQUIRED`: unticked boxes, Accept disabled until all are ticked, recorded with `app: "PYQ"`, the documents readable inside the gate, Sign out as the only other way out. A minor update shows a dismissible notice instead. |
 
@@ -88,7 +89,24 @@ A second pass closed the smaller differences:
 
 New native dependencies: `expo-network` and `@react-native-async-storage/async-storage` (installed with `npx expo install`). They need a fresh development / store build — nothing has been released yet, so there is no over-the-air update to break.
 
-The free-trial offer is deliberately not shown on the phone (store rules) — a product decision, to be confirmed against the store rules.
+The free trial can be started on the phone (no money changes hands); buying a plan stays website-only (store rules on digital goods) — product decision, November 2026.
+
+### Look (November 2026 redesign)
+Built from the design mockup, in the shared pieces so every screen follows: the brand gradient (`brand-deep` → `primary`) on the main buttons, the tab bar's active pill and the hero cards; lavender (`accent`) shortcut tiles; white cards with a hairline border; pill chips for every one-of-several choice (`Segmented`); headings in Sora with a violet full stop.
+
+**Score colours.** A score — accuracy on a bar, ring or pill — is coloured by core's `scoreBand`, never purple: red under 40% (Needs improvement), amber 40–69% (Developing), green 70–84% (Good), deep teal 85–100% (Excellent). The `band-*` tokens are in `palette.json` (the website has the same values in `globals.css` and uses the same bands); `components/ui/score.tsx` has `ScoreBar`, `ScorePill`, `BandLegend`. Plain progress (coverage, today's goal, a session's progress) stays the brand purple `ProgressBar`.
+
+**Motion (calm).** Buttons, cards, chips and tabs give a little when pressed; a tab's parts rise in one after another when it opens (`motion/rise.tsx`); numbers count up; bars and rings fill; the tab pill glides. Nothing loops on its own. Everything is skipped under the phone's reduce-motion setting.
+
+**Tab bar.** It floats over the page (as in the design): five equal slots, sized with plain style, with the gradient pill measured on the same row so it always sits exactly on its tab. Every tab's scroll view leaves `useTabBarClearance()` at its end so the last item clears the bar.
+
+**Practice screen.** Back button, purple progress bar and "n/N" on top; the tag line "FMGE 2025 · subject · topic · difficulty · bookmark"; options with a lettered square that turn green / red after Submit (the right one pops, a wrong pick shakes); the explanation on a lavender panel with a violet edge; the next step as one big violet button beside Previous, palette and report. Same features and steps as the website (choose, then Submit).
+
+**Rule — animated styles never share an element's `className` merge.** On a phone, NativeWind merges `className` and `style` into one object; a Reanimated animated style merged that way makes Reanimated drop every class (size, padding, background, flex). The web export uses plain CSS, so this never shows in browser screenshots — only on a device. `motion/animated.tsx`'s `AnimatedView` / `AnimatedPressable` take the animation in a separate `animatedStyle` prop; always use that, never put an animated style in `style` next to a `className`.
+
+**Chip rows inside a card wrap** (`Segmented wrap`, `FilterBar wrap`); only full-width page rows scroll sideways edge to edge.
+
+The redesign added no native module (gradients and the calendar are react-native-svg / plain views; the slider uses the installed gesture handler), so it ships without a new build.
 
 ## What is shared and what is app-only
 
@@ -102,7 +120,7 @@ Moved into core in this step (web now uses them too, behaviour unchanged): the A
 - `lib/auth-store.ts` — a small zustand mirror of core's auth session for the navigation guard (`Stack.Protected`).
 - `lib/google-auth.ts` — Google sign-in via `expo-web-browser`.
 - `lib/streak.ts` — the celebration coordination (which day was celebrated is kept in the secure store).
-- `theme/` — `palette.json` (hex copies of web's oklch tokens, light and dark, plus streak tier colours) feeding NativeWind through CSS variables; system light/dark.
+- `theme/` — `palette.json` (hex copies of web's oklch tokens, light and dark, plus streak tier colours and the score bands) feeding NativeWind through CSS variables; system light/dark.
 - Every screen and component (React Native, not shared with web's DOM components).
 
 ### One React per app (monorepo note)

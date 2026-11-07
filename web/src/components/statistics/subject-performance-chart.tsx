@@ -11,13 +11,8 @@ import {
   YAxis,
 } from "recharts";
 import { useTaxonomyLookup } from "@/hooks/pyq";
-import type { SubjectPerformance } from "@jsmf/core/domain";
-
-function accuracyColor(accuracy: number) {
-  if (accuracy < 50) return "var(--color-error)";
-  if (accuracy < 75) return "var(--color-flag)";
-  return "var(--color-success)";
-}
+import { scoreBandLabel, type SubjectPerformance } from "@jsmf/core/domain";
+import { BandLegend, scoreColor } from "@/components/common/score";
 
 export function SubjectPerformanceChart({ data }: { data: SubjectPerformance[] }) {
   const { subject: getSubjectById } = useTaxonomyLookup();
@@ -32,7 +27,9 @@ export function SubjectPerformanceChart({ data }: { data: SubjectPerformance[] }
 
   const height = Math.max(260, chartData.length * 34);
 
+  // Each bar in its score band's colour (the app's bands), with the key under the chart.
   return (
+    <div className="space-y-3">
     <div style={{ width: "100%", height }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 4 }}>
@@ -62,17 +59,20 @@ export function SubjectPerformanceChart({ data }: { data: SubjectPerformance[] }
               fontSize: 12,
             }}
             formatter={(value, _name, item) => [
-              `${value}% (${item.payload.attempted} attempted)`,
+              `${value}% · ${scoreBandLabel(Number(value))} (${item.payload.attempted} attempted)`,
               "Accuracy",
             ]}
           />
-          <Bar dataKey="accuracy" radius={[0, 4, 4, 0]} maxBarSize={18}>
+          {/* minPointSize: a 0% subject still shows a sliver of red, not an empty row. */}
+          <Bar dataKey="accuracy" radius={[0, 4, 4, 0]} maxBarSize={18} minPointSize={4}>
             {chartData.map((entry) => (
-              <Cell key={entry.subjectId} fill={accuracyColor(entry.accuracy)} />
+              <Cell key={entry.subjectId} fill={scoreColor(entry.accuracy)} />
             ))}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+    </div>
+    <BandLegend />
     </div>
   );
 }

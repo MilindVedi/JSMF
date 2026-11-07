@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import type { TestSession } from "@jsmf/core/domain";
-import { cn } from "@/lib/utils";
+import { ScorePill } from "@/components/common/score";
 
 export function TestSummaryCard({
   session,
@@ -26,18 +26,7 @@ export function TestSummaryCard({
           {incorrect} incorrect
         </p>
       </div>
-      <span
-        className={cn(
-          "shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold",
-          accuracy >= 70
-            ? "bg-success text-success-foreground"
-            : accuracy >= 40
-              ? "bg-flag text-flag-foreground"
-              : "bg-error text-error-foreground"
-        )}
-      >
-        {accuracy}%
-      </span>
+      <ScorePill value={accuracy} />
     </Link>
   );
 }

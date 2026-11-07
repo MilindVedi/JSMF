@@ -87,6 +87,29 @@ export function accuracyTone(accuracy: number): "success" | "flag" | "error" {
   return accuracy >= 70 ? "success" : accuracy >= 40 ? "flag" : "error";
 }
 
+/**
+ * The colour band of an accuracy score — what every score bar, ring and pill
+ * is coloured by (never the brand purple, which is for plain progress).
+ */
+export type ScoreBand = "needs-improvement" | "developing" | "good" | "excellent";
+
+export const SCORE_BANDS: { band: ScoreBand; label: string; from: number }[] = [
+  { band: "needs-improvement", label: "Needs improvement", from: 0 },
+  { band: "developing", label: "Developing", from: 40 },
+  { band: "good", label: "Good", from: 70 },
+  { band: "excellent", label: "Excellent", from: 85 },
+];
+
+/** 0–39 needs improvement · 40–69 developing · 70–84 good · 85–100 excellent. */
+export function scoreBand(accuracy: number): ScoreBand {
+  return accuracy >= 85 ? "excellent" : accuracy >= 70 ? "good" : accuracy >= 40 ? "developing" : "needs-improvement";
+}
+
+export function scoreBandLabel(accuracy: number): string {
+  const band = scoreBand(accuracy);
+  return SCORE_BANDS.find((b) => b.band === band)!.label;
+}
+
 // --- Review ---------------------------------------------------------------------
 
 export type ReviewFilter = "all" | "correct" | "incorrect" | "unattempted";

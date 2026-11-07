@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Bookmark, ChevronDown, ChevronRight, CircleCheck, CircleX, Library } from "lucide-react-native";
+import { Bookmark, ChevronDown, ChevronRight, CircleCheck, CircleX, Library, Play, Repeat } from "lucide-react-native";
 import {
   DATE_PRESETS,
+  QUESTION_SORT_GROUPS,
   QUESTION_SORT_LABELS,
   REVISION_SECTION_SORT_OPTIONS,
   buildQuestionSortContextFromRevision,
@@ -31,8 +32,10 @@ import { Button, type IconComponent } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/field";
 import { Chip, EmptyState, IconTile, Loading, PressableCard, QueryError, type Tone } from "@/components/ui/primitives";
 import { Segmented, TabScreen } from "@/components/ui/screen";
-import { Heading, Txt } from "@/components/ui/text";
+import { Txt } from "@/components/ui/text";
+import { CountUp } from "@/components/motion/count-up";
 import { MultiSelect, SortSheetButton } from "@/components/filters/filters";
+import { DateRangeField } from "@/components/filters/date-range";
 import { QuestionRow } from "@/components/question/question-row";
 import { SubjectBadge } from "@/components/question/badges";
 import { useRefetchOnFocus } from "@/lib/use-refetch-on-focus";
@@ -44,17 +47,26 @@ const MAX_COLLECTION_ROWS = 15;
 type SectionKey = "wrong" | "bookmarked" | "collections" | "reinforce";
 const SECTION_KEYS: SectionKey[] = ["wrong", "bookmarked", "collections", "reinforce"];
 
-/** Scrolls a just-opened section into view, once its expand has laid out (its top does not move when it opens). */
-function scrollToSection(scroll: RefObject<ScrollView | null>, sectionY: RefObject<Partial<Record<SectionKey, number>>>, key: SectionKey) {
+/**
+ * Scrolls a just-opened section into view, once its expand has laid out (its
+ * top does not move when it opens). Measured against the page's content at
+ * that moment, so the header above and the sections' entrance wrappers never
+ * throw it off.
+ */
+function scrollToSection(
+  scroll: RefObject<ScrollView | null>,
+  content: RefObject<View | null>,
+  sections: RefObject<Partial<Record<SectionKey, View | null>>>,
+  key: SectionKey
+) {
   setTimeout(() => {
-    const y = sectionY.current[key];
-    if (y !== undefined) scroll.current?.scrollTo({ y: Math.max(y - 8, 0), animated: true });
+    const section = sections.current[key];
+    if (!section || !content.current) return;
+    section.measureLayout(content.current, (_x, y) => scroll.current?.scrollTo({ y: Math.max(y - 12, 0), animated: true }));
   }, 60);
 }
-// Phones get the presets; web's calendar custom range is not offered here.
-const PRESETS = DATE_PRESETS.filter((p) => p.value !== "custom");
 const sortOptions = (section: keyof typeof REVISION_SECTION_SORT_OPTIONS) =>
-  REVISION_SECTION_SORT_OPTIONS[section].map((value) => ({ value, label: QUESTION_SORT_LABELS[value] }));
+  REVISION_SECTION_SORT_OPTIONS[section].map((value) => ({ value, label: QUESTION_SORT_LABELS[value], group: QUESTION_SORT_GROUPS[value] }));
 
 /**
  * Revision (web's /revision): everything worth another look — wrong questions
@@ -78,10 +90,11 @@ export default function RevisionScreen() {
   // link that names one (Stats -> Collections lands on it, open, as web's
   // #collections-section anchor does).
   const scrollRef = useRef<ScrollView>(null);
-  const sectionY = useRef<Partial<Record<SectionKey, number>>>({});
+  const contentRef = useRef<View>(null);
+  const sectionRefs = useRef<Partial<Record<SectionKey, View | null>>>({});
   const goTo = (key: SectionKey) => {
     setOpen((o) => ({ ...o, [key]: true }));
-    scrollToSection(scrollRef, sectionY, key);
+    scrollToSection(scrollRef, contentRef, sectionRefs, key);
   };
   const { section: sectionParam } = useLocalSearchParams<{ section?: string }>();
   const loaded = Boolean(revision.data && collectionsQuery.data);
@@ -91,7 +104,7 @@ export default function RevisionScreen() {
     // On the next frame, once the loaded sections have laid out.
     const frame = requestAnimationFrame(() => {
       setOpen((o) => ({ ...o, [key]: true }));
-      scrollToSection(scrollRef, sectionY, key);
+      scrollToSection(scrollRef, contentRef, sectionRefs, key);
       // Consumed, so the same link works again while this tab stays mounted.
       router.setParams({ section: undefined });
     });
@@ -120,17 +133,17 @@ export default function RevisionScreen() {
   const [collMode, setCollMode] = useState<GroupMode>("recent");
   const [reinforceMode, setReinforceMode] = useState<GroupMode>("recent");
 
-  const wrongRange = computeDateRange(wrong.preset, "", "", today);
+  const wrongRange = computeDateRange(wrong.preset, wrong.from, wrong.to, today);
   const facets = useMemo(
     () => getWrongFacetsFromRevision(facts, all.filter((q) => matchesExamYear(q, wrong.examIds, wrong.years)), wrongRange),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [facts, all, wrong.examIds, wrong.years, wrong.preset]
+    [facts, all, wrong.examIds, wrong.years, wrong.preset, wrong.from, wrong.to]
   );
   const wrongList = filterByStem(sortQuestions(wrongMode === "never" ? facets.neverCorrected : facets.recent, wrong.sort, sortContext), wrong.search);
 
   const bookmarkCount = useMemo(() => items.filter((i) => i.bookmarkedAt).length, [items]);
   const bookmarkedPool = items.filter((i) => i.bookmarkedAt && matchesExamYear(i.question, marked.examIds, marked.years));
-  const markedRange = computeDateRange(marked.preset, "", "", today);
+  const markedRange = computeDateRange(marked.preset, marked.from, marked.to, today);
   const markedInRange = bookmarkedPool.filter((i) => markedRange && isWithinRange(i.bookmarkedAt!.slice(0, 10), markedRange));
   // By subject groups the whole exam/year-filtered pool, not the date window (web does the same).
   const markedBySubject = groupBySubject(bookmarkedPool.map((i) => i.question));
@@ -144,7 +157,7 @@ export default function RevisionScreen() {
   );
 
   const reinforcePool = items.filter((i) => i.latestCorrect === true && i.lastAttemptedAt && matchesExamYear(i.question, reinforce.examIds, reinforce.years));
-  const reinforceRange = computeDateRange(reinforce.preset, "", "", today);
+  const reinforceRange = computeDateRange(reinforce.preset, reinforce.from, reinforce.to, today);
   const reinforceInRange = reinforcePool.filter((i) => reinforceRange && isWithinRange(i.lastAttemptedAt!.slice(0, 10), reinforceRange));
   const reinforceBySubject = groupBySubject(reinforcePool.map((i) => i.question));
   const reinforceList = filterByStem(
@@ -162,7 +175,7 @@ export default function RevisionScreen() {
   const collPool = activeCollection
     ? getQuestionsInCollections(collections, [activeCollection.id], all).filter((q) => matchesExamYear(q, coll.examIds, coll.years))
     : [];
-  const collRange = computeDateRange(coll.preset, "", "", today);
+  const collRange = computeDateRange(coll.preset, coll.from, coll.to, today);
   // A collection is timestamped as a whole, so the window filters the whole selection.
   const collInRange = !collRange ? [] : !activeCollection || isWithinRange(activeCollection.createdAt.slice(0, 10), collRange) ? collPool : [];
   const collList = filterByStem(sortQuestions(collInRange, coll.sort, sortContext), coll.search);
@@ -196,49 +209,56 @@ export default function RevisionScreen() {
 
   return (
     <TabScreen
+      eyebrow="Make it stick"
+      eyebrowIcon={Repeat}
       title="Revision"
-      subtitle="Questions to fix, revisit, or reinforce."
+      subtitle="Wrong answers, saved questions and everything worth revisiting."
       onRefresh={() => {
         void revision.refetch();
         void collectionsQuery.refetch();
       }}
       refreshing={revision.isRefetching}
       scrollRef={scrollRef}
+      contentRef={contentRef}
     >
-      <View className="flex-row gap-3">
-        <Tile icon={CircleX} tone="error" value={facets.all.length} label="Wrong · need another look" onPress={() => goTo("wrong")} />
-        <Tile icon={Bookmark} tone="primary" value={bookmarkedPool.length} label="Bookmarked · saved for later" onPress={() => goTo("bookmarked")} />
-      </View>
-      <View className="-mt-1 flex-row gap-3">
-        <Tile
-          icon={Library}
-          tone="flag"
-          value={collectionStats.totalQuestions}
-          label={`Questions · across ${collectionStats.collectionCount} collection${collectionStats.collectionCount === 1 ? "" : "s"}`}
-          onPress={() => goTo("collections")}
-        />
-        <Tile icon={CircleCheck} tone="success" value={reinforcePool.length} label="Reinforce · what you know" onPress={() => goTo("reinforce")} />
+      <View className="gap-2.5">
+        <View className="flex-row gap-2.5">
+          <Tile icon={CircleX} tone="error" value={facets.all.length} label="Wrong" sub="need another look" onPress={() => goTo("wrong")} />
+          <Tile icon={Bookmark} tone="primary" value={bookmarkedPool.length} label="Bookmarked" sub="saved for later" onPress={() => goTo("bookmarked")} />
+        </View>
+        <View className="flex-row gap-2.5">
+          <Tile
+            icon={Library}
+            tone="flag"
+            value={collectionStats.collectionCount}
+            label="Collections"
+            sub={`${collectionStats.totalQuestions} question${collectionStats.totalQuestions === 1 ? "" : "s"} across ${collectionStats.collectionCount}`}
+            onPress={() => goTo("collections")}
+          />
+          <Tile icon={CircleCheck} tone="success" value={reinforcePool.length} label="Reinforce" sub="what you know" onPress={() => goTo("reinforce")} />
+        </View>
       </View>
 
       <Section
-        title="Needs Practice"
-        description="Questions you've answered incorrectly"
+        icon={CircleX}
+        tone="error"
+        title="Needs practice"
+        description="Answered incorrectly"
+        count={facets.all.length}
         open={open.wrong}
-        onLayoutY={(y) => {
-          sectionY.current.wrong = y;
+        sectionRef={(v) => {
+          sectionRefs.current.wrong = v;
         }}
         onToggle={() => setOpen((o) => ({ ...o, wrong: !o.wrong }))}
-        action={
-          wrongMode !== "subject" && wrongList.length > 0 ? (
-            <Button
-              label={`Practise ${wrongList.length}`}
-              size="sm"
-              onPress={() => practise("wrong-questions", wrongMode === "never" ? "Never Corrected Revision" : "Wrong Questions Revision", wrongList)}
-            />
-          ) : null
+        // As web: by subject, each subject has its own Practise instead.
+        practise={
+          wrongMode !== "subject" && wrongList.length > 0
+            ? { count: wrongList.length, onPress: () => practise("wrong-questions", wrongMode === "never" ? "Never Corrected Revision" : "Wrong Questions Revision", wrongList) }
+            : undefined
         }
       >
         <Segmented
+          wrap
           value={wrongMode}
           onChange={setWrongMode}
           options={[
@@ -253,7 +273,7 @@ export default function RevisionScreen() {
           showDates={wrongMode === "wrong"}
           description={
             wrongMode === "wrong"
-              ? dateRangeDescription(wrong.preset, "", "", "Got wrong", "Every question whose most recent attempt was incorrect.")
+              ? dateRangeDescription(wrong.preset, wrong.from, wrong.to, "Got wrong", "Every question whose most recent attempt was incorrect.")
               : wrongMode === "never"
                 ? "Attempted multiple times, but never answered correctly — your hardest questions."
                 : "Where your wrong answers are concentrated."
@@ -274,16 +294,21 @@ export default function RevisionScreen() {
       </Section>
 
       <Section
+        icon={Bookmark}
+        tone="primary"
         title="Bookmarked"
-        description="Questions you saved for later"
+        description="Saved for later"
+        count={bookmarkedPool.length}
         open={open.bookmarked}
-        onLayoutY={(y) => {
-          sectionY.current.bookmarked = y;
+        sectionRef={(v) => {
+          sectionRefs.current.bookmarked = v;
         }}
         onToggle={() => setOpen((o) => ({ ...o, bookmarked: !o.bookmarked }))}
-        action={markedMode === "recent" && markedList.length > 0 ? <Button label={`Practise ${markedList.length}`} size="sm" onPress={() => practise("bookmarks", "My Bookmarks", markedList)} /> : null}
+        // Kept in the by-subject view too, as web.
+        practise={markedList.length > 0 ? { count: markedList.length, onPress: () => practise("bookmarks", "My Bookmarks", markedList) } : undefined}
       >
         <Segmented
+          wrap
           value={markedMode}
           onChange={setMarkedMode}
           options={[
@@ -295,7 +320,7 @@ export default function RevisionScreen() {
           state={marked}
           sort="bookmarked"
           showDates={markedMode === "recent"}
-          description={markedMode === "subject" ? "Where your bookmarks are concentrated." : dateRangeDescription(marked.preset, "", "", "Bookmarked", "Every question you've bookmarked for later review.")}
+          description={markedMode === "subject" ? "Where your bookmarks are concentrated." : dateRangeDescription(marked.preset, marked.from, marked.to, "Bookmarked", "Every question you've bookmarked for later review.")}
         />
         {markedMode === "subject" ? (
           <SubjectGroups groups={markedBySubject} search={marked.search} sort={marked.sort} sortContext={sortContext} onPractise={(qs) => practise("bookmarks", "My Bookmarks", qs)} emptyIcon={Bookmark} emptyTitle="Nothing to show" emptyText="Bookmark questions while practising to see them grouped by subject here." />
@@ -314,14 +339,19 @@ export default function RevisionScreen() {
       </Section>
 
       <Section
-        title="Your Collections"
-        description="Questions you've organised yourself"
+        icon={Library}
+        tone="flag"
+        title="Your collections"
+        description="Organised by you"
+        count={collectionStats.collectionCount}
         open={open.collections}
-        onLayoutY={(y) => {
-          sectionY.current.collections = y;
+        sectionRef={(v) => {
+          sectionRefs.current.collections = v;
         }}
         onToggle={() => setOpen((o) => ({ ...o, collections: !o.collections }))}
-        action={collMode === "recent" && collList.length > 0 && activeCollection ? <Button label={`Practise ${collList.length}`} size="sm" onPress={() => practise("browse", collLabel, collList, [activeCollection.id])} /> : null}
+        practise={
+          collList.length > 0 && activeCollection ? { count: collList.length, onPress: () => practise("browse", collLabel, collList, [activeCollection.id]) } : undefined
+        }
       >
         {collections.length === 0 ? (
           <EmptyState icon={Library} title="No collections yet" description="Use the collection button on any question to start one." />
@@ -338,6 +368,7 @@ export default function RevisionScreen() {
               />
             </View>
             <Segmented
+              wrap
               value={collMode}
               onChange={setCollMode}
               options={[
@@ -349,7 +380,7 @@ export default function RevisionScreen() {
               state={coll}
               sort="collections"
               showDates={collMode === "recent"}
-              description={collMode === "subject" ? "Where the selected collection's questions are concentrated." : dateRangeDescription(coll.preset, "", "", "Added", "Every question saved in the selected collection(s).")}
+              description={collMode === "subject" ? "Where the selected collection's questions are concentrated." : dateRangeDescription(coll.preset, coll.from, coll.to, "Added", "Every question saved in the selected collection(s).")}
             />
             {collMode === "subject" ? (
               <SubjectGroups
@@ -381,16 +412,20 @@ export default function RevisionScreen() {
       </Section>
 
       <Section
+        icon={CircleCheck}
+        tone="success"
         title="Reinforce"
-        description="Questions you've answered correctly and want to revisit"
+        description="Correct & worth a revisit"
+        count={reinforcePool.length}
         open={open.reinforce}
-        onLayoutY={(y) => {
-          sectionY.current.reinforce = y;
+        sectionRef={(v) => {
+          sectionRefs.current.reinforce = v;
         }}
         onToggle={() => setOpen((o) => ({ ...o, reinforce: !o.reinforce }))}
-        action={reinforceMode === "recent" && reinforceList.length > 0 ? <Button label={`Practise ${reinforceList.length}`} size="sm" onPress={() => practise("browse", "Reinforce Practice", reinforceList)} /> : null}
+        practise={reinforceList.length > 0 ? { count: reinforceList.length, onPress: () => practise("browse", "Reinforce Practice", reinforceList) } : undefined}
       >
         <Segmented
+          wrap
           value={reinforceMode}
           onChange={setReinforceMode}
           options={[
@@ -402,7 +437,7 @@ export default function RevisionScreen() {
           state={reinforce}
           sort="reinforce"
           showDates={reinforceMode === "recent"}
-          description={reinforceMode === "subject" ? "Where your correct answers are concentrated." : dateRangeDescription(reinforce.preset, "", "", "Answered correctly", "Every question you've answered correctly, in case you want to reinforce it.")}
+          description={reinforceMode === "subject" ? "Where your correct answers are concentrated." : dateRangeDescription(reinforce.preset, reinforce.from, reinforce.to, "Answered correctly", "Every question you've answered correctly, in case you want to reinforce it.")}
         />
         {reinforceMode === "subject" ? (
           <SubjectGroups groups={reinforceBySubject} search={reinforce.search} sort={reinforce.sort} sortContext={sortContext} onPractise={(qs) => practise("browse", "Reinforce Practice", qs)} emptyIcon={CircleCheck} emptyTitle="Nothing to reinforce yet" emptyText="Questions you answer correctly will be grouped by subject here." />
@@ -424,11 +459,18 @@ export default function RevisionScreen() {
 
 function useSectionState() {
   const [preset, setPreset] = useState<DatePreset>("7d");
+  // The custom range's ends ("yyyy-MM-dd", either may be open), used when preset is "custom".
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const setRange = (nextFrom: string, nextTo: string) => {
+    setFrom(nextFrom);
+    setTo(nextTo);
+  };
   const [examIds, setExamIds] = useState<string[]>([]);
   const [years, setYears] = useState<number[]>([]);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<QuestionSortOption>("recently-attempted");
-  return { preset, setPreset, examIds, setExamIds, years, setYears, search, setSearch, sort, setSort };
+  return { preset, setPreset, from, to, setRange, examIds, setExamIds, years, setYears, search, setSearch, sort, setSort };
 }
 type SectionState = ReturnType<typeof useSectionState>;
 
@@ -436,7 +478,7 @@ function SectionFilters({ state, sort, showDates, description }: { state: Sectio
   const { taxonomy } = useTaxonomyLookup();
   return (
     <View className="gap-2.5">
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="grow-0" contentContainerClassName="gap-2">
+      <View className="flex-row flex-wrap gap-1.5">
         <MultiSelect
           label="Exam"
           allOption="All Exams"
@@ -447,79 +489,106 @@ function SectionFilters({ state, sort, showDates, description }: { state: Sectio
         />
         <MultiSelect label="Year" options={taxonomy.years.map((y) => ({ id: String(y), label: String(y) }))} selected={state.years.map(String)} onChange={(ids) => state.setYears(ids.map(Number))} />
         <SortSheetButton value={state.sort} options={sortOptions(sort)} onChange={state.setSort} />
-      </ScrollView>
+      </View>
       {showDates ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="grow-0" contentContainerClassName="gap-2">
-          {PRESETS.map((p) => (
-            <Chip key={p.value} label={p.label} selected={state.preset === p.value} onPress={() => state.setPreset(p.value)} className="h-8 px-3" />
+        <View className="flex-row flex-wrap gap-1.5">
+          {DATE_PRESETS.map((p) => (
+            <Chip key={p.value} label={p.label} selected={state.preset === p.value} onPress={() => state.setPreset(p.value)} />
           ))}
-        </ScrollView>
+        </View>
       ) : null}
-      <Txt className="text-sm text-muted-foreground">{description}</Txt>
+      {showDates && state.preset === "custom" ? <DateRangeField from={state.from} to={state.to} onChange={state.setRange} /> : null}
+      <Txt className="text-xs text-muted-foreground">{description}</Txt>
       <SearchField value={state.search} onChangeText={state.setSearch} />
     </View>
   );
 }
 
-function Tile({ icon, tone, value, label, onPress }: { icon: IconComponent; tone: Tone; value: number; label: string; onPress: () => void }) {
+/** A count at the top of Revision: its tinted icon, the number counting up, what it is. Opens its section. */
+function Tile({ icon, tone, value, label, sub, onPress }: { icon: IconComponent; tone: Tone; value: number; label: string; sub: string; onPress: () => void }) {
   return (
-    <PressableCard className="flex-1 flex-row items-center gap-3 p-3.5" onPress={onPress}>
-      <IconTile icon={icon} tone={tone} />
-      <View className="flex-1">
-        <Txt font="display" weight={600} className="text-xl leading-6">
-          {value}
+    <PressableCard className="flex-1 gap-2 p-3.5" onPress={onPress} accessibilityLabel={`${value} ${label}, ${sub}`}>
+      <IconTile icon={icon} tone={tone} size={32} />
+      <View>
+        <CountUp value={value} font="display" weight={700} className="text-xl leading-7" />
+        <Txt weight={600} className="text-[10px] leading-[14px]">
+          {label}
         </Txt>
-        <Txt className="text-[11px] leading-4 text-muted-foreground">{label}</Txt>
+        <Txt className="text-[10px] leading-[14px] text-muted-foreground" numberOfLines={1}>
+          {sub}
+        </Txt>
       </View>
     </PressableCard>
   );
 }
 
+/**
+ * A collapsible Revision section: its tinted icon, title, how many, and a
+ * chevron; open, its views and list, then "Revise these N" across the bottom.
+ */
 function Section({
+  icon,
+  tone,
   title,
   description,
+  count,
   open,
   onToggle,
-  onLayoutY,
-  action,
+  sectionRef,
+  practise,
   children,
 }: {
+  icon: IconComponent;
+  tone: Tone;
   title: string;
   description: string;
+  count: number;
   open: boolean;
   onToggle: () => void;
-  /** Where the section starts in the scroll content, so a link can scroll to it. */
-  onLayoutY?: (y: number) => void;
-  action?: ReactNode;
+  /** The section's view, so a tile or link can scroll to it. */
+  sectionRef?: (view: View | null) => void;
+  practise?: { count: number; onPress: () => void };
   children: ReactNode;
 }) {
   const colors = useColors();
   return (
-    <View className="rounded-2xl border border-border bg-card" onLayout={onLayoutY ? (e) => onLayoutY(e.nativeEvent.layout.y) : undefined}>
-      <View className="flex-row items-center gap-3 p-4">
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={onToggle} className="flex-1 flex-row items-start gap-2">
-          <View style={{ transform: [{ rotate: open ? "0deg" : "-90deg" }], marginTop: 3 }}>
-            <ChevronDown size={16} color={colors["muted-foreground"]} />
-          </View>
-          <View className="flex-1">
-            <Heading className="text-base">{title}</Heading>
-            <Txt className="text-xs text-muted-foreground">{description}</Txt>
-          </View>
-        </Pressable>
-        {action}
-      </View>
-      {open ? <View className="gap-3 px-4 pb-4">{children}</View> : null}
+    <View ref={sectionRef} collapsable={false} className="overflow-hidden rounded-2xl border border-border bg-card">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={`${title}, ${count}`}
+        onPress={onToggle}
+        className="flex-row items-center gap-3 p-4 active:bg-muted/50"
+      >
+        <IconTile icon={icon} tone={tone} size={36} />
+        <View className="flex-1">
+          <Txt weight={700} className="text-sm">
+            {title}
+          </Txt>
+          <Txt className="text-[11px] text-muted-foreground">{description}</Txt>
+        </View>
+        <Txt weight={700} className="text-xs text-muted-foreground">
+          {count}
+        </Txt>
+        <View style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }}>
+          <ChevronDown size={18} color={colors["muted-foreground"]} />
+        </View>
+      </Pressable>
+      {open ? (
+        <View className="gap-3 border-t border-border px-4 pb-4 pt-3.5">
+          {children}
+          {practise ? <Button label={`Revise these ${practise.count}`} icon={Play} size="md" className="mt-1" onPress={practise.onPress} /> : null}
+        </View>
+      ) : null}
     </View>
   );
 }
 
 function QuestionList({ questions, statusOf, onPress }: { questions: PublicQuestion[]; statusOf: (q: PublicQuestion) => QuestionStatus; onPress: (q: PublicQuestion) => void }) {
   return (
-    <View className="-mx-4 border-y border-border">
+    <View className="gap-2.5">
       {questions.map((q, i) => (
-        <View key={q.id} className={i > 0 ? "border-t border-border" : undefined}>
-          <QuestionRow question={q} number={i + 1} status={statusOf(q)} onPress={() => onPress(q)} />
-        </View>
+        <QuestionRow key={q.id} compact question={q} number={i + 1} status={statusOf(q)} onPress={() => onPress(q)} />
       ))}
     </View>
   );

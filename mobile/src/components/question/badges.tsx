@@ -4,11 +4,13 @@ import { useTaxonomyLookup } from "@jsmf/core/hooks";
 import { useColors } from "@/theme/theme";
 import { cn, Txt } from "@/components/ui/text";
 
-export function ExamBadge({ examId, className }: { examId: ExamId | string; className?: string }) {
+/** The exam (and, given one, the year) as a small lavender pill: "FMGE 2025". */
+export function ExamBadge({ examId, year, className }: { examId: ExamId | string; year?: number; className?: string }) {
   return (
-    <View className={cn("rounded-full bg-primary/10 px-2 py-0.5", className)}>
-      <Txt weight={700} className="text-[11px] text-primary">
-        {EXAM_LABEL[examId as ExamId] ?? examId}
+    <View className={cn("rounded-full bg-accent px-2 py-0.5", className)}>
+      <Txt weight={700} className="text-[10px] text-primary">
+        {EXAM_LABEL[examId as ExamId] ?? examId.toUpperCase()}
+        {year ? ` ${year}` : ""}
       </Txt>
     </View>
   );

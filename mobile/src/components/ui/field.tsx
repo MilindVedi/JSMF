@@ -111,12 +111,12 @@ export function PasswordField(props: FieldProps) {
   );
 }
 
-/** A compact search box. */
+/** A search box: the design's soft filled field with a magnifier. */
 export function SearchField({ value, onChangeText, placeholder = "Search questions", className }: { value: string; onChangeText: (v: string) => void; placeholder?: string; className?: string }) {
   const colors = useColors();
   return (
-    <View className={cn("h-11 flex-row items-center gap-2 rounded-xl border border-input bg-card px-3", className)}>
-      <Search size={16} color={colors["muted-foreground"]} />
+    <View className={cn("min-h-12 flex-row items-center gap-2.5 rounded-2xl border border-transparent bg-muted px-4", className)}>
+      <Search size={17} color={colors["muted-foreground"]} />
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -124,7 +124,7 @@ export function SearchField({ value, onChangeText, placeholder = "Search questio
         placeholderTextColor={colors["muted-foreground"]}
         returnKeyType="search"
         autoCorrect={false}
-        className="h-full flex-1 text-[15px] text-foreground"
+        className="flex-1 self-stretch text-[15px] text-foreground"
         style={{ fontFamily: "Manrope_400Regular" }}
         accessibilityLabel={placeholder}
       />

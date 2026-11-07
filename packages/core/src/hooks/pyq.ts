@@ -23,6 +23,7 @@ import {
   type StreakSummary,
   type Taxonomy,
 } from "../data-source/types";
+import { EXAM_LABEL } from "../domain/sessions";
 import type { ExamId, ReportReason } from "../domain/types";
 
 /**
@@ -86,7 +87,17 @@ export function useTaxonomy() {
 
 const EMPTY_TAXONOMY: Taxonomy = { exams: [], subjects: [], topics: [], years: [] };
 
-/** Name lookups by slug; empty until the taxonomy has loaded. */
+/**
+ * An exam's display name ("NEET-PG"), never its raw slug: the taxonomy's own
+ * name when it lists the exam, else the product's known name. The taxonomy
+ * only lists exams that have published questions, so it can be empty (a new
+ * environment) or still loading while the user already has a chosen exam.
+ */
+export function examDisplayName(id: string, taxonomyName?: string): string {
+  return taxonomyName ?? EXAM_LABEL[id as ExamId] ?? id.toUpperCase();
+}
+
+/** Name lookups by slug; empty until the taxonomy has loaded (`examName` always has an answer). */
 export function useTaxonomyLookup() {
   const { data = EMPTY_TAXONOMY } = useTaxonomy();
   return useMemo(() => {
@@ -96,6 +107,7 @@ export function useTaxonomyLookup() {
     return {
       taxonomy: data,
       exam: (id: string) => exams.get(id),
+      examName: (id: string) => examDisplayName(id, exams.get(id)?.shortName),
       subject: (id: string) => subjects.get(id),
       topic: (id: string) => topics.get(id),
     };

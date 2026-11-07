@@ -102,7 +102,7 @@ export default function CustomTestBuilderPage() {
   const examSummary = summaryChip(
     filters.examIds,
     "All Exams",
-    (id) => lookup.exam(id)?.shortName ?? id
+    lookup.examName
   );
   const subjectSummary = summaryChip(
     filters.subjectIds,

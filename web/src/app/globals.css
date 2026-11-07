@@ -69,6 +69,22 @@
   --color-flag: var(--flag);
   --color-flag-foreground: var(--flag-foreground);
 
+  /* Score bands (core's scoreBand): a score is coloured by how good it is,
+     never the brand violet — red under 40, amber under 70, green under 85,
+     deep teal from 85. The mobile app uses the same values (palette.json). */
+  --color-band-low: var(--band-low);
+  --color-band-low-soft: var(--band-low-soft);
+  --color-band-low-ink: var(--band-low-ink);
+  --color-band-mid: var(--band-mid);
+  --color-band-mid-soft: var(--band-mid-soft);
+  --color-band-mid-ink: var(--band-mid-ink);
+  --color-band-good: var(--band-good);
+  --color-band-good-soft: var(--band-good-soft);
+  --color-band-good-ink: var(--band-good-ink);
+  --color-band-top: var(--band-top);
+  --color-band-top-soft: var(--band-top-soft);
+  --color-band-top-ink: var(--band-top-ink);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -161,6 +177,20 @@
   --error-foreground: oklch(0.48 0.16 27);
   --flag: oklch(0.94 0.05 80);
   --flag-foreground: oklch(0.45 0.09 70);
+
+  /* Score bands — the same hex values as the app's palette.json. */
+  --band-low: #dc2626;
+  --band-low-soft: #fdeaea;
+  --band-low-ink: #b42318;
+  --band-mid: #e08a1e;
+  --band-mid-soft: #fdf0dc;
+  --band-mid-ink: #8f520a;
+  --band-good: #2f9e55;
+  --band-good-soft: #e2f5e8;
+  --band-good-ink: #1d6f3a;
+  --band-top: #0e7c66;
+  --band-top-soft: #d9f1ea;
+  --band-top-ink: #0b5e4e;
 }
 
 .dark {
@@ -231,6 +261,19 @@
   --error-foreground: oklch(0.84 0.08 27);
   --flag: oklch(0.33 0.06 80);
   --flag-foreground: oklch(0.86 0.08 85);
+
+  --band-low: #f26b6b;
+  --band-low-soft: #4a1d1d;
+  --band-low-ink: #fbb4b0;
+  --band-mid: #efa344;
+  --band-mid-soft: #45300e;
+  --band-mid-ink: #f2c98a;
+  --band-good: #4cc172;
+  --band-good-soft: #173d25;
+  --band-good-ink: #9fe0b5;
+  --band-top: #2fb596;
+  --band-top-soft: #0f3a31;
+  --band-top-ink: #8edcc8;
 }
 
 @layer base {

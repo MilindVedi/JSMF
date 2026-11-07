@@ -10,6 +10,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { SubjectBadge } from "@/components/common/subject-badge";
+import { ScoreBar, scoreClasses } from "@/components/common/score";
+import { cn } from "@/lib/utils";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { QuickActionCard } from "@/components/dashboard/quick-action-card";
 import { StreakCard } from "@/components/dashboard/streak-card";
@@ -231,20 +233,12 @@ export default function DashboardPage() {
                   <div key={s.subjectId} className="space-y-1.5 py-1">
                     <div className="flex items-center justify-between gap-3">
                       <SubjectBadge subjectId={s.subjectId} />
-                      <span className="shrink-0 text-sm font-semibold tabular-nums text-primary">
+                      <span className={cn("shrink-0 text-sm font-semibold tabular-nums", scoreClasses(s.accuracy).ink)}>
                         {s.accuracy}%
                       </span>
                     </div>
-                    <div
-                      className="h-1.5 overflow-hidden rounded-full bg-muted"
-                      role="img"
-                      aria-label={`${s.accuracy}% accuracy`}
-                    >
-                      <div
-                        className="h-full rounded-full bg-primary transition-[width] duration-500"
-                        style={{ width: `${s.accuracy}%` }}
-                      />
-                    </div>
+                    {/* A score, so its band's colour (never the violet). */}
+                    <ScoreBar value={s.accuracy} />
                   </div>
                 ))
               )}

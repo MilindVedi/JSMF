@@ -3,7 +3,7 @@ import { Pressable, ScrollView, View } from "react-native";
 import { ArrowUpDown, Check, ChevronDown, X } from "lucide-react-native";
 import type { Exam, ExamId, SubjectGroup } from "@jsmf/core/domain";
 import type { QuestionQuery } from "@jsmf/core/data-source";
-import { useCollections, useTaxonomyLookup } from "@jsmf/core/hooks";
+import { examDisplayName, useCollections, useTaxonomyLookup } from "@jsmf/core/hooks";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { cn, Txt } from "@/components/ui/text";
@@ -79,9 +79,10 @@ export function MultiSelect({
         accessibilityRole="button"
         accessibilityLabel={`${label} filter`}
         onPress={() => setOpen(true)}
-        className={cn("h-9 flex-row items-center gap-1.5 rounded-full border px-3.5", narrowed && !singleSelect ? "border-primary/50 bg-primary/10" : "border-border bg-card")}
+        hitSlop={4}
+        className={cn("min-h-8 flex-row items-center gap-1.5 rounded-full border px-3 py-1", narrowed && !singleSelect ? "border-primary/50 bg-primary/10" : "border-border bg-card")}
       >
-        <Txt weight={600} className={cn("text-[13px]", narrowed && !singleSelect ? "text-primary" : "text-foreground")} numberOfLines={1}>
+        <Txt weight={600} className={cn("text-xs", narrowed && !singleSelect ? "text-primary" : "text-foreground")} numberOfLines={1}>
           {triggerLabel ?? label}
         </Txt>
         {!triggerLabel && !singleSelect && selected.length > 0 ? (
@@ -136,12 +137,25 @@ function OptionRow({ label, hint, checked, onPress, bold = false, radio = false 
 
 function examTriggerLabel(examIds: ExamId[], exams: Exam[]) {
   if (examIds.length === 0 || examIds.length >= exams.length) return "All Exams";
-  const names = examIds.map((id) => exams.find((e) => e.id === id)?.shortName ?? id);
+  const names = examIds.map((id) => examDisplayName(id, exams.find((e) => e.id === id)?.shortName));
   return names.length <= 2 ? names.join(" + ") : `${names.length} exams`;
 }
 
 /** Exam / Year / Subject / Topic / Collection, as a horizontally scrolling row (web's FilterPanel). */
-export function FilterBar({ value, onChange }: { value: QuestionFiltersState; onChange: (value: QuestionFiltersState) => void }) {
+/**
+ * The filter dropdowns. On a page they run in one row edge to edge, scrolling
+ * sideways; inside a card (`wrap`) they flow onto more lines so none is cut
+ * off at the card's edge.
+ */
+export function FilterBar({
+  value,
+  onChange,
+  wrap = false,
+}: {
+  value: QuestionFiltersState;
+  onChange: (value: QuestionFiltersState) => void;
+  wrap?: boolean;
+}) {
   const { data: collections = [] } = useCollections();
   const { taxonomy, topic: getTopic } = useTaxonomyLookup();
   const subjectOptions = useMemo(
@@ -152,8 +166,8 @@ export function FilterBar({ value, onChange }: { value: QuestionFiltersState; on
     const relevant = value.subjectIds.length > 0 ? value.subjectIds : taxonomy.subjects.map((s) => s.id);
     return taxonomy.topics.filter((t) => relevant.includes(t.subjectId)).map((t) => ({ id: t.id, label: t.name }));
   }, [value.subjectIds, taxonomy]);
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-5 grow-0" contentContainerClassName="gap-2 px-5">
+  const filters = (
+    <>
       <MultiSelect
         label="Exam"
         allOption="All Exams"
@@ -193,6 +207,12 @@ export function FilterBar({ value, onChange }: { value: QuestionFiltersState; on
           onChange={(ids) => onChange({ ...value, collectionIds: ids })}
         />
       ) : null}
+    </>
+  );
+  if (wrap) return <View className="flex-row flex-wrap gap-2">{filters}</View>;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-5 grow-0" contentContainerClassName="gap-2 px-5">
+      {filters}
     </ScrollView>
   );
 }
@@ -200,10 +220,10 @@ export function FilterBar({ value, onChange }: { value: QuestionFiltersState; on
 /** What is selected, each removable in one tap (web's ActiveFilterChips). */
 export function ActiveFilterChips({ value, onChange }: { value: QuestionFiltersState; onChange: (value: QuestionFiltersState) => void }) {
   const { data: collections = [] } = useCollections();
-  const { exam, subject, topic } = useTaxonomyLookup();
+  const { examName, subject, topic } = useTaxonomyLookup();
   const colors = useColors();
   const chips: { key: string; label: string; remove: () => void }[] = [];
-  for (const id of value.examIds) chips.push({ key: `e-${id}`, label: exam(id)?.shortName ?? id, remove: () => onChange({ ...value, examIds: value.examIds.filter((e) => e !== id) }) });
+  for (const id of value.examIds) chips.push({ key: `e-${id}`, label: examName(id), remove: () => onChange({ ...value, examIds: value.examIds.filter((e) => e !== id) }) });
   for (const y of value.years) chips.push({ key: `y-${y}`, label: String(y), remove: () => onChange({ ...value, years: value.years.filter((v) => v !== y) }) });
   for (const id of value.subjectIds)
     chips.push({
@@ -246,32 +266,57 @@ export function ActiveFilterChips({ value, onChange }: { value: QuestionFiltersS
   );
 }
 
-/** A sort picker in a sheet (web's SortDropdown). */
-export function SortSheetButton<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
+/**
+ * A sort picker in a sheet (web's SortDropdown). Options sharing a `group`
+ * (a sort and its opposite: newest / oldest) sit together on one soft tint,
+ * as web tints each pair, so related orders read as a pair.
+ */
+export function SortSheetButton<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { value: T; label: string; group?: string }[];
+  onChange: (value: T) => void;
+}) {
   const [open, setOpen] = useState(false);
   const colors = useColors();
   const current = options.find((o) => o.value === value)?.label ?? "Sort";
+  const groups: { key: string; items: typeof options }[] = [];
+  for (const o of options) {
+    const key = o.group ?? `solo:${o.value}`;
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(o);
+    else groups.push({ key, items: [o] });
+  }
   return (
     <>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Sort: ${current}`} onPress={() => setOpen(true)} className="h-9 flex-row items-center gap-1.5 rounded-full border border-border bg-card px-3.5">
-        <ArrowUpDown size={14} color={colors["muted-foreground"]} />
-        <Txt weight={600} className="text-[13px]" numberOfLines={1}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Sort: ${current}`} onPress={() => setOpen(true)} hitSlop={4} className="min-h-8 shrink flex-row items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1">
+        <ArrowUpDown size={13} color={colors["muted-foreground"]} />
+        <Txt weight={600} className="shrink text-xs" numberOfLines={1}>
           {current}
         </Txt>
       </Pressable>
       <BottomSheet open={open} onClose={() => setOpen(false)} title="Sort by">
-        {options.map((o) => (
-          <OptionRow
-            key={o.value}
-            label={o.label}
-            checked={o.value === value}
-            radio
-            onPress={() => {
-              onChange(o.value);
-              setOpen(false);
-            }}
-          />
-        ))}
+        <View className="gap-2">
+          {groups.map((g, i) => (
+            <View key={g.key} className={cn("rounded-2xl px-2", i % 2 === 0 ? "bg-muted/60" : "bg-accent/60")}>
+              {g.items.map((o) => (
+                <OptionRow
+                  key={o.value}
+                  label={o.label}
+                  checked={o.value === value}
+                  radio
+                  onPress={() => {
+                    onChange(o.value);
+                    setOpen(false);
+                  }}
+                />
+              ))}
+            </View>
+          ))}
+        </View>
       </BottomSheet>
     </>
   );

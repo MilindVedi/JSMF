@@ -40,7 +40,7 @@ export default function BookmarksScreen() {
             ) : null
           }
           renderItem={({ item, index }) => (
-            <View className={index === 0 ? "rounded-t-2xl border border-border bg-card" : "border-x border-b border-border bg-card"}>
+            <View className="mb-3">
               <QuestionRow
                 question={item.question}
                 number={index + 1}

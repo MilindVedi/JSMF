@@ -1,37 +1,57 @@
-import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, View, type ViewProps } from "react-native";
+import { useEffect, type ReactNode } from "react";
+import { ActivityIndicator, View, type ViewProps } from "react-native";
+import { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import { Lock, TriangleAlert } from "lucide-react-native";
 import { DailyLimitError } from "@jsmf/core/data-source";
 import { useColors } from "@/theme/theme";
 import { DAILY_LIMIT_TITLE } from "@/lib/daily-limit";
+import { AnimatedPressable, AnimatedView } from "@/components/motion/animated";
+import { CountUp } from "@/components/motion/count-up";
+import { usePressScale } from "@/components/motion/loop";
 import { Button, type IconComponent } from "./button";
 import { cn, Heading, Txt } from "./text";
 
-export function Card({ className, ...props }: ViewProps & { className?: string }) {
-  return <View className={cn("rounded-2xl border border-border bg-card p-4", className)} {...props} />;
+/**
+ * A surface. `plain` is the white card with a hairline border; `tint` is the
+ * soft lavender tile the design uses for shortcuts (no border).
+ */
+export type CardTone = "plain" | "tint";
+const CARD_TONE: Record<CardTone, string> = {
+  plain: "border border-border bg-card",
+  tint: "bg-accent",
+};
+
+export function Card({ className, tone = "plain", ...props }: ViewProps & { className?: string; tone?: CardTone }) {
+  return <View className={cn("rounded-2xl p-4", CARD_TONE[tone], className)} {...props} />;
 }
 
-/** A tappable card row. */
+/** A tappable card: it gives a little under the finger. */
 export function PressableCard({
   className,
   children,
   onPress,
   accessibilityLabel,
+  tone = "plain",
 }: {
   className?: string;
   children: ReactNode;
   onPress: () => void;
   accessibilityLabel?: string;
+  tone?: CardTone;
 }) {
+  const press = usePressScale(0.98);
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
-      className={cn("rounded-2xl border border-border bg-card p-4 active:bg-muted", className)}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      className={cn("rounded-2xl p-4", CARD_TONE[tone], className)}
+      animatedStyle={press.style}
     >
       {children}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -84,15 +104,35 @@ export function IconTile({ icon: Icon, tone = "muted", size = 40 }: { icon: Icon
   );
 }
 
+/**
+ * A bar's fill growing to `value`% — from empty when it first shows, from
+ * where it was when the value changes. Full at once under reduce-motion.
+ */
+export function useGrowingWidth(value: number) {
+  const reduceMotion = useReducedMotion();
+  const pct = Math.max(0, Math.min(100, value));
+  const width = useSharedValue(reduceMotion ? pct : 0);
+  useEffect(() => {
+    width.set(reduceMotion ? pct : withTiming(pct, { duration: 800, easing: Easing.out(Easing.cubic) }));
+  }, [pct, reduceMotion, width]);
+  return useAnimatedStyle(() => ({ width: `${width.value}%` }));
+}
+
+/**
+ * Plain progress (how much is done: coverage, today's goal, a session) — the
+ * brand purple. A bar that shows a score is a ScoreBar (components/ui/score),
+ * coloured by its band instead.
+ */
 export function ProgressBar({ value, className, color }: { value: number; className?: string; color?: string }) {
   const pct = Math.max(0, Math.min(100, value));
+  const fill = useGrowingWidth(pct);
   return (
     <View
       className={cn("h-2 overflow-hidden rounded-full bg-muted", className)}
       accessibilityRole="progressbar"
       accessibilityValue={{ min: 0, max: 100, now: Math.round(pct) }}
     >
-      <View className="h-full rounded-full bg-primary" style={[{ width: `${pct}%` }, color ? { backgroundColor: color } : null]} />
+      <AnimatedView className="h-full rounded-full bg-primary" style={color ? { backgroundColor: color } : null} animatedStyle={fill} />
     </View>
   );
 }
@@ -156,8 +196,10 @@ export function QueryError({ error, onRetry, title = "Something went wrong" }: {
 
 export function SectionTitle({ children, action }: { children: string; action?: ReactNode }) {
   return (
-    <View className="mb-2.5 mt-1 flex-row items-center justify-between">
-      <Heading className="text-[15px]">{children}</Heading>
+    <View className="mb-3 mt-3 flex-row items-center justify-between gap-3">
+      <Heading weight={700} className="shrink text-base leading-6 text-brand-ink" accessibilityRole="header">
+        {children}
+      </Heading>
       {action}
     </View>
   );
@@ -181,29 +223,34 @@ export function Chip({
   className?: string;
   trailing?: ReactNode;
 }) {
+  const press = usePressScale(0.95);
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
       accessibilityState={{ selected, disabled }}
       onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
       disabled={disabled}
+      hitSlop={4}
       className={cn(
-        "h-9 flex-row items-center gap-1.5 rounded-full border px-3.5",
-        selected ? "border-primary bg-primary/10" : "border-border bg-card",
+        "min-h-8 flex-row items-center gap-1.5 rounded-full border px-3 py-1",
+        selected ? "border-primary bg-accent" : "border-border bg-card",
         disabled && "opacity-40",
         className
       )}
+      animatedStyle={press.style}
     >
-      <Txt weight={600} className={cn("text-[13px]", selected ? "text-primary" : "text-muted-foreground")} numberOfLines={1}>
+      <Txt weight={600} className={cn("text-xs", selected ? "text-primary" : "text-foreground")} numberOfLines={1}>
         {label}
       </Txt>
       {count !== undefined ? (
-        <Txt weight={600} className={cn("text-[11px]", selected ? "text-primary/70" : "text-muted-foreground/70")}>
+        <Txt weight={600} className={cn("text-[11px]", selected ? "text-primary/70" : "text-muted-foreground")}>
           {count}
         </Txt>
       ) : null}
       {trailing}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -229,21 +276,42 @@ export function StatTile({
   active?: boolean;
   className?: string;
 }) {
-  const bg = tone === "success" ? "bg-success/60" : tone === "error" ? "bg-error/60" : tone === "card" ? "bg-card" : "bg-muted/60";
+  const press = usePressScale(0.97);
+  // Correct and incorrect tiles are tinted, with an edge of the same colour (the design's green and red tiles).
+  const surface =
+    tone === "success"
+      ? "bg-success/70 border-success-foreground/25"
+      : tone === "error"
+        ? "bg-error/70 border-error-foreground/25"
+        : tone === "card"
+          ? "bg-card border-border"
+          : "bg-muted/60 border-border";
   const content = (
     <>
-      <Txt font="display" weight={700} className="text-xl">
-        {value}
-      </Txt>
-      <Txt className="text-xs text-muted-foreground">{label}</Txt>
-      {sub ? <Txt className="mt-0.5 text-[10px] text-muted-foreground">{sub}</Txt> : null}
+      {typeof value === "number" ? (
+        <CountUp value={value} font="display" weight={700} className="text-xl leading-7" />
+      ) : (
+        <Txt font="display" weight={700} className="text-xl leading-7">
+          {value}
+        </Txt>
+      )}
+      <Txt className="text-center text-[10px] text-muted-foreground">{label}</Txt>
+      {sub ? <Txt className="mt-0.5 text-center text-[10px] text-muted-foreground">{sub}</Txt> : null}
     </>
   );
-  const base = cn("flex-1 items-center rounded-2xl border px-2 py-3", bg, active ? "border-foreground" : "border-border", className);
+  const base = cn("flex-1 items-center justify-center rounded-2xl border px-2 py-3", surface, active && "border-primary", className);
   if (!onPress) return <View className={base}>{content}</View>;
   return (
-    <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} onPress={onPress} className={cn(base, "active:opacity-80")}>
+    <AnimatedPressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      className={base}
+      animatedStyle={press.style}
+    >
       {content}
-    </Pressable>
+    </AnimatedPressable>
   );
 }

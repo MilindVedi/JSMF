@@ -112,7 +112,7 @@ function AppStack({ signedIn }: { signedIn: boolean }) {
           <Stack.Screen name="session/[id]/index" options={{ gestureEnabled: false }} />
           <Stack.Screen name="session/[id]/results" />
           <Stack.Screen name="session/[id]/review" />
-          <Stack.Screen name="custom-test" />
+          <Stack.Screen name="profile" />
           <Stack.Screen name="history" />
           <Stack.Screen name="bookmarks" />
           <Stack.Screen name="reinforce" />

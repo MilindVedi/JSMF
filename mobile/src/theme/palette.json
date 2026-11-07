@@ -1,5 +1,5 @@
 {
-  "//": "Hex copies of web/src/app/globals.css (:root and .dark, converted from oklch). Keep in step with web. Dark border/input are web's white-at-10%/14% flattened onto the dark background.",
+  "//": "Hex copies of web/src/app/globals.css (:root and .dark, converted from oklch). Keep in step with web. Dark border/input are web's white-at-10%/14% flattened onto the dark background. The band-* tokens are the score colour bands (core scoreBand: under 40 / under 70 / under 85 / 85 and up); they colour accuracy, never purple.",
   "light": {
     "background": "#faf9fe",
     "foreground": "#1b1729",
@@ -33,7 +33,19 @@
     "error": "#ffe2dd",
     "error-foreground": "#a52a26",
     "flag": "#fde8c6",
-    "flag-foreground": "#754b10"
+    "flag-foreground": "#754b10",
+    "band-low": "#dc2626",
+    "band-low-soft": "#fdeaea",
+    "band-low-ink": "#b42318",
+    "band-mid": "#e08a1e",
+    "band-mid-soft": "#fdf0dc",
+    "band-mid-ink": "#8f520a",
+    "band-good": "#2f9e55",
+    "band-good-soft": "#e2f5e8",
+    "band-good-ink": "#1d6f3a",
+    "band-top": "#0e7c66",
+    "band-top-soft": "#d9f1ea",
+    "band-top-ink": "#0b5e4e"
   },
   "dark": {
     "background": "#100d1b",
@@ -68,7 +80,19 @@
     "error": "#55201b",
     "error-foreground": "#fbb7af",
     "flag": "#45310b",
-    "flag-foreground": "#e9ce94"
+    "flag-foreground": "#e9ce94",
+    "band-low": "#f26b6b",
+    "band-low-soft": "#4a1d1d",
+    "band-low-ink": "#fbb4b0",
+    "band-mid": "#efa344",
+    "band-mid-soft": "#45300e",
+    "band-mid-ink": "#f2c98a",
+    "band-good": "#4cc172",
+    "band-good-soft": "#173d25",
+    "band-good-ink": "#9fe0b5",
+    "band-top": "#2fb596",
+    "band-top-soft": "#0f3a31",
+    "band-top-ink": "#8edcc8"
   },
   "streak": {
     "light": {

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { View, type LayoutChangeEvent } from "react-native";
-import Svg, { Circle, Line, Polyline, Rect, Text as SvgText, Circle as Dot } from "react-native-svg";
+import Svg, { Circle, Line, Polygon, Polyline, Rect, Text as SvgText, Circle as Dot } from "react-native-svg";
 import { format } from "date-fns";
 import type { SubjectPerformance } from "@jsmf/core/domain";
 import { useTaxonomyLookup } from "@jsmf/core/hooks";
 import { useColors } from "@/theme/theme";
+import { ScoreBar } from "@/components/ui/score";
 import { Txt } from "@/components/ui/text";
 
 /**
@@ -56,6 +57,8 @@ export function AccuracyTrendChart({ data }: { data: { date: string; accuracy: n
           <SvgText x={x(data.length - 1)} y={height - 4} fontSize={11} fill={colors["muted-foreground"]} textAnchor="end">
             {format(new Date(data[data.length - 1].date), "MMM d")}
           </SvgText>
+          {/* A soft wash under this test's line (the design's area chart). */}
+          <Polygon points={`${x(0)},${pad.top + innerH} ${points("accuracy")} ${x(data.length - 1)},${pad.top + innerH}`} fill={colors["chart-1"]} fillOpacity={0.1} />
           <Polyline points={points("cumulativeAccuracy")} fill="none" stroke={colors["chart-3"]} strokeWidth={2} strokeDasharray="5 4" />
           <Polyline points={points("accuracy")} fill="none" stroke={colors["chart-1"]} strokeWidth={2} />
           {data.map((d, i) => (
@@ -104,21 +107,12 @@ function Legend({ color, label, dashed = false }: { color: string; label: string
   );
 }
 
-/**
- * The subject chart's own bands, as web's subject-performance-chart (not core's
- * accuracyTone, which session badges use): under 50% weak, under 75% fair.
- */
-function subjectTone(accuracy: number): "error" | "flag" | "success" {
-  return accuracy < 50 ? "error" : accuracy < 75 ? "flag" : "success";
-}
-
-/** Subject-wise accuracy as horizontal bars, weakest first and coloured by band (web's order and colours). */
+/** Subject-wise accuracy as horizontal bars, weakest first, each in its score band's colour (never purple). */
 export function SubjectBars({ data }: { data: SubjectPerformance[] }) {
   const { subject } = useTaxonomyLookup();
-  const colors = useColors();
   const sorted = [...data].sort((a, b) => a.accuracy - b.accuracy);
   return (
-    <View className="gap-3">
+    <View className="gap-3.5">
       {sorted.map((s) => (
         <View key={s.subjectId} className="gap-1.5">
           <View className="flex-row items-center justify-between gap-2">
@@ -132,9 +126,7 @@ export function SubjectBars({ data }: { data: SubjectPerformance[] }) {
               · {s.correct}/{s.attempted}
             </Txt>
           </View>
-          <View className="h-2 overflow-hidden rounded-full bg-muted">
-            <View className="h-full rounded-full" style={{ width: `${s.accuracy}%`, backgroundColor: colors[`${subjectTone(s.accuracy)}-foreground`] }} />
-          </View>
+          <ScoreBar value={s.accuracy} />
         </View>
       ))}
     </View>

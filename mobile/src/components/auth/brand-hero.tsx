@@ -1,20 +1,12 @@
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Text, View } from "react-native";
-import Animated, {
-  cancelAnimation,
-  Easing,
-  interpolate,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withDelay,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Sparkles } from "lucide-react-native";
 import { useTaxonomy } from "@jsmf/core/hooks";
 import { swing, useLoopClock } from "@/components/motion/loop";
+import { Rise as BaseRise } from "@/components/motion/rise";
 import { LinearGradientFill, RadialGlow } from "@/components/ui/gradient";
 import { LOGO } from "@/components/ui/screen";
 import { Txt } from "@/components/ui/text";
@@ -32,42 +24,12 @@ export const HERO = {
   onDeep: palette.light["brand-on-deep"],
 };
 
-const RISE_MS = 700;
-const RISE_FROM = 18;
-const RISE_EASING = Easing.bezier(0.2, 0.8, 0.2, 1);
-
 /**
- * A part of the sign-in screen that rises in when it opens: from 18px down
- * and transparent, over 700ms, `delayMs` after the screen mounts — so the
- * parts arrive one after another. Shown at once under reduce-motion.
- *
- * Driven by a shared value rather than a layout `entering` animation: on web
- * those re-ran when the form re-rendered (an error appearing), and the hero's
- * contents vanished.
+ * A part of the sign-in screen that rises in when it opens (the shared Rise,
+ * slower and from further down than in the app, as the design has it).
  */
-export function Rise({ delayMs, className, children }: { delayMs: number; className?: string; children: ReactNode }) {
-  const reduceMotion = useReducedMotion();
-  const progress = useSharedValue(reduceMotion ? 1 : 0);
-
-  useEffect(() => {
-    if (reduceMotion) {
-      progress.set(1);
-      return;
-    }
-    progress.set(withDelay(delayMs, withTiming(1, { duration: RISE_MS, easing: RISE_EASING })));
-    return () => cancelAnimation(progress);
-  }, [delayMs, reduceMotion, progress]);
-
-  const style = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * RISE_FROM }],
-  }));
-
-  return (
-    <Animated.View style={style}>
-      <View className={className}>{children}</View>
-    </Animated.View>
-  );
+export function Rise(props: { delayMs: number; className?: string; children: ReactNode }) {
+  return <BaseRise durationMs={700} distance={18} {...props} />;
 }
 
 /** What the app covers, shown while the bank's own list loads (or if it is empty). */

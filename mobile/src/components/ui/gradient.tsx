@@ -28,9 +28,10 @@ function cssAngle(degrees: number) {
  * Linear gradients filling their parent, painted in order (later layers on
  * top) — CSS's stacked `background: linear-gradient(…), linear-gradient(…)`,
  * listed bottom layer first. Drawn with react-native-svg, which every build
- * already has, so no new native module is needed.
+ * already has, so no new native module is needed. `radius` rounds the fill's
+ * own corners, so a parent with a shadow need not clip (clipping hides it).
  */
-export function LinearGradientFill({ layers }: { layers: { angle: number; stops: GradientStop[] }[] }) {
+export function LinearGradientFill({ layers, radius = 0 }: { layers: { angle: number; stops: GradientStop[] }[]; radius?: number }) {
   const id = useSvgId("lg");
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -45,7 +46,7 @@ export function LinearGradientFill({ layers }: { layers: { angle: number; stops:
           ))}
         </Defs>
         {layers.map((_, i) => (
-          <Rect key={i} width="100%" height="100%" fill={`url(#${id}-${i})`} />
+          <Rect key={i} width="100%" height="100%" rx={radius} ry={radius} fill={`url(#${id}-${i})`} />
         ))}
       </Svg>
     </View>
@@ -57,7 +58,22 @@ export function LinearGradientFill({ layers }: { layers: { angle: number; stops:
  * <cx> <cy>, color, transparent <fade>)` — sized to the farthest corner as
  * CSS does.
  */
-export function RadialGlow({ color, opacity, cx = 0.3, cy = 0.3, fade = 0.7 }: { color: string; opacity: number; cx?: number; cy?: number; fade?: number }) {
+export function RadialGlow({
+  color,
+  opacity,
+  cx = 0.3,
+  cy = 0.3,
+  fade = 0.7,
+  radius: corner = 0,
+}: {
+  color: string;
+  opacity: number;
+  cx?: number;
+  cy?: number;
+  fade?: number;
+  /** Rounds the glow's own corners, to sit inside a rounded card without clipping. */
+  radius?: number;
+}) {
   const id = useSvgId("rg");
   const radius = Math.hypot(Math.max(cx, 1 - cx), Math.max(cy, 1 - cy));
   return (
@@ -68,7 +84,7 @@ export function RadialGlow({ color, opacity, cx = 0.3, cy = 0.3, fade = 0.7 }: {
           <Stop offset={fade} stopColor={color} stopOpacity={0} />
         </RadialGradient>
       </Defs>
-      <Rect width="100%" height="100%" fill={`url(#${id})`} />
+      <Rect width="100%" height="100%" rx={corner} ry={corner} fill={`url(#${id})`} />
     </Svg>
   );
 }

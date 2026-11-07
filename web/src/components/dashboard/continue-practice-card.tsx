@@ -15,7 +15,7 @@ function scopeLabel(item: SessionListItem, lookup: Lookup) {
   return sessionScopeLabel(item, {
     examCount: lookup.taxonomy.exams.length,
     subjectCount: lookup.taxonomy.subjects.length,
-    examName: (id) => lookup.exam(id)?.shortName ?? id,
+    examName: lookup.examName,
     subjectName: (id) => lookup.subject(id)?.name ?? id,
   });
 }

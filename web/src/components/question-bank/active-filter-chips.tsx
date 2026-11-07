@@ -16,14 +16,13 @@ export function ActiveFilterChips({
   onChange: (value: QuestionFiltersState) => void;
 }) {
   const { data: collections = [] } = useCollections();
-  const { exam: getExamById, subject: getSubjectById, topic: getTopicById } = useTaxonomyLookup();
+  const { examName, subject: getSubjectById, topic: getTopicById } = useTaxonomyLookup();
   const chips: { key: string; label: string; remove: () => void }[] = [];
 
   for (const examId of value.examIds) {
-    const exam = getExamById(examId);
     chips.push({
       key: `exam-${examId}`,
-      label: exam?.shortName ?? examId,
+      label: examName(examId),
       remove: () => onChange({ ...value, examIds: value.examIds.filter((e) => e !== examId) }),
     });
   }

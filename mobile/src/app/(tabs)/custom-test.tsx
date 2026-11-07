@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
-import { Pressable, Switch, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Minus, Plus, Sparkles } from "lucide-react-native";
+import { Switch, TextInput, View } from "react-native";
+import { Clock, Sparkles, WandSparkles } from "lucide-react-native";
 import {
   CUSTOM_TEST_QUESTION_COUNTS,
   MAX_MIN_PER_QUESTION,
@@ -17,25 +16,26 @@ import type { QuestionQuery, SessionOrder } from "@jsmf/core/data-source";
 import { useQuestionCount, useTaxonomyLookup } from "@jsmf/core/hooks";
 import { useStartSession } from "@/lib/start-session";
 import { useColors } from "@/theme/theme";
-import { Button, type IconComponent } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Card, Chip } from "@/components/ui/primitives";
 import { Dialog } from "@/components/ui/sheet";
-import { StackScreen } from "@/components/ui/screen";
-import { cn, Heading, Txt } from "@/components/ui/text";
+import { TabScreen } from "@/components/ui/screen";
+import { Slider } from "@/components/ui/slider";
+import { cn, Txt } from "@/components/ui/text";
 import { FullMockCard } from "@/components/exam/full-mock-card";
 import { ActiveFilterChips, EMPTY_QUESTION_FILTERS, FilterBar, filtersToQuery, type QuestionFiltersState } from "@/components/filters/filters";
 
 type PoolMode = "all" | "unattempted";
 
 /**
- * Build a custom test (web's /custom-test/new): filters, how many questions,
- * optional timer at a realistic–relaxed pace, then ordering and a name. A timed
- * test runs on the exam console with answers hidden until submit.
+ * Build a custom test (web's /custom-test/new): filters, how many questions
+ * (a preset, a drag or a typed number), an optional timer at a
+ * realistic–relaxed pace, then ordering and a name. A timed test runs on the
+ * exam console with answers hidden until submit.
  */
 export default function CustomTestScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const startSession = useStartSession();
   const lookup = useTaxonomyLookup();
   const [filters, setFilters] = useState<QuestionFiltersState>(EMPTY_QUESTION_FILTERS);
@@ -55,7 +55,7 @@ export default function CustomTestScreen() {
   const finalCount = customTestFinalCount(available, count, useAll);
   const { minDurationMin, maxDurationMin, durationMin } = customTestDurations(finalCount, pace);
 
-  const summary = `${finalCount} question${finalCount === 1 ? "" : "s"} · ${selectionSummary(filters.examIds, "All Exams", (id) => lookup.exam(id)?.shortName ?? id)} · ${selectionSummary(
+  const summary = `${finalCount} question${finalCount === 1 ? "" : "s"} · ${selectionSummary(filters.examIds, "All Exams", lookup.examName)} · ${selectionSummary(
     filters.subjectIds,
     "All Subjects",
     (id) => lookup.subject(id)?.name ?? id
@@ -74,51 +74,48 @@ export default function CustomTestScreen() {
     });
   }
 
-  function stepCount(delta: number) {
+  /** A typed or dragged number of questions, kept within what the filters can give (web clamps the same way). */
+  function pickCount(next: number) {
     setUseAll(false);
-    setCount(Math.min(Math.max(finalCount + delta, 1), Math.max(available, 1)));
+    setCount(Math.min(Math.max(Math.round(next), 1), Math.max(available, 1)));
   }
 
-  function stepDuration(delta: number) {
+  /** A typed number of minutes, kept between the realistic and relaxed pace; stored as a pace so it scales with the count. */
+  function pickDuration(minutes: number) {
     if (finalCount === 0) return;
-    const next = Math.min(Math.max(durationMin + delta, minDurationMin), maxDurationMin);
-    setPace(next / finalCount);
+    setPace(Math.min(Math.max(minutes, minDurationMin), maxDurationMin) / finalCount);
   }
 
   return (
-    <StackScreen
-      title="Build a Custom Test"
-      subtitle="Choose filters, how many questions, and start."
-      footer={
-        <View className="gap-2 border-t border-border bg-background px-5 pt-3" style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
-          <Txt weight={600} className="text-center text-sm">
-            {summary}
-          </Txt>
-          <Button label="Start Test" icon={Sparkles} size="lg" disabled={available === 0 || startSession.isPending} loading={startSession.isPending} onPress={() => setConfirmOpen(true)} />
-        </View>
-      }
-    >
+    <TabScreen eyebrow="Build your own" eyebrowIcon={WandSparkles} title="Custom test" subtitle="Pick your filters and how many questions.">
       <FullMockCard />
 
       <Card className="gap-3">
         <View>
-          <Heading className="text-base">Filters</Heading>
-          <Txt className="text-sm text-muted-foreground">Leave a filter empty to include everything.</Txt>
+          <Txt weight={700} className="text-sm">
+            Filters
+          </Txt>
+          <Txt className="mt-0.5 text-[11px] text-muted-foreground">Leave a filter empty to include everything.</Txt>
         </View>
-        <FilterBar value={filters} onChange={setFilters} />
+        <FilterBar value={filters} onChange={setFilters} wrap />
         <ActiveFilterChips value={filters} onChange={setFilters} />
       </Card>
 
       <Card className="gap-3">
-        <View>
-          <Heading className="text-base">Number of questions</Heading>
-          <Txt className="text-sm text-muted-foreground">
-            {countError
-              ? "Couldn't count the available questions — check your connection and try again."
-              : countPending
-                ? "Counting available questions…"
-                : `Drawn from the ${available} question${available === 1 ? "" : "s"} available with these filters.`}
-          </Txt>
+        <View className="flex-row items-start gap-3">
+          <View className="flex-1">
+            <Txt weight={700} className="text-sm">
+              Questions
+            </Txt>
+            <Txt className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+              {countError
+                ? "Couldn't count the available questions — check your connection and try again."
+                : countPending
+                  ? "Counting available questions…"
+                  : `Drawn from the ${available} question${available === 1 ? "" : "s"} available with these filters.`}
+            </Txt>
+          </View>
+          <NumberBox value={finalCount} unit="questions" onCommit={pickCount} disabled={available === 0} />
         </View>
         <View className="flex-row flex-wrap gap-2">
           {CUSTOM_TEST_QUESTION_COUNTS.map((n) => (
@@ -135,7 +132,14 @@ export default function CustomTestScreen() {
           ))}
           <Chip label="All" selected={useAll} disabled={available === 0} onPress={() => setUseAll(true)} />
         </View>
-        <Stepper label="questions" value={finalCount} onMinus={() => stepCount(-1)} onPlus={() => stepCount(1)} disabled={available === 0} />
+        <Slider
+          value={Math.max(finalCount, 1)}
+          min={1}
+          max={Math.max(available, 2)}
+          onChange={pickCount}
+          disabled={available === 0}
+          accessibilityLabel="Number of questions"
+        />
         {!useAll && available > 0 && count > available ? (
           <Txt weight={500} className="text-sm text-error-foreground">
             Only {available} question{available === 1 ? "" : "s"} match these filters — starting with {finalCount} instead.
@@ -145,9 +149,12 @@ export default function CustomTestScreen() {
 
       <Card className="gap-3">
         <View className="flex-row items-center gap-3">
+          <Clock size={18} color={colors.primary} strokeWidth={2} />
           <View className="flex-1">
-            <Heading className="text-base">Timed test</Heading>
-            <Txt className="text-sm text-muted-foreground">Practise under real exam time pressure, on the exam console.</Txt>
+            <Txt weight={700} className="text-sm">
+              Timed test
+            </Txt>
+            <Txt className="mt-0.5 text-[11px] leading-4 text-muted-foreground">Practise under real exam time pressure, on the exam console.</Txt>
           </View>
           <Switch
             value={timed}
@@ -166,13 +173,37 @@ export default function CustomTestScreen() {
                 <Chip key={p.label} label={p.label} selected={Math.abs(pace - p.value) < 0.01} disabled={available === 0} onPress={() => setPace(p.value)} />
               ))}
             </View>
-            <Stepper label="minutes" value={durationMin} onMinus={() => stepDuration(-1)} onPlus={() => stepDuration(1)} disabled={available === 0} />
+            <View className="flex-row items-center justify-between gap-3">
+              <Txt className="flex-1 text-xs text-muted-foreground">Or drag (or type) to pick a duration</Txt>
+              <NumberBox value={durationMin} unit="minutes" onCommit={pickDuration} disabled={available === 0} />
+            </View>
+            <Slider
+              value={pace}
+              min={MIN_MIN_PER_QUESTION}
+              max={MAX_MIN_PER_QUESTION}
+              step={0.1}
+              onChange={setPace}
+              disabled={available === 0}
+              accessibilityLabel="Test duration"
+            />
             <Txt className="text-xs text-muted-foreground">
               {minDurationMin} min (realistic pace) – {maxDurationMin} min (relaxed pace) for {finalCount} question{finalCount === 1 ? "" : "s"}. Pace is {MIN_MIN_PER_QUESTION}–{MAX_MIN_PER_QUESTION} min per question.
             </Txt>
           </>
         ) : null}
       </Card>
+
+      <View className="gap-2">
+        <Button
+          label={`Start ${finalCount}-question test`}
+          icon={Sparkles}
+          size="lg"
+          disabled={available === 0 || startSession.isPending}
+          loading={startSession.isPending}
+          onPress={() => setConfirmOpen(true)}
+        />
+        <Txt className="text-center text-xs text-muted-foreground">{summary}</Txt>
+      </View>
 
       <Dialog
         open={confirmOpen}
@@ -210,30 +241,41 @@ export default function CustomTestScreen() {
           <Field label="Test name (optional)" value={name} onChangeText={setName} placeholder="Custom Test" maxLength={60} />
         </View>
       </Dialog>
-    </StackScreen>
+    </TabScreen>
   );
 }
 
-function Stepper({ label, value, onMinus, onPlus, disabled }: { label: string; value: number; onMinus: () => void; onPlus: () => void; disabled?: boolean }) {
+/**
+ * The number itself, big and violet, and typed straight in (web's number box):
+ * committed when typing ends, so a half-typed "1" on the way to "120" never
+ * jumps the slider.
+ */
+function NumberBox({ value, unit, onCommit, disabled }: { value: number; unit: string; onCommit: (value: number) => void; disabled?: boolean }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    const next = parseInt(draft, 10);
+    if (Number.isFinite(next) && next > 0) onCommit(next);
+    setDraft(null);
+  };
   return (
-    <View className={cn("flex-row items-center justify-between rounded-xl border border-border px-2 py-1.5", disabled && "opacity-40")}>
-      <StepButton icon={Minus} label={`Fewer ${label}`} onPress={onMinus} disabled={disabled} />
-      <View className="items-center">
-        <Txt font="display" weight={600} className="text-xl">
-          {value}
-        </Txt>
-        <Txt className="text-[11px] text-muted-foreground">{label}</Txt>
-      </View>
-      <StepButton icon={Plus} label={`More ${label}`} onPress={onPlus} disabled={disabled} />
+    <View className={cn("shrink-0 items-center", disabled && "opacity-40")}>
+      <TextInput
+        value={draft ?? String(value)}
+        onChangeText={(text) => setDraft(text.replace(/[^0-9]/g, ""))}
+        onBlur={commit}
+        onSubmitEditing={commit}
+        keyboardType="number-pad"
+        returnKeyType="done"
+        maxLength={4}
+        selectTextOnFocus
+        editable={!disabled}
+        accessibilityLabel={`Number of ${unit}`}
+        className="rounded-xl border border-border bg-card px-2 py-0.5 text-center text-[26px] text-primary"
+        // A set width: a text box otherwise takes the browser's default width on web.
+        style={{ fontFamily: "Sora_700Bold", width: 84 }}
+      />
+      <Txt className="text-[11px] text-muted-foreground">{unit}</Txt>
     </View>
-  );
-}
-
-function StepButton({ icon: Icon, label, onPress, disabled }: { icon: IconComponent; label: string; onPress: () => void; disabled?: boolean }) {
-  const colors = useColors();
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} className="size-10 items-center justify-center rounded-lg bg-muted active:opacity-70">
-      <Icon size={18} color={colors.foreground} />
-    </Pressable>
   );
 }

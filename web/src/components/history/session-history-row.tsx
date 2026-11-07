@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { formatMarks, SESSION_MODE_LABEL, type Marks, type TestSession } from "@jsmf/core/domain";
-import { cn } from "@/lib/utils";
+import { ScorePill } from "@/components/common/score";
 
 // The labels are @jsmf/core's (shared with mobile); re-exported for the history page.
 export { SESSION_MODE_LABEL };
@@ -47,18 +47,7 @@ export function SessionHistoryRow({
             {formatMarks(marks.scored)}/{formatMarks(marks.max)}
           </span>
         )}
-        <span
-          className={cn(
-            "rounded-full px-2.5 py-1 font-semibold",
-            accuracy >= 70
-              ? "bg-success text-success-foreground"
-              : accuracy >= 40
-                ? "bg-flag text-flag-foreground"
-                : "bg-error text-error-foreground"
-          )}
-        >
-          {accuracy}%
-        </span>
+        <ScorePill value={accuracy} />
       </div>
     </Link>
   );

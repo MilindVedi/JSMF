@@ -4,34 +4,35 @@ import {
   ArrowRight,
   BookOpen,
   Bookmark,
-  ChevronRight,
   Circle,
   CircleCheck,
   CircleX,
   ClipboardList,
-  CornerDownLeft,
   Repeat,
   Sparkles,
   TrendingUp,
+  WandSparkles,
 } from "lucide-react-native";
-import { greetingForHour, sessionScopeLabel, streakCheckInLine, streakEyebrow } from "@jsmf/core/domain";
+import { greetingForHour, sessionScopeLabel, streakCheckInLine, streakEyebrow, type ExamId } from "@jsmf/core/domain";
 import type { SessionListItem } from "@jsmf/core/data-source";
-import { usePreferences, useSessionHistory, useStats, useTaxonomyLookup } from "@jsmf/core/hooks";
+import { usePreferences, useSessionHistory, useStats, useTaxonomy, useTaxonomyLookup } from "@jsmf/core/hooks";
 import { useAuthStore } from "@/lib/auth-store";
 import { useStartSession } from "@/lib/start-session";
 import { useStreakState } from "@/lib/streak";
-import { useColors } from "@/theme/theme";
-import { Button, type IconComponent } from "@/components/ui/button";
-import { Card, IconTile, Loading, PressableCard, ProgressBar, QueryError, SectionTitle, type Tone } from "@/components/ui/primitives";
+import { useColors, withAlpha } from "@/theme/theme";
+import { BRAND_GRADIENT, Button, type IconComponent } from "@/components/ui/button";
+import { Card, Loading, PressableCard, QueryError, SectionTitle } from "@/components/ui/primitives";
+import { HeroCard, HeroText, ProgressRing } from "@/components/ui/hero";
+import { ScoreBar, useBandColors } from "@/components/ui/score";
 import { TabScreen } from "@/components/ui/screen";
-import { Eyebrow, Heading, Txt } from "@/components/ui/text";
+import { cn, Txt } from "@/components/ui/text";
+import { CountUp } from "@/components/motion/count-up";
 import { StreakCard } from "@/components/streak/streak-card";
-import { SubjectBadge } from "@/components/question/badges";
 import { SessionSummaryRow } from "@/components/sessions";
 import { useRefetchOnFocus } from "@/lib/use-refetch-on-focus";
 
 /**
- * Home (web's /dashboard): the onboarding variant for a brand-new account
+ * Dashboard (web's /dashboard): the onboarding variant for a brand-new account
  * (no session ever created), the full dashboard otherwise — the same data
  * and the same rules.
  */
@@ -43,16 +44,19 @@ export default function HomeScreen() {
   const finished = useSessionHistory(1, 4, "submitted");
   useRefetchOnFocus(stats, open, finished);
   const preferences = usePreferences();
-  const { taxonomy } = useTaxonomyLookup();
+  const { taxonomy, subject } = useTaxonomyLookup();
+  const taxonomyQuery = useTaxonomy();
   const startSession = useStartSession();
   const streak = useStreakState();
   const firstName = (user?.name ?? "").split(" ")[0] || "there";
   // The exam the student chose — never a guess. Until preferences arrive the
   // first-run hero waits rather than showing (and starting) the wrong exam; an
-  // older account with no exam saved falls back to the first exam, as sign-up does.
-  const targetExamId = preferences.data ? (preferences.data.targetExamId ?? taxonomy.exams[0]?.id ?? null) : null;
-  /** "NEET-PG · FMGE · INI-CET" — empty until the taxonomy has loaded. */
-  const examsCovered = taxonomy.exams.map((exam) => exam.shortName).join(" · ");
+  // account with no exam saved falls back to the first exam, as sign-up does.
+  // `undefined` = still finding out; `null` = settled with no exam to offer
+  // (the bank has no exams yet), which must read as "not yet", never a spinner.
+  const prefsSettled = Boolean(preferences.data || preferences.error);
+  const targetExamId: ExamId | null | undefined =
+    preferences.data?.targetExamId ?? (!prefsSettled || taxonomyQuery.isPending ? undefined : (taxonomy.exams[0]?.id ?? null));
   const refreshing = stats.isRefetching || open.isRefetching || finished.isRefetching;
   const refresh = () => {
     void stats.refetch();
@@ -66,14 +70,14 @@ export default function HomeScreen() {
 
   if (error) {
     return (
-      <TabScreen title="Home">
+      <TabScreen title="Dashboard">
         <QueryError error={error} title="Couldn't load your dashboard" onRetry={refresh} />
       </TabScreen>
     );
   }
   if (!statistics || !open.data || !finished.data) {
     return (
-      <TabScreen title="Home" scroll={false}>
+      <TabScreen title="Dashboard" scroll={false}>
         <Loading />
       </TabScreen>
     );
@@ -83,7 +87,14 @@ export default function HomeScreen() {
   // replaces the screen rather than a grid of zeroed-out cards.
   if (open.data.total + finished.data.total === 0) {
     return (
-      <TabScreen title={`Welcome, ${firstName}`} subtitle="Let's get your preparation started." onRefresh={refresh} refreshing={refreshing}>
+      <TabScreen
+        eyebrow="Getting started"
+        eyebrowIcon={Sparkles}
+        title={`Welcome, ${firstName}`}
+        subtitle="Let's get your preparation started."
+        onRefresh={refresh}
+        refreshing={refreshing}
+      >
         <Onboarding
           targetExamId={targetExamId}
           hasBookmark={statistics.bookmarkCount > 0}
@@ -91,7 +102,7 @@ export default function HomeScreen() {
           onStart={() => {
             if (targetExamId) startSession({ mode: "browse", label: "Question Bank", filters: { examIds: [targetExamId] }, count: 10 });
           }}
-          starting={startSession.isPending || !targetExamId}
+          starting={startSession.isPending || targetExamId === undefined}
         />
       </TabScreen>
     );
@@ -107,42 +118,42 @@ export default function HomeScreen() {
   return (
     <TabScreen
       eyebrow={streakEyebrow(streak.currentStreak)}
+      eyebrowIcon={Sparkles}
       title={`${greetingForHour(new Date().getHours())}, ${firstName}`}
       subtitle={streakCheckInLine(streak)}
       onRefresh={refresh}
       refreshing={refreshing}
     >
-      {/* The exams the bank covers, read from the taxonomy (web's masthead pill). */}
-      {examsCovered ? <ExamsPill text={examsCovered} /> : null}
-      {/* Each number stands alone with what it is out of underneath — "10/187"
-          read as a fraction to work out (web dropped it for the same reason). */}
-      <View className="flex-row gap-3">
-        <StatCard
-          icon={TrendingUp}
-          label="Overall accuracy"
-          value={`${statistics.accuracy}%`}
-          hint={`${statistics.correct} correct ${statistics.correct === 1 ? "answer" : "answers"}`}
-        />
-        <StatCard icon={ClipboardList} label="Questions attempted" value={statistics.attempted} hint={`of ${statistics.totalQuestions} questions`} />
-      </View>
-      <View className="-mt-1 flex-row gap-3">
-        <StatCard icon={CircleX} label="Wrong questions" value={statistics.wrongQuestionCount} hint="Room to improve" tone="error" />
-        <StatCard icon={Bookmark} label="Bookmarked" value={statistics.bookmarkCount} hint="Saved for later" tone="flag" />
+      <NextSessionCard inProgress={inProgress} lastCompleted={recent[0]} />
+
+      <View className="gap-2.5">
+        <View className="flex-row gap-2.5">
+          <StatCard icon={TrendingUp} label="Overall accuracy" value={statistics.accuracy} suffix="%" />
+          <StatCard icon={ClipboardList} label="Attempted" value={statistics.attempted} />
+        </View>
+        <View className="flex-row gap-2.5">
+          <StatCard icon={CircleX} label="Wrong questions" value={statistics.wrongQuestionCount} tone="error" />
+          <StatCard icon={Bookmark} label="Bookmarked" value={statistics.bookmarkCount} />
+        </View>
       </View>
 
-      <ContinueCard inProgress={inProgress} lastCompleted={recent[0]} />
       <StreakCard />
 
       <View>
-        <SectionTitle>Quick actions</SectionTitle>
+        <SectionTitle>Your study tools</SectionTitle>
         <View className="gap-3">
           <View className="flex-row gap-3">
-            <QuickAction icon={BookOpen} label="Question Bank" description="Browse and practise PYQs by subject, topic and year." href="/practice" />
-            <QuickAction icon={Sparkles} label="Custom Test" description="Build a tailored test with your own filters." href="/custom-test" />
+            <ToolTile icon={BookOpen} label="Question Bank" description="Memory-based PYQs" href="/practice" />
+            <ToolTile icon={WandSparkles} label="Custom Test" description="Build your own test" href="/custom-test" />
           </View>
           <View className="flex-row gap-3">
-            <QuickAction icon={Repeat} label="Revision" description="Revisit what you got wrong and what you saved." href="/revision" />
-            <QuickAction icon={Bookmark} label="Bookmarks" description="Questions you've saved for later." href="/bookmarks" />
+            <ToolTile icon={Repeat} label="Revision" description="Wrong, saved & collections" href="/revision" />
+            <ToolTile
+              icon={Bookmark}
+              label="Bookmarks"
+              description={statistics.bookmarkCount > 0 ? `${statistics.bookmarkCount} saved for later` : "Save questions for later"}
+              href="/bookmarks"
+            />
           </View>
         </View>
       </View>
@@ -150,11 +161,11 @@ export default function HomeScreen() {
       <View>
         <SectionTitle>Recent activity</SectionTitle>
         {recent.length === 0 ? (
-          <View className="rounded-2xl border border-dashed border-border p-4">
+          <View className="rounded-[20px] border border-dashed border-border p-4">
             <Txt className="text-sm text-muted-foreground">No completed sessions yet — finish a practice session to see it here.</Txt>
           </View>
         ) : (
-          <View className="gap-2">
+          <View className="gap-2.5">
             {recent.map((item) => (
               <SessionSummaryRow key={item.session.id} item={item} />
             ))}
@@ -164,18 +175,11 @@ export default function HomeScreen() {
 
       <View>
         <SectionTitle>Focus areas</SectionTitle>
-        <Card className="gap-2 p-3">
+        <Card className="gap-3">
           {focusAreas.length === 0 ? (
-            <Txt className="p-1 text-sm text-muted-foreground">Attempt more questions to see focus areas.</Txt>
+            <Txt className="text-sm text-muted-foreground">Attempt more questions to see focus areas.</Txt>
           ) : (
-            focusAreas.map((s) => (
-              <View key={s.subjectId} className="flex-row items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2.5">
-                <SubjectBadge subjectId={s.subjectId} />
-                <Txt weight={700} className="text-sm">
-                  {s.accuracy}%
-                </Txt>
-              </View>
-            ))
+            focusAreas.map((s) => <FocusRow key={s.subjectId} name={subject(s.subjectId)?.name ?? s.subjectId} accuracy={s.accuracy} />)
           )}
         </Card>
       </View>
@@ -183,65 +187,53 @@ export default function HomeScreen() {
   );
 }
 
-function ExamsPill({ text }: { text: string }) {
-  const colors = useColors();
+/** A subject that needs work: its accuracy as a bar and a figure, both in the score's band colour. */
+function FocusRow({ name, accuracy }: { name: string; accuracy: number }) {
+  const { ink } = useBandColors(accuracy);
   return (
-    <View className="flex-row items-center gap-2 self-start rounded-full border border-border bg-card px-3.5 py-2">
-      <BookOpen size={16} color={colors.primary} />
-      <Txt weight={600} className="text-xs">
-        {text}
+    <View className="gap-1.5">
+      <View className="flex-row items-center justify-between gap-3">
+        <Txt className="flex-1 text-xs text-muted-foreground" numberOfLines={1}>
+          {name}
+        </Txt>
+        <Txt weight={700} className="text-xs" style={{ color: ink }}>
+          {accuracy}%
+        </Txt>
+      </View>
+      <ScoreBar value={accuracy} />
+    </View>
+  );
+}
+
+/** A figure tile: its icon, the number counting up, what it is. Wrong questions are tinted red. */
+function StatCard({ icon: Icon, label, value, suffix, tone = "plain" }: { icon: IconComponent; label: string; value: number; suffix?: string; tone?: "plain" | "error" }) {
+  const colors = useColors();
+  const error = tone === "error";
+  return (
+    <View className={cn("flex-1 rounded-2xl border p-3.5", error ? "border-error-foreground/25 bg-error/70" : "border-border bg-card")}>
+      <Icon size={16} color={error ? colors["error-foreground"] : colors.primary} strokeWidth={2} />
+      <CountUp value={value} suffix={suffix} font="display" weight={700} className="mt-1.5 text-xl leading-7" />
+      <Txt className="text-[10px] text-muted-foreground" numberOfLines={1}>
+        {label}
       </Txt>
     </View>
   );
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-  tone = "muted",
-}: {
-  icon: IconComponent;
-  label: string;
-  value: string | number;
-  hint?: string;
-  tone?: Tone;
-}) {
-  return (
-    <Card className="flex-1 flex-row items-center gap-3 p-3.5">
-      <IconTile icon={icon} tone={tone} />
-      <View className="flex-1">
-        <Txt font="display" weight={600} className="text-lg leading-6" numberOfLines={1}>
-          {value}
-        </Txt>
-        <Txt className="text-xs leading-4 text-muted-foreground" numberOfLines={2}>
-          {label}
-        </Txt>
-        {hint ? (
-          <Txt className="mt-0.5 text-[11px] leading-4 text-muted-foreground/80" numberOfLines={2}>
-            {hint}
-          </Txt>
-        ) : null}
-      </View>
-    </Card>
-  );
-}
-
-function QuickAction({ icon, label, description, href }: { icon: IconComponent; label: string; description: string; href: Href }) {
+/** A shortcut to one of the study tools, on the soft lavender tile. */
+function ToolTile({ icon: Icon, label, description, href }: { icon: IconComponent; label: string; description: string; href: Href }) {
   const router = useRouter();
   const colors = useColors();
   return (
-    <PressableCard className="flex-1 gap-3 p-3.5" onPress={() => router.push(href)} accessibilityLabel={label}>
-      <View className="flex-row items-center justify-between">
-        <IconTile icon={icon} tone="primary" size={36} />
-        <CornerDownLeft size={15} color={colors.border} />
-      </View>
+    <PressableCard tone="tint" className="flex-1 gap-3 p-4" onPress={() => router.push(href)} accessibilityLabel={label}>
+      <Icon size={20} color={colors.primary} strokeWidth={1.9} />
       <View>
-        <Txt font="display" weight={600} className="text-sm">
+        <Txt weight={700} className="text-sm text-brand-ink">
           {label}
         </Txt>
-        <Txt className="mt-0.5 text-xs leading-4 text-muted-foreground">{description}</Txt>
+        <Txt className="mt-0.5 text-[11px] leading-4 text-muted-foreground" numberOfLines={2}>
+          {description}
+        </Txt>
       </View>
     </PressableCard>
   );
@@ -252,55 +244,84 @@ function useScopeLookup() {
   return {
     examCount: lookup.taxonomy.exams.length,
     subjectCount: lookup.taxonomy.subjects.length,
-    examName: (id: string) => lookup.exam(id)?.shortName ?? id,
+    examName: lookup.examName,
     subjectName: (id: string) => lookup.subject(id)?.name ?? id,
   };
 }
 
-/** "Continue where you left off", or a nudge to start (web's ContinuePracticeCard). */
-function ContinueCard({ inProgress, lastCompleted }: { inProgress?: SessionListItem; lastCompleted?: SessionListItem }) {
+/**
+ * The violet card that leads the dashboard (web's ContinuePracticeCard): the
+ * session in progress with how much is done, or — with none open — a nudge
+ * to start, with the last session's score.
+ */
+function NextSessionCard({ inProgress, lastCompleted }: { inProgress?: SessionListItem; lastCompleted?: SessionListItem }) {
   const router = useRouter();
   const scope = useScopeLookup();
+  const lastBand = useBandColors(lastCompleted?.accuracy ?? 0);
+  const track = withAlpha(BRAND_GRADIENT.onDeep, 0.18);
+
   if (inProgress) {
     const answered = inProgress.attempted;
     const total = inProgress.totalQuestions;
     const percent = total > 0 ? Math.round((answered / total) * 100) : 0;
     return (
-      <Card className="gap-3">
-        <View className="flex-row items-start justify-between gap-3">
+      <HeroCard>
+        <View className="flex-row items-start gap-4">
           <View className="flex-1">
-            <Eyebrow>Continue where you left off</Eyebrow>
-            <Txt font="display" weight={600} className="mt-1 text-2xl">
-              {answered} <Txt className="text-base text-muted-foreground">/ {total} completed</Txt>
-            </Txt>
+            <HeroText dim weight={600} className="text-[11px] uppercase tracking-[1.2px]">
+              Continue where you left off
+            </HeroText>
+            <HeroText font="display" weight={700} className="mt-2 text-lg leading-6">
+              {answered} of {total} done.
+            </HeroText>
+            <HeroText dim className="mt-1 text-xs">
+              Your session is waiting for you
+            </HeroText>
+            <Button
+              label="Resume"
+              variant="onHero"
+              size="sm"
+              iconRight={ArrowRight}
+              className="mt-3.5 self-start"
+              onPress={() => router.push({ pathname: "/session/[id]", params: { id: inProgress.session.id, i: String(inProgress.resumeIndex) } })}
+            />
           </View>
-          <Button
-            label="Resume"
-            iconRight={ChevronRight}
-            onPress={() => router.push({ pathname: "/session/[id]", params: { id: inProgress.session.id, i: String(inProgress.resumeIndex) } })}
-          />
+          {/* How much is done, not a score: the ring stays the hero's light ink. */}
+          <ProgressRing value={percent} color={BRAND_GRADIENT.onDeep} track={track} label={`${percent}%`} labelColor={BRAND_GRADIENT.onDeep} size={80} stroke={7} />
         </View>
-        <ProgressBar value={percent} />
-        <Txt className="text-sm text-muted-foreground">{sessionScopeLabel(inProgress, scope)}</Txt>
-      </Card>
+        <HeroText dim className="mt-3 text-[11px]">
+          {sessionScopeLabel(inProgress, scope)}
+        </HeroText>
+      </HeroCard>
     );
   }
+
   return (
-    <Card className="gap-3">
-      <View>
-        <Eyebrow>Start practising</Eyebrow>
-        <Heading className="mt-1 text-lg">No session in progress</Heading>
-        <Txt className="mt-1 text-sm text-muted-foreground">
-          {lastCompleted
-            ? `Last session: ${sessionScopeLabel(lastCompleted, scope)} · ${lastCompleted.accuracy}% accuracy`
-            : "Start practising from the Question Bank or build a Custom Test."}
-        </Txt>
+    <HeroCard>
+      <View className="flex-row items-start gap-4">
+        <View className="flex-1">
+          <HeroText dim weight={600} className="text-[11px] uppercase tracking-[1.2px]">
+            Your next session
+          </HeroText>
+          <HeroText font="display" weight={700} className="mt-2 text-lg leading-6">
+            One question closer.
+          </HeroText>
+          <HeroText dim className="mt-1 text-xs">
+            No session in progress
+          </HeroText>
+          <Button label="Start practising" variant="onHero" size="sm" iconRight={ArrowRight} className="mt-3.5 self-start" onPress={() => router.push("/practice")} />
+        </View>
+        {/* The last session's score — a score, so its band's colour. */}
+        {lastCompleted ? (
+          <ProgressRing value={lastCompleted.accuracy} color={lastBand.solid} track={track} label={`${lastCompleted.accuracy}%`} labelColor={BRAND_GRADIENT.onDeep} size={80} stroke={7} />
+        ) : null}
       </View>
-      <View className="flex-row gap-2">
-        <Button label="Question Bank" size="sm" onPress={() => router.push("/practice")} />
-        <Button label="Custom Test" size="sm" variant="outline" onPress={() => router.push("/custom-test")} />
-      </View>
-    </Card>
+      <HeroText dim className="mt-3 text-[11px]">
+        {lastCompleted
+          ? `Last session · ${sessionScopeLabel(lastCompleted, scope)} · ${lastCompleted.accuracy}% accuracy`
+          : "Start practising from the Question Bank or build a Custom Test."}
+      </HeroText>
+    </HeroCard>
   );
 }
 
@@ -311,7 +332,7 @@ const HOW_IT_WORKS: { icon: IconComponent; text: string }[] = [
   { icon: Repeat, text: "Revise what you got wrong" },
 ];
 
-/** The first-run home (web's OnboardingDashboard): what to do next within a few seconds. */
+/** The first-run dashboard (web's OnboardingDashboard): what to do next within a few seconds. */
 function Onboarding({
   targetExamId,
   hasBookmark,
@@ -319,13 +340,14 @@ function Onboarding({
   onStart,
   starting,
 }: {
-  targetExamId: string | null;
+  /** `undefined` while loading; `null` when the bank has no exam to offer yet. */
+  targetExamId: ExamId | null | undefined;
   hasBookmark: boolean;
   hasStreak: boolean;
   onStart: () => void;
   starting: boolean;
 }) {
-  const { exam } = useTaxonomyLookup();
+  const { examName } = useTaxonomyLookup();
   const colors = useColors();
   const checklist = [
     { label: "Choose your exam", done: true },
@@ -333,23 +355,38 @@ function Onboarding({
     { label: "Build your first streak", done: hasStreak },
     { label: "Bookmark a question for revision", done: hasBookmark },
   ];
+  // One block inside the page's staggered body, so it spaces its own parts like the page does.
   return (
-    <>
-      <Card className="gap-4">
-        <View className="rounded-xl border border-border bg-muted/40 p-4">
-          <Eyebrow>Your selected exam</Eyebrow>
-          <Txt font="display" weight={600} className="mt-1 text-2xl">
-            {targetExamId ? (exam(targetExamId)?.shortName ?? targetExamId) : "…"}
-          </Txt>
-        </View>
-        <Button label="Start your first practice" iconRight={ArrowRight} size="lg" loading={starting} onPress={onStart} />
-      </Card>
+    <View className="gap-4">
+      <HeroCard>
+        <HeroText dim weight={600} className="text-[11px] uppercase tracking-[1.2px]">
+          Your selected exam
+        </HeroText>
+        <HeroText font="display" weight={700} className="mt-1.5 text-[26px] leading-8">
+          {targetExamId ? examName(targetExamId) : targetExamId === null ? "Not available yet" : "…"}
+        </HeroText>
+        <Button
+          label="Start your first practice"
+          variant="onHero"
+          iconRight={ArrowRight}
+          size="lg"
+          className="mt-4"
+          loading={starting}
+          disabled={targetExamId === null}
+          onPress={onStart}
+        />
+        {targetExamId === null ? (
+          <HeroText dim className="mt-2.5 text-center text-xs">
+            Questions are being added. Please check back soon.
+          </HeroText>
+        ) : null}
+      </HeroCard>
       <StreakCard />
       <View>
         <SectionTitle>Or explore on your own</SectionTitle>
         <View className="flex-row gap-3">
-          <QuickAction icon={BookOpen} label="Question Bank" description="Browse PYQs by subject, year & topic." href="/practice" />
-          <QuickAction icon={Sparkles} label="Custom Test" description="Build a test around your own preferences." href="/custom-test" />
+          <ToolTile icon={BookOpen} label="Question Bank" description="Browse PYQs by subject, year & topic." href="/practice" />
+          <ToolTile icon={WandSparkles} label="Custom Test" description="Build a test around your own preferences." href="/custom-test" />
         </View>
       </View>
       <View>
@@ -374,6 +411,6 @@ function Onboarding({
           ))}
         </Card>
       </View>
-    </>
+    </View>
   );
 }

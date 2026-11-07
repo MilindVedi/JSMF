@@ -62,6 +62,7 @@ export function QuestionCard({
             key={option.id}
             index={i}
             text={option.text}
+            imageUrl={option.imageUrl}
             submitted={submitted}
             isSelected={selectedOptionId === option.id}
             isCorrectOption={question.correctOptionId === option.id}
