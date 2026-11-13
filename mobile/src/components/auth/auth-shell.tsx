@@ -156,11 +156,11 @@ export function GoogleSignIn({ mode = "login" }: { mode?: "login" | "signup" }) 
           accessibilityRole="button"
           disabled={busy}
           onPress={start}
-          className="h-12 flex-row items-center justify-center gap-2.5 rounded-xl border border-border bg-card active:bg-muted"
+          className="min-h-12 flex-row items-center justify-center gap-2.5 rounded-xl border border-border bg-card px-4 py-2 active:bg-muted"
           style={busy ? { opacity: 0.6 } : undefined}
         >
           <GoogleMark />
-          <Txt weight={600} className="text-[15px]">
+          <Txt weight={600} className="shrink text-center text-[15px]">
             {signup ? "Sign up with Google" : "Continue with Google"}
           </Txt>
         </Pressable>

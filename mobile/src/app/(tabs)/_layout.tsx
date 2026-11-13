@@ -18,7 +18,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="home" options={{ title: "Dashboard", tabBarIcon: ({ color, size }) => <LayoutGrid color={color} size={size} strokeWidth={1.9} /> }} />
       <Tabs.Screen name="practice" options={{ title: "PYQs", tabBarIcon: ({ color, size }) => <ClipboardList color={color} size={size} strokeWidth={1.9} /> }} />
-      <Tabs.Screen name="custom-test" options={{ title: "Custom Test", tabBarIcon: ({ color, size }) => <WandSparkles color={color} size={size} strokeWidth={1.9} /> }} />
+      <Tabs.Screen name="custom-test" options={{ title: "Test", tabBarIcon: ({ color, size }) => <WandSparkles color={color} size={size} strokeWidth={1.9} /> }} />
       <Tabs.Screen name="revision" options={{ title: "Revision", tabBarIcon: ({ color, size }) => <Repeat color={color} size={size} strokeWidth={1.9} /> }} />
       <Tabs.Screen name="progress" options={{ title: "My Progress", tabBarIcon: ({ color, size }) => <ChartColumn color={color} size={size} strokeWidth={1.9} /> }} />
     </Tabs>

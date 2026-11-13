@@ -11,6 +11,7 @@ import { usePressScale } from "@/components/motion/loop";
 import { Stagger } from "@/components/motion/rise";
 import { useTabBarClearance } from "@/components/navigation/tab-bar";
 import { StreakChip } from "@/components/streak/streak-chip";
+import { useIsCompact } from "./app-frame";
 import { BRAND_GRADIENT, type IconComponent } from "./button";
 import { LinearGradientFill } from "./gradient";
 import { Chip } from "./primitives";
@@ -20,31 +21,85 @@ import { cn, Eyebrow, Heading, Txt } from "./text";
 export const LOGO = require("../../../assets/images/logo.png");
 
 /** The JSMF mark, name and product, as web's <Logo>. */
-export function Logo({ size = 30, showName = true }: { size?: number; showName?: boolean }) {
+export function Logo({
+  size = 30,
+  showName = true,
+}: {
+  size?: number;
+  showName?: boolean;
+}) {
   return (
     <View className="flex-row items-center gap-2">
-      <Image source={LOGO} style={{ width: size, height: size }} contentFit="contain" accessibilityIgnoresInvertColors />
+      <Image
+        source={LOGO}
+        style={{ width: size, height: size }}
+        contentFit="contain"
+        accessibilityIgnoresInvertColors
+      />
       {showName ? (
         <Txt font="display" weight={600} className="text-base text-brand-ink">
-          JSMF <Txt font="display" weight={400} className="text-base text-muted-foreground">PYQs</Txt>
+          JSMF{" "}
+          <Txt
+            font="display"
+            weight={400}
+            className="text-base text-muted-foreground"
+          >
+            PYQs
+          </Txt>
         </Txt>
       ) : null}
     </View>
   );
 }
 
-/** The brand lockup at the top of every tab: the mark, "JSMF PYQs" and the full form. */
+/**
+ * The brand lockup at the top of every tab: the mark, "JSMF PYQs" and the full
+ * form. On a narrow phone the mark is smaller and the full form is left out,
+ * so the name shows whole instead of cut short ("JSMF PY…").
+ */
 function BrandLockup() {
+  const compact = useIsCompact();
+  const mark = compact ? 30 : 36;
   return (
-    <View className="shrink flex-row items-center gap-2.5" accessible accessibilityLabel="JSMF PYQs, Jab Studies Met Fun">
-      <Image source={LOGO} style={{ width: 36, height: 36 }} contentFit="contain" accessibilityIgnoresInvertColors />
+    <View
+      className="shrink flex-row items-center gap-2.5"
+      accessible
+      accessibilityLabel="JSMF PYQs, Jab Studies Met Fun"
+    >
+      <Image
+        source={LOGO}
+        style={{ width: mark, height: mark }}
+        contentFit="contain"
+        accessibilityIgnoresInvertColors
+      />
       <View className="shrink">
-        <Txt font="display" weight={700} className="text-base leading-5 text-brand-ink" numberOfLines={1}>
-          JSMF <Txt font="display" weight={500} className="text-base leading-5 text-muted-foreground">PYQs</Txt>
+        <Txt
+          font="display"
+          weight={700}
+          className="text-base leading-5 text-brand-ink"
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.2}
+        >
+          JSMF{" "}
+          <Txt
+            font="display"
+            weight={500}
+            className="text-base leading-5 text-muted-foreground"
+            maxFontSizeMultiplier={1.2}
+          >
+            PYQs
+          </Txt>
         </Txt>
-        <Txt weight={600} className="mt-0.5 text-[10px] uppercase tracking-[1.8px] text-muted-foreground" numberOfLines={1}>
-          Jab Studies Met Fun
-        </Txt>
+        {compact ? null : (
+          <Txt
+            weight={600}
+            className="mt-0.5 text-[10px] uppercase tracking-[1.8px] text-muted-foreground"
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.2}
+          >
+            Jab Studies Met Fun
+          </Txt>
+        )}
       </View>
     </View>
   );
@@ -65,11 +120,30 @@ function ProfileButton() {
       onPressIn={press.onPressIn}
       onPressOut={press.onPressOut}
       className="size-10 items-center justify-center"
-      style={{ borderRadius: 14, boxShadow: `0 6px 14px -6px ${withAlpha(BRAND_GRADIENT.vivid, 0.6)}` }}
+      style={{
+        borderRadius: 14,
+        boxShadow: `0 6px 14px -6px ${withAlpha(BRAND_GRADIENT.vivid, 0.6)}`,
+      }}
       animatedStyle={press.style}
     >
-      <LinearGradientFill radius={14} layers={[{ angle: 135, stops: [{ offset: 0, color: BRAND_GRADIENT.deep }, { offset: 1, color: BRAND_GRADIENT.vivid }] }]} />
-      <Txt font="display" weight={700} className="text-base" style={{ color: BRAND_GRADIENT.onDeep }}>
+      <LinearGradientFill
+        radius={14}
+        layers={[
+          {
+            angle: 135,
+            stops: [
+              { offset: 0, color: BRAND_GRADIENT.deep },
+              { offset: 1, color: BRAND_GRADIENT.vivid },
+            ],
+          },
+        ]}
+      />
+      <Txt
+        font="display"
+        weight={700}
+        className="text-base"
+        style={{ color: BRAND_GRADIENT.onDeep }}
+      >
         {initial}
       </Txt>
     </AnimatedPressable>
@@ -77,7 +151,17 @@ function ProfileButton() {
 }
 
 /** A tab's title block: the violet eyebrow with its icon, the big title ending in a violet full stop, a line under it. */
-function PageTitle({ eyebrow, eyebrowIcon: Icon, title, subtitle }: { eyebrow?: string; eyebrowIcon?: IconComponent; title: string; subtitle?: string }) {
+function PageTitle({
+  eyebrow,
+  eyebrowIcon: Icon,
+  title,
+  subtitle,
+}: {
+  eyebrow?: string;
+  eyebrowIcon?: IconComponent;
+  title: string;
+  subtitle?: string;
+}) {
   const colors = useColors();
   // The design's violet full stop — unless the title already ends in punctuation.
   const stop = /[.!?…]$/.test(title) ? "" : ".";
@@ -85,15 +169,33 @@ function PageTitle({ eyebrow, eyebrowIcon: Icon, title, subtitle }: { eyebrow?: 
     <View className="mt-5">
       {eyebrow ? (
         <View className="mb-2 flex-row items-center gap-2">
-          {Icon ? <Icon size={13} color={colors.primary} strokeWidth={2.2} /> : null}
+          {Icon ? (
+            <Icon size={13} color={colors.primary} strokeWidth={2.2} />
+          ) : null}
           <Eyebrow className="tracking-[1.2px] text-primary">{eyebrow}</Eyebrow>
         </View>
       ) : null}
-      <Heading weight={700} className="text-2xl leading-[30px] text-brand-ink" accessibilityRole="header">
+      <Heading
+        weight={700}
+        className="text-2xl leading-[30px] text-brand-ink"
+        accessibilityRole="header"
+      >
         {title}
-        {stop ? <Txt font="display" weight={700} className="text-2xl leading-[30px] text-primary">{stop}</Txt> : null}
+        {stop ? (
+          <Txt
+            font="display"
+            weight={700}
+            className="text-2xl leading-[30px] text-primary"
+          >
+            {stop}
+          </Txt>
+        ) : null}
       </Heading>
-      {subtitle ? <Txt className="mt-1 text-xs leading-[18px] text-muted-foreground">{subtitle}</Txt> : null}
+      {subtitle ? (
+        <Txt className="mt-1 text-xs leading-[18px] text-muted-foreground">
+          {subtitle}
+        </Txt>
+      ) : null}
     </View>
   );
 }
@@ -121,7 +223,10 @@ export function TabHeader({
 }) {
   const insets = useSafeAreaInsets();
   return (
-    <View className={cn("px-5", className)} style={{ paddingTop: insets.top + 10 }}>
+    <View
+      className={cn("px-5", className)}
+      style={{ paddingTop: insets.top + 10 }}
+    >
       <View className="flex-row items-center gap-2.5">
         <View className="flex-1">
           <BrandLockup />
@@ -130,7 +235,12 @@ export function TabHeader({
         <StreakChip />
         <ProfileButton />
       </View>
-      <PageTitle eyebrow={eyebrow} eyebrowIcon={eyebrowIcon} title={title} subtitle={subtitle} />
+      <PageTitle
+        eyebrow={eyebrow}
+        eyebrowIcon={eyebrowIcon}
+        title={title}
+        subtitle={subtitle}
+      />
     </View>
   );
 }
@@ -171,7 +281,15 @@ export function TabScreen({
 }) {
   const colors = useColors();
   const clearance = useTabBarClearance();
-  const header = <TabHeader title={title} eyebrow={eyebrow} eyebrowIcon={eyebrowIcon} subtitle={subtitle} headerExtra={headerExtra} />;
+  const header = (
+    <TabHeader
+      title={title}
+      eyebrow={eyebrow}
+      eyebrowIcon={eyebrowIcon}
+      subtitle={subtitle}
+      headerExtra={headerExtra}
+    />
+  );
   if (!scroll) {
     return (
       <View className="flex-1 bg-background">
@@ -186,7 +304,15 @@ export function TabScreen({
       className="flex-1 bg-background"
       contentContainerStyle={{ paddingBottom: clearance }}
       keyboardShouldPersistTaps="handled"
-      refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} /> : undefined}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        ) : undefined
+      }
     >
       <View ref={contentRef} collapsable={false}>
         {header}
@@ -199,13 +325,28 @@ export function TabScreen({
 }
 
 /** A pushed screen's header: back, title, optional trailing controls. */
-export function StackHeader({ title, onBack, right, subtitle }: { title: string; onBack?: () => void; right?: ReactNode; subtitle?: string }) {
+export function StackHeader({
+  title,
+  onBack,
+  right,
+  subtitle,
+}: {
+  title: string;
+  onBack?: () => void;
+  right?: ReactNode;
+  subtitle?: string;
+}) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const colors = useColors();
-  const back = onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/home")));
+  const back =
+    onBack ??
+    (() => (router.canGoBack() ? router.back() : router.replace("/home")));
   return (
-    <View className="flex-row items-center gap-3 bg-background px-4 pb-3" style={{ paddingTop: insets.top + 8 }}>
+    <View
+      className="flex-row items-center gap-3 bg-background px-4 pb-3"
+      style={{ paddingTop: insets.top + 8 }}
+    >
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Back"
@@ -216,11 +357,17 @@ export function StackHeader({ title, onBack, right, subtitle }: { title: string;
         <ArrowLeft size={19} color={colors.foreground} />
       </Pressable>
       <View className="flex-1">
-        <Txt font="display" weight={700} className="text-[17px] text-brand-ink" numberOfLines={1} accessibilityRole="header">
+        <Txt
+          font="display"
+          weight={700}
+          className="text-[17px] text-brand-ink"
+          numberOfLines={1}
+          accessibilityRole="header"
+        >
           {title}
         </Txt>
         {subtitle ? (
-          <Txt className="text-xs text-muted-foreground" numberOfLines={1}>
+          <Txt className="text-xs text-muted-foreground" numberOfLines={2}>
             {subtitle}
           </Txt>
         ) : null}
@@ -255,7 +402,9 @@ export function StackScreen({
         contentContainerClassName={cn("px-5 pt-4 gap-4", contentClassName)}
         // The app draws under Android's navigation bar (edge to edge): without
         // a footer to take that space, the end of the page must clear it.
-        contentContainerStyle={{ paddingBottom: (footer ? 0 : insets.bottom) + 40 }}
+        contentContainerStyle={{
+          paddingBottom: (footer ? 0 : insets.bottom) + 40,
+        }}
         keyboardShouldPersistTaps="handled"
       >
         {children}
@@ -295,9 +444,19 @@ export function Segmented<T extends string>({
       onPress={() => onChange(option.value)}
     />
   ));
-  if (wrap) return <View className={cn("flex-row flex-wrap gap-1.5", className)}>{pills}</View>;
+  if (wrap)
+    return (
+      <View className={cn("flex-row flex-wrap gap-1.5", className)}>
+        {pills}
+      </View>
+    );
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} className={cn("-mx-5 grow-0", className)} contentContainerClassName="gap-2 px-5">
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      className={cn("-mx-5 grow-0", className)}
+      contentContainerClassName="gap-2 px-5"
+    >
       {pills}
     </ScrollView>
   );

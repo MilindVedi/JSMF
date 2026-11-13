@@ -10,8 +10,18 @@ type Font = "sans" | "display" | "mono";
 type Weight = 400 | 500 | 600 | 700;
 
 const FAMILY: Record<Font, Record<Weight, string>> = {
-  sans: { 400: "Manrope_400Regular", 500: "Manrope_500Medium", 600: "Manrope_600SemiBold", 700: "Manrope_700Bold" },
-  display: { 400: "Sora_500Medium", 500: "Sora_500Medium", 600: "Sora_600SemiBold", 700: "Sora_700Bold" },
+  sans: {
+    400: "Manrope_400Regular",
+    500: "Manrope_500Medium",
+    600: "Manrope_600SemiBold",
+    700: "Manrope_700Bold",
+  },
+  display: {
+    400: "Sora_500Medium",
+    500: "Sora_500Medium",
+    600: "Sora_600SemiBold",
+    700: "Sora_700Bold",
+  },
   mono: {
     400: "JetBrainsMono_500Medium",
     500: "JetBrainsMono_500Medium",
@@ -21,7 +31,8 @@ const FAMILY: Record<Font, Record<Weight, string>> = {
 };
 
 /** Text colour classes (as opposed to size/alignment ones). */
-const COLOR_CLASS = /(^|\s)text-(?!(xs|sm|base|lg|xl|[2-9]xl|left|right|center|justify)(\s|$))(?!\[\d)[\w-/[\]#]+/;
+const COLOR_CLASS =
+  /(^|\s)text-(?!(xs|sm|base|lg|xl|[2-9]xl|left|right|center|justify)(\s|$))(?!\[\d)[\w-/[\]#]+/;
 
 export function cn(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -33,12 +44,28 @@ export interface TxtProps extends TextProps {
   weight?: Weight;
 }
 
-export function Txt({ className, font = "sans", weight = 400, style, ...props }: TxtProps) {
+/**
+ * How far text follows the phone's font-size setting. Text still grows for
+ * people who need it, but at the largest settings (2x on some Android phones)
+ * screens built for a phone's width stop working, so it stops here. A caller
+ * can lower it (brand lockups, tab labels) or raise it.
+ */
+export const MAX_FONT_SCALE = 1.4;
+
+export function Txt({
+  className,
+  font = "sans",
+  weight = 400,
+  style,
+  maxFontSizeMultiplier = MAX_FONT_SCALE,
+  ...props
+}: TxtProps) {
   const hasColor = className ? COLOR_CLASS.test(className) : false;
   return (
     <Text
       className={cn(!hasColor && "text-foreground", className)}
       style={[{ fontFamily: FAMILY[font][weight] }, style]}
+      maxFontSizeMultiplier={maxFontSizeMultiplier}
       {...props}
     />
   );
@@ -53,10 +80,26 @@ const SIZE_CLASS = /(^|\s)text-(xs|sm|base|lg|xl|[2-9]xl|\[\d)/;
  */
 export function Heading({ className, ...props }: TxtProps) {
   const hasSize = className ? SIZE_CLASS.test(className) : false;
-  return <Txt font="display" weight={600} className={cn(!hasSize && "text-lg", className)} {...props} />;
+  return (
+    <Txt
+      font="display"
+      weight={600}
+      className={cn(!hasSize && "text-lg", className)}
+      {...props}
+    />
+  );
 }
 
 /** The small uppercase label above a figure ("TODAY'S STREAK PROGRESS"). */
 export function Eyebrow({ className, ...props }: TxtProps) {
-  return <Txt weight={600} className={cn("text-[11px] uppercase tracking-wider text-muted-foreground", className)} {...props} />;
+  return (
+    <Txt
+      weight={600}
+      className={cn(
+        "text-[11px] uppercase tracking-wider text-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
 }

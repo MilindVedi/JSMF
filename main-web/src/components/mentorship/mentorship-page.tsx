@@ -232,7 +232,7 @@ export function MentorshipPage() {
                 alt="Dr. Angad Rai"
                 width={800}
                 height={1000}
-                className="aspect-[4/3] w-full object-cover object-top"
+                className="aspect-[4/3] w-full object-cover object-top text-transparent"
               />
               <div className="flex items-end justify-between gap-4 p-5 sm:p-6">
                 <div>

@@ -3,7 +3,7 @@ import { Pressable, TextInput, View, type TextInputProps } from "react-native";
 import { Eye, EyeOff, Search } from "lucide-react-native";
 import { useColors } from "@/theme/theme";
 import type { IconComponent } from "./button";
-import { cn, Txt } from "./text";
+import { cn, MAX_FONT_SCALE, Txt } from "./text";
 
 /**
  * A labelled text field.
@@ -26,40 +26,79 @@ export interface FieldProps extends TextInputProps {
 }
 
 export const Field = forwardRef<TextInput, FieldProps>(function Field(
-  { label, error, hint, className, onFocus, onBlur, editable = true, variant = "outline", icon: Icon, trailing, ...props },
-  ref
+  {
+    label,
+    error,
+    hint,
+    className,
+    onFocus,
+    onBlur,
+    editable = true,
+    variant = "outline",
+    icon: Icon,
+    trailing,
+    ...props
+  },
+  ref,
 ) {
   const colors = useColors();
   const [focused, setFocused] = useState(false);
   const filled = variant === "filled";
   // A multi-line box sets its own height (the report sheet's notes).
   const multiline = Boolean(props.multiline);
-  const border = focused ? "border-primary" : error ? "border-destructive/60" : filled ? "border-transparent" : "border-input";
+  const border = focused
+    ? "border-primary"
+    : error
+      ? "border-destructive/60"
+      : filled
+        ? "border-transparent"
+        : "border-input";
 
   return (
     <View className={cn("gap-1.5", className)}>
       {label ? (
-        <Txt weight={filled ? 600 : 700} className={filled ? "text-xs" : "text-[13px]"}>
+        <Txt
+          weight={filled ? 600 : 700}
+          className={filled ? "text-xs" : "text-[13px]"}
+        >
           {label}
         </Txt>
       ) : null}
       <View>
         {/* The halo around a focused filled field (web's 4px focus ring). */}
-        {filled && focused ? <View pointerEvents="none" className="absolute -inset-1 rounded-[18px] bg-primary/15" /> : null}
+        {filled && focused ? (
+          <View
+            pointerEvents="none"
+            className="absolute -inset-1 rounded-[18px] bg-primary/15"
+          />
+        ) : null}
         <View
           className={cn(
             "flex-row",
             multiline ? "items-start" : "items-center",
             filled
-              ? cn("gap-2.5 rounded-[14px] border-[1.5px] px-3.5", !multiline && "min-h-[50px]", focused ? "bg-card" : "bg-muted")
-              : cn("gap-2 rounded-xl border bg-background px-4", !multiline && "min-h-12"),
+              ? cn(
+                  "gap-2.5 rounded-[14px] border-[1.5px] px-3.5",
+                  !multiline && "min-h-[50px]",
+                  focused ? "bg-card" : "bg-muted",
+                )
+              : cn(
+                  "gap-2 rounded-xl border bg-background px-4",
+                  !multiline && "min-h-12",
+                ),
             border,
-            !editable && "opacity-60"
+            !editable && "opacity-60",
           )}
         >
-          {Icon ? <Icon size={17} color={focused ? colors.primary : colors["muted-foreground"]} /> : null}
+          {Icon ? (
+            <Icon
+              size={17}
+              color={focused ? colors.primary : colors["muted-foreground"]}
+            />
+          ) : null}
           <TextInput
             ref={ref}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
             placeholderTextColor={colors["muted-foreground"]}
             editable={editable}
             onFocus={(e) => {
@@ -72,7 +111,11 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
             }}
             // Fills the box's height (the whole box takes the tap), and the box grows
             // from its minimum when the phone's text size is turned up.
-            className={cn("min-w-0 flex-1 text-foreground", !multiline && "self-stretch", filled ? "text-[15px]" : "text-base")}
+            className={cn(
+              "min-w-0 flex-1 text-foreground",
+              !multiline && "self-stretch",
+              filled ? "text-[15px]" : "text-base",
+            )}
             style={{ fontFamily: "Manrope_400Regular" }}
             // The visible label, read out by screen readers (a caller's own label wins).
             accessibilityLabel={label}
@@ -81,7 +124,11 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
           {trailing}
         </View>
       </View>
-      {error ? <Txt className="text-xs text-destructive">{error}</Txt> : hint ? <Txt className="text-xs text-muted-foreground">{hint}</Txt> : null}
+      {error ? (
+        <Txt className="text-xs text-destructive">{error}</Txt>
+      ) : hint ? (
+        <Txt className="text-xs text-muted-foreground">{hint}</Txt>
+      ) : null}
     </View>
   );
 });
@@ -104,7 +151,11 @@ export function PasswordField(props: FieldProps) {
           hitSlop={8}
           className="-mr-1.5 size-8 items-center justify-center"
         >
-          {visible ? <EyeOff size={18} color={colors["muted-foreground"]} /> : <Eye size={18} color={colors["muted-foreground"]} />}
+          {visible ? (
+            <EyeOff size={18} color={colors["muted-foreground"]} />
+          ) : (
+            <Eye size={18} color={colors["muted-foreground"]} />
+          )}
         </Pressable>
       }
     />
@@ -112,14 +163,30 @@ export function PasswordField(props: FieldProps) {
 }
 
 /** A search box: the design's soft filled field with a magnifier. */
-export function SearchField({ value, onChangeText, placeholder = "Search questions", className }: { value: string; onChangeText: (v: string) => void; placeholder?: string; className?: string }) {
+export function SearchField({
+  value,
+  onChangeText,
+  placeholder = "Search questions",
+  className,
+}: {
+  value: string;
+  onChangeText: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
   const colors = useColors();
   return (
-    <View className={cn("min-h-12 flex-row items-center gap-2.5 rounded-2xl border border-transparent bg-muted px-4", className)}>
+    <View
+      className={cn(
+        "min-h-12 flex-row items-center gap-2.5 rounded-2xl border border-transparent bg-muted px-4",
+        className,
+      )}
+    >
       <Search size={17} color={colors["muted-foreground"]} />
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        maxFontSizeMultiplier={MAX_FONT_SCALE}
         placeholder={placeholder}
         placeholderTextColor={colors["muted-foreground"]}
         returnKeyType="search"

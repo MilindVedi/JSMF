@@ -40,7 +40,7 @@ export function Topbar() {
   const [navOpen, setNavOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/80 sm:px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/80 sm:px-6">
       <Sheet open={navOpen} onOpenChange={setNavOpen}>
         <SheetTrigger className="-ml-1 flex size-8 items-center justify-center rounded-lg text-foreground hover:bg-muted md:hidden">
           <Menu className="size-5" />
@@ -60,11 +60,13 @@ export function Topbar() {
         </SheetContent>
       </Sheet>
 
-      <div className="md:hidden">
+      {/* On the narrowest phones (320) this row is full: the lockup is the
+          part that gives way (its name truncates last), never the avatar. */}
+      <div className="min-w-0 md:hidden">
         <Logo />
       </div>
 
-      <div className="ml-auto flex items-center gap-2 sm:gap-3">
+      <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
         {/* What the initials stand for. It lives here rather than beside the
             mark, because the sidebar holding the mark is 260px wide at every
             window size and the full lockup wrapped out of its header. From
@@ -80,7 +82,8 @@ export function Topbar() {
         {planLabel && (
           <Link
             href="/subscription"
-            className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted"
+            // Below 360 the row has no room for it; Subscription is also in the avatar menu.
+            className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted max-[359px]:hidden"
           >
             <CreditCard className="size-3.5 sm:hidden" />
             <span className="hidden sm:inline">{planLabel}</span>

@@ -222,8 +222,9 @@ export function ExamScreen(props: ExamScreenProps) {
       ) : null}
 
       {/* Status counts + the full grid */}
-      <View className="h-12 flex-row items-center gap-2.5 border-b border-border bg-background px-4">
-        <View className="flex-1 flex-row items-center gap-2" accessibilityLabel="Question status counts">
+      {/* Grows instead of clipping: on a small phone with large text the counts wrap. */}
+      <View className="min-h-12 flex-row items-center gap-2.5 border-b border-border bg-background px-4 py-1.5">
+        <View className="flex-1 flex-row flex-wrap items-center gap-2" accessibilityLabel="Question status counts">
           {EXAM_STATUS_ORDER.map((status) => (
             <View key={status} accessibilityLabel={`${EXAM_STATUS_LABEL[status]}: ${panelCounts[status]}`}>
               <ExamStatusCell status={status} size={26}>
@@ -232,7 +233,7 @@ export function ExamScreen(props: ExamScreenProps) {
             </View>
           ))}
         </View>
-        <Pressable accessibilityRole="button" onPress={() => setGridOpen(true)} className="h-9 flex-row items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 active:bg-muted">
+        <Pressable accessibilityRole="button" onPress={() => setGridOpen(true)} className="min-h-9 shrink-0 flex-row items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 active:bg-muted">
           <LayoutGrid size={15} color={colors.foreground} />
           <Txt weight={600} className="text-xs">
             All questions

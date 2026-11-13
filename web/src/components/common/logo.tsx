@@ -40,7 +40,7 @@ export function Logo({
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- build-time constant from public/ */}
       <img src="/favicon.png" alt="" width={40} height={40} className="size-10 shrink-0 object-contain" />
-      <span>
+      <span className="min-w-0 truncate">
         <span className="font-semibold">JSMF</span>
         <span className={cn("font-normal", inherit ? "opacity-70" : "text-muted-foreground")}>
           {" "}

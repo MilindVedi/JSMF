@@ -11,6 +11,10 @@ import { useMentorPortrait } from "@/lib/use-platform-settings";
 
 /** Bundled with the website, and used whenever no photo has been uploaded. */
 const BUNDLED_PHOTO = "/dr-angad-rai-v2.jpg";
+/**
+ * Read by screen readers. The browser also paints it in the image's text colour
+ * until the photo arrives, so the <img>s set `text-transparent` to keep it off screen.
+ */
 const PHOTO_ALT = "Dr. Angad Rai wearing his white coat and stethoscope";
 
 /**
@@ -94,7 +98,7 @@ function PortraitPoster({ photo, className }: { photo: string; className: string
           width={768}
           height={1024}
           loading="eager"
-          className="mentor-photo"
+          className="mentor-photo text-transparent"
         />
 
         <div className="absolute left-1/2 top-6 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-primary-foreground/40 bg-card/85 px-2.5 py-2 text-[9px] font-bold uppercase text-primary backdrop-blur-md sm:px-3 sm:text-[10px]">
@@ -138,7 +142,7 @@ function PortraitCard({ photo, className }: { photo: string; className: string }
 
       <div className="portrait-frame">
         {/* eslint-disable-next-line @next/next/no-img-element -- bundled, or a signed storage URL */}
-        <img src={photo} alt={PHOTO_ALT} width={800} height={1000} className="h-full w-full object-cover" />
+        <img src={photo} alt={PHOTO_ALT} width={800} height={1000} className="h-full w-full object-cover text-transparent" />
       </div>
       <div className="doctor-credential">
         <div className="credential-chip absolute -top-3 right-4 z-10 flex w-fit items-center gap-2 shadow-md">

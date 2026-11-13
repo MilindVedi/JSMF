@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { AnimatedView } from "@/components/motion/animated";
+import { useIsCompact } from "@/components/ui/app-frame";
 import { usePressScale } from "@/components/motion/loop";
 import { BRAND_GRADIENT } from "@/components/ui/button";
 import { LinearGradientFill } from "@/components/ui/gradient";
@@ -20,7 +21,15 @@ const BAR = {
   /** Gap under the bar when the phone has no gesture-bar inset. */
   minBottom: 12,
   maxWidth: 416,
+  /** How far a label may shrink to fit its slot. */
+  minLabelScale: 0.85,
 };
+/** On a narrow phone (280-340 wide) the bar hugs the edges more and labels may shrink further, so "My Progress" still fits whole. */
+const COMPACT_BAR = { ...BAR, pad: 4, side: 8, minLabelScale: 0.72 };
+
+function useBar() {
+  return useIsCompact() ? COMPACT_BAR : BAR;
+}
 const EASE = Easing.bezier(0.2, 0.8, 0.2, 1);
 
 function useBarBottom() {
@@ -33,7 +42,8 @@ function useBarBottom() {
  * item isn't hidden under the floating bar. Every tab's scroll view adds it.
  */
 export function useTabBarClearance() {
-  return useBarBottom() + BAR.itemHeight + BAR.pad * 2 + 2 + 20;
+  const bar = useBar();
+  return useBarBottom() + bar.itemHeight + bar.pad * 2 + 2 + 20;
 }
 
 /**
@@ -48,6 +58,7 @@ export function useTabBarClearance() {
 export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const colors = useColors();
   const reduceMotion = useReducedMotion();
+  const bar = useBar();
   const bottom = useBarBottom();
   const keyboardUp = useAndroidKeyboardUp();
   const [rowWidth, setRowWidth] = useState(0);
@@ -67,13 +78,13 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
   return (
     <View
       pointerEvents="box-none"
-      style={{ position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", paddingHorizontal: BAR.side, paddingBottom: bottom }}
+      style={{ position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", paddingHorizontal: bar.side, paddingBottom: bottom }}
     >
       <View
         style={{
           width: "100%",
           maxWidth: BAR.maxWidth,
-          padding: BAR.pad,
+          padding: bar.pad,
           borderRadius: BAR.radius,
           borderWidth: 1,
           borderColor: withAlpha(colors.primary, 0.15),
@@ -113,6 +124,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
               <TabItem
                 key={route.key}
                 label={label}
+                minLabelScale={bar.minLabelScale}
                 focused={focused}
                 icon={options.tabBarIcon?.({ focused, color, size: 20 })}
                 color={color}
@@ -133,6 +145,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
 /** One slot: the icon over its label. The icon pops a little when its tab is chosen. */
 function TabItem({
   label,
+  minLabelScale,
   focused,
   icon,
   color,
@@ -140,6 +153,7 @@ function TabItem({
   onLongPress,
 }: {
   label: string;
+  minLabelScale: number;
   focused: boolean;
   icon: ReactNode;
   color: string;
@@ -179,7 +193,7 @@ function TabItem({
           style={{ color }}
           numberOfLines={1}
           adjustsFontSizeToFit
-          minimumFontScale={0.85}
+          minimumFontScale={minLabelScale}
           maxFontSizeMultiplier={1.2}
         >
           {label}

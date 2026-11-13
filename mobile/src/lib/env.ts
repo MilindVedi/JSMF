@@ -14,3 +14,6 @@ export const SUPPORT_EMAIL = "support@jsmf.me";
 
 /** The main JSMF website (web's "Visit JSMF website"); EXPO_PUBLIC_MAIN_WEBSITE_URL overrides it, as web's NEXT_PUBLIC_MAIN_WEBSITE_URL does. */
 export const MAIN_WEBSITE_URL = process.env.EXPO_PUBLIC_MAIN_WEBSITE_URL ?? "https://jsmf.me";
+
+/** The PYQs website (the same practice, in a browser); EXPO_PUBLIC_PYQS_WEBSITE_URL overrides it, as main-web's NEXT_PUBLIC_MED_PREP_URL points at it. */
+export const PYQS_WEBSITE_URL = process.env.EXPO_PUBLIC_PYQS_WEBSITE_URL ?? "https://prep.jsmf.me";

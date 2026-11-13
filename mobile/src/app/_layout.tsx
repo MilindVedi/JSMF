@@ -25,6 +25,7 @@ import { queryClient } from "@/lib/core";
 import { trackSignedInPath, useAuthStore } from "@/lib/auth-store";
 import { loadCelebratedDate } from "@/lib/streak";
 import { ThemeRoot, useColors, useScheme } from "@/theme/theme";
+import { AppFrame } from "@/components/ui/app-frame";
 import { ToastHost } from "@/components/ui/toast-host";
 import { LegalGate } from "@/components/legal/legal-gate";
 import { StreakFlyOverlay } from "@/components/streak/fly-overlay";
@@ -102,32 +103,35 @@ function AppStack({ signedIn }: { signedIn: boolean }) {
           tabs and the rest of the stack stay usable (web's error.tsx is per
           segment the same way). Inherited by the nested navigators. The root
           ErrorBoundary below catches only what fails above the stack. */}
-      <Stack
-        unstable_screenErrorBoundary={ErrorScreen}
-        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "slide_from_right" }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Protected guard={signedIn}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="session/[id]/index" options={{ gestureEnabled: false }} />
-          <Stack.Screen name="session/[id]/results" />
-          <Stack.Screen name="session/[id]/review" />
-          <Stack.Screen name="profile" />
-          <Stack.Screen name="history" />
-          <Stack.Screen name="bookmarks" />
-          <Stack.Screen name="reinforce" />
-          <Stack.Screen name="subscription" />
-        </Stack.Protected>
-        <Stack.Protected guard={!signedIn}>
-          <Stack.Screen name="(auth)" />
-        </Stack.Protected>
-        {/* Public: readable signed in or out, and the OAuth deep-link landing. */}
-        <Stack.Screen name="legal/[slug]/index" />
-        <Stack.Screen name="legal/[slug]/versions" />
-        <Stack.Screen name="legal/[slug]/v/[version]" />
-        <Stack.Screen name="auth/callback" />
-        <Stack.Screen name="+not-found" />
-      </Stack>
+      {/* On a tablet or unfolded phone, every screen sits in one phone-width column. */}
+      <AppFrame>
+        <Stack
+          unstable_screenErrorBoundary={ErrorScreen}
+          screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "slide_from_right" }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Protected guard={signedIn}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="session/[id]/index" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="session/[id]/results" />
+            <Stack.Screen name="session/[id]/review" />
+            <Stack.Screen name="profile" />
+            <Stack.Screen name="history" />
+            <Stack.Screen name="bookmarks" />
+            <Stack.Screen name="reinforce" />
+            <Stack.Screen name="subscription" />
+          </Stack.Protected>
+          <Stack.Protected guard={!signedIn}>
+            <Stack.Screen name="(auth)" />
+          </Stack.Protected>
+          {/* Public: readable signed in or out, and the OAuth deep-link landing. */}
+          <Stack.Screen name="legal/[slug]/index" />
+          <Stack.Screen name="legal/[slug]/versions" />
+          <Stack.Screen name="legal/[slug]/v/[version]" />
+          <Stack.Screen name="auth/callback" />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+      </AppFrame>
     </>
   );
 }

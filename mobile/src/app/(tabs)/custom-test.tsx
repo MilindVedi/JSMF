@@ -22,9 +22,15 @@ import { Card, Chip } from "@/components/ui/primitives";
 import { Dialog } from "@/components/ui/sheet";
 import { TabScreen } from "@/components/ui/screen";
 import { Slider } from "@/components/ui/slider";
-import { cn, Txt } from "@/components/ui/text";
+import { cn, MAX_FONT_SCALE, Txt } from "@/components/ui/text";
 import { FullMockCard } from "@/components/exam/full-mock-card";
-import { ActiveFilterChips, EMPTY_QUESTION_FILTERS, FilterBar, filtersToQuery, type QuestionFiltersState } from "@/components/filters/filters";
+import {
+  ActiveFilterChips,
+  EMPTY_QUESTION_FILTERS,
+  FilterBar,
+  filtersToQuery,
+  type QuestionFiltersState,
+} from "@/components/filters/filters";
 
 type PoolMode = "all" | "unattempted";
 
@@ -38,7 +44,9 @@ export default function CustomTestScreen() {
   const colors = useColors();
   const startSession = useStartSession();
   const lookup = useTaxonomyLookup();
-  const [filters, setFilters] = useState<QuestionFiltersState>(EMPTY_QUESTION_FILTERS);
+  const [filters, setFilters] = useState<QuestionFiltersState>(
+    EMPTY_QUESTION_FILTERS,
+  );
   const [count, setCount] = useState(20);
   const [useAll, setUseAll] = useState(false);
   const [timed, setTimed] = useState(false);
@@ -49,16 +57,29 @@ export default function CustomTestScreen() {
   const [pool, setPool] = useState<PoolMode>("all");
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const query = useMemo<QuestionQuery>(() => ({ ...filtersToQuery(filters), status: pool === "unattempted" ? "unattempted" : undefined }), [filters, pool]);
-  const { count: poolCount, isPending: countPending, error: countError } = useQuestionCount(query);
+  const query = useMemo<QuestionQuery>(
+    () => ({
+      ...filtersToQuery(filters),
+      status: pool === "unattempted" ? "unattempted" : undefined,
+    }),
+    [filters, pool],
+  );
+  const {
+    count: poolCount,
+    isPending: countPending,
+    error: countError,
+  } = useQuestionCount(query);
   const available = Math.min(poolCount, MAX_SESSION_QUESTIONS);
   const finalCount = customTestFinalCount(available, count, useAll);
-  const { minDurationMin, maxDurationMin, durationMin } = customTestDurations(finalCount, pace);
+  const { minDurationMin, maxDurationMin, durationMin } = customTestDurations(
+    finalCount,
+    pace,
+  );
 
   const summary = `${finalCount} question${finalCount === 1 ? "" : "s"} · ${selectionSummary(filters.examIds, "All Exams", lookup.examName)} · ${selectionSummary(
     filters.subjectIds,
     "All Subjects",
-    (id) => lookup.subject(id)?.name ?? id
+    (id) => lookup.subject(id)?.name ?? id,
   )} · ${timed ? `${durationMin} min timed` : "Untimed"}`;
 
   function start() {
@@ -83,11 +104,18 @@ export default function CustomTestScreen() {
   /** A typed number of minutes, kept between the realistic and relaxed pace; stored as a pace so it scales with the count. */
   function pickDuration(minutes: number) {
     if (finalCount === 0) return;
-    setPace(Math.min(Math.max(minutes, minDurationMin), maxDurationMin) / finalCount);
+    setPace(
+      Math.min(Math.max(minutes, minDurationMin), maxDurationMin) / finalCount,
+    );
   }
 
   return (
-    <TabScreen eyebrow="Build your own" eyebrowIcon={WandSparkles} title="Custom test" subtitle="Pick your filters and how many questions.">
+    <TabScreen
+      eyebrow="Build your own"
+      eyebrowIcon={WandSparkles}
+      title="Custom test"
+      subtitle="Pick your filters and how many questions."
+    >
       <FullMockCard />
 
       <Card className="gap-3">
@@ -95,7 +123,9 @@ export default function CustomTestScreen() {
           <Txt weight={700} className="text-sm">
             Filters
           </Txt>
-          <Txt className="mt-0.5 text-[11px] text-muted-foreground">Leave a filter empty to include everything.</Txt>
+          <Txt className="mt-0.5 text-[11px] text-muted-foreground">
+            Leave a filter empty to include everything.
+          </Txt>
         </View>
         <FilterBar value={filters} onChange={setFilters} wrap />
         <ActiveFilterChips value={filters} onChange={setFilters} />
@@ -115,7 +145,12 @@ export default function CustomTestScreen() {
                   : `Drawn from the ${available} question${available === 1 ? "" : "s"} available with these filters.`}
             </Txt>
           </View>
-          <NumberBox value={finalCount} unit="questions" onCommit={pickCount} disabled={available === 0} />
+          <NumberBox
+            value={finalCount}
+            unit="questions"
+            onCommit={pickCount}
+            disabled={available === 0}
+          />
         </View>
         <View className="flex-row flex-wrap gap-2">
           {CUSTOM_TEST_QUESTION_COUNTS.map((n) => (
@@ -130,7 +165,12 @@ export default function CustomTestScreen() {
               }}
             />
           ))}
-          <Chip label="All" selected={useAll} disabled={available === 0} onPress={() => setUseAll(true)} />
+          <Chip
+            label="All"
+            selected={useAll}
+            disabled={available === 0}
+            onPress={() => setUseAll(true)}
+          />
         </View>
         <Slider
           value={Math.max(finalCount, 1)}
@@ -142,7 +182,8 @@ export default function CustomTestScreen() {
         />
         {!useAll && available > 0 && count > available ? (
           <Txt weight={500} className="text-sm text-error-foreground">
-            Only {available} question{available === 1 ? "" : "s"} match these filters — starting with {finalCount} instead.
+            Only {available} question{available === 1 ? "" : "s"} match these
+            filters — starting with {finalCount} instead.
           </Txt>
         ) : null}
       </Card>
@@ -154,7 +195,9 @@ export default function CustomTestScreen() {
             <Txt weight={700} className="text-sm">
               Timed test
             </Txt>
-            <Txt className="mt-0.5 text-[11px] leading-4 text-muted-foreground">Practise under real exam time pressure, on the exam console.</Txt>
+            <Txt className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+              Practise under real exam time pressure, on the exam console.
+            </Txt>
           </View>
           <Switch
             value={timed}
@@ -170,12 +213,25 @@ export default function CustomTestScreen() {
           <>
             <View className="flex-row flex-wrap gap-2">
               {PACE_PRESETS.map((p) => (
-                <Chip key={p.label} label={p.label} selected={Math.abs(pace - p.value) < 0.01} disabled={available === 0} onPress={() => setPace(p.value)} />
+                <Chip
+                  key={p.label}
+                  label={p.label}
+                  selected={Math.abs(pace - p.value) < 0.01}
+                  disabled={available === 0}
+                  onPress={() => setPace(p.value)}
+                />
               ))}
             </View>
             <View className="flex-row items-center justify-between gap-3">
-              <Txt className="flex-1 text-xs text-muted-foreground">Or drag (or type) to pick a duration</Txt>
-              <NumberBox value={durationMin} unit="minutes" onCommit={pickDuration} disabled={available === 0} />
+              <Txt className="flex-1 text-xs text-muted-foreground">
+                Or drag (or type) to pick a duration
+              </Txt>
+              <NumberBox
+                value={durationMin}
+                unit="minutes"
+                onCommit={pickDuration}
+                disabled={available === 0}
+              />
             </View>
             <Slider
               value={pace}
@@ -187,7 +243,10 @@ export default function CustomTestScreen() {
               accessibilityLabel="Test duration"
             />
             <Txt className="text-xs text-muted-foreground">
-              {minDurationMin} min (realistic pace) – {maxDurationMin} min (relaxed pace) for {finalCount} question{finalCount === 1 ? "" : "s"}. Pace is {MIN_MIN_PER_QUESTION}–{MAX_MIN_PER_QUESTION} min per question.
+              {minDurationMin} min (realistic pace) – {maxDurationMin} min
+              (relaxed pace) for {finalCount} question
+              {finalCount === 1 ? "" : "s"}. Pace is {MIN_MIN_PER_QUESTION}–
+              {MAX_MIN_PER_QUESTION} min per question.
             </Txt>
           </>
         ) : null}
@@ -202,7 +261,9 @@ export default function CustomTestScreen() {
           loading={startSession.isPending}
           onPress={() => setConfirmOpen(true)}
         />
-        <Txt className="text-center text-xs text-muted-foreground">{summary}</Txt>
+        <Txt className="text-center text-xs text-muted-foreground">
+          {summary}
+        </Txt>
       </View>
 
       <Dialog
@@ -212,7 +273,11 @@ export default function CustomTestScreen() {
         description={summary}
         footer={
           <>
-            <Button label="Cancel" variant="outline" onPress={() => setConfirmOpen(false)} />
+            <Button
+              label="Cancel"
+              variant="outline"
+              onPress={() => setConfirmOpen(false)}
+            />
             <Button label="Start Test" icon={Sparkles} onPress={start} />
           </>
         }
@@ -223,8 +288,16 @@ export default function CustomTestScreen() {
               Include (optional)
             </Txt>
             <View className="flex-row flex-wrap gap-2">
-              <Chip label="All questions" selected={pool === "all"} onPress={() => setPool("all")} />
-              <Chip label="Unattempted only" selected={pool === "unattempted"} onPress={() => setPool("unattempted")} />
+              <Chip
+                label="All questions"
+                selected={pool === "all"}
+                onPress={() => setPool("all")}
+              />
+              <Chip
+                label="Unattempted only"
+                selected={pool === "unattempted"}
+                onPress={() => setPool("unattempted")}
+              />
             </View>
           </View>
           <View className="gap-2">
@@ -233,12 +306,25 @@ export default function CustomTestScreen() {
             </Txt>
             <View className="flex-row flex-wrap gap-2">
               {SESSION_ORDER_MODES.map((m) => (
-                <Chip key={m.value} label={m.label} selected={order === m.value} onPress={() => setOrder(m.value)} />
+                <Chip
+                  key={m.value}
+                  label={m.label}
+                  selected={order === m.value}
+                  onPress={() => setOrder(m.value)}
+                />
               ))}
             </View>
-            <Txt className="text-xs text-muted-foreground">{SESSION_ORDER_MODES.find((m) => m.value === order)?.hint}</Txt>
+            <Txt className="text-xs text-muted-foreground">
+              {SESSION_ORDER_MODES.find((m) => m.value === order)?.hint}
+            </Txt>
           </View>
-          <Field label="Test name (optional)" value={name} onChangeText={setName} placeholder="Custom Test" maxLength={60} />
+          <Field
+            label="Test name (optional)"
+            value={name}
+            onChangeText={setName}
+            placeholder="Custom Test"
+            maxLength={60}
+          />
         </View>
       </Dialog>
     </TabScreen>
@@ -250,7 +336,17 @@ export default function CustomTestScreen() {
  * committed when typing ends, so a half-typed "1" on the way to "120" never
  * jumps the slider.
  */
-function NumberBox({ value, unit, onCommit, disabled }: { value: number; unit: string; onCommit: (value: number) => void; disabled?: boolean }) {
+function NumberBox({
+  value,
+  unit,
+  onCommit,
+  disabled,
+}: {
+  value: number;
+  unit: string;
+  onCommit: (value: number) => void;
+  disabled?: boolean;
+}) {
   const [draft, setDraft] = useState<string | null>(null);
   const commit = () => {
     if (draft === null) return;
@@ -268,6 +364,7 @@ function NumberBox({ value, unit, onCommit, disabled }: { value: number; unit: s
         keyboardType="number-pad"
         returnKeyType="done"
         maxLength={4}
+        maxFontSizeMultiplier={MAX_FONT_SCALE}
         selectTextOnFocus
         editable={!disabled}
         accessibilityLabel={`Number of ${unit}`}
