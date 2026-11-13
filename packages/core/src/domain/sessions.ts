@@ -115,6 +115,15 @@ export function scoreBandLabel(accuracy: number): string {
 export type ReviewFilter = "all" | "correct" | "incorrect" | "unattempted";
 export type ReviewStatus = "correct" | "incorrect" | "unattempted";
 
+/**
+ * A submitted session's question whose answer the server held back — on the
+ * free plan, the questions left unanswered. The review shows a "subscribe to
+ * see the answer" note in place of the explanation.
+ */
+export function isAnswerLocked(detail: { submitted: boolean }, question: Pick<SessionQuestion, "correctOptionId">): boolean {
+  return detail.submitted && !question.correctOptionId;
+}
+
 export function reviewStatusOf(session: Pick<TestSession, "attempts">, questionId: string): ReviewStatus {
   const attempt: Attempt | undefined = session.attempts[questionId];
   if (!attempt) return "unattempted";

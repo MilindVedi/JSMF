@@ -99,7 +99,9 @@ export default function QuestionBankPage() {
     () => toQuery(filters, status, settledSearch, sort),
     [filters, status, settledSearch, sort]
   );
-  const { data, error, isPending, isFetching, refetch } = useQuestions(query, page, PAGE_SIZE);
+  // While a changed filter loads, `data` is still the previous result; the
+  // count and "Practice these" wait for the new one.
+  const { data, error, isPending, isFetching, isPlaceholderData, refetch } = useQuestions(query, page, PAGE_SIZE);
   const total = data?.total ?? 0;
   const items = data?.items ?? [];
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -182,7 +184,7 @@ export default function QuestionBankPage() {
           <ListFilter className="size-4 shrink-0 text-primary" />
           {isPending ? "Loading questions…" : `${total} question${total === 1 ? "" : "s"} match your filters`}
         </p>
-        <Button onClick={practiceAll} disabled={total === 0 || startSession.isPending}>
+        <Button onClick={practiceAll} disabled={total === 0 || isPlaceholderData || startSession.isPending}>
           <Play className="size-4" />
           Practice these questions
           <ArrowRight className="size-4" />

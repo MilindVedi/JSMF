@@ -1,8 +1,9 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 import { Image } from "expo-image";
-import { Activity, Bone, Camera, CircleCheck, Circle, CircleX, Microscope, Scan, ScanLine, Workflow } from "lucide-react-native";
+import { Activity, Bone, Camera, CircleCheck, Circle, CircleX, Lock, Microscope, Scan, ScanLine, Workflow } from "lucide-react-native";
 import { DIFFICULTY_LABEL, OPTION_LETTERS, type FigureKind, type QuestionFigure, type SessionQuestion } from "@jsmf/core/domain";
 import { useTaxonomyLookup } from "@jsmf/core/hooks";
 import { AnimatedPressable, AnimatedView } from "@/components/motion/animated";
@@ -210,8 +211,38 @@ const VERDICT_LABEL = { correct: "Correct!", incorrect: "Incorrect", unattempted
  * The verdict and explanation after answering (practice), or in review: a
  * lavender panel with a violet edge, rising in when it appears.
  */
-export function ExplanationPanel({ question, status }: { question: SessionQuestion; status: "correct" | "incorrect" | "unattempted" }) {
+export function ExplanationPanel({
+  question,
+  status,
+  locked = false,
+}: {
+  question: SessionQuestion;
+  status: "correct" | "incorrect" | "unattempted";
+  /** Free plan: an unanswered question's answer is held back (core's isAnswerLocked). */
+  locked?: boolean;
+}) {
   const colors = useColors();
+  const router = useRouter();
+  if (locked) {
+    return (
+      <View className="rounded-[18px] border border-border bg-muted px-4 py-3.5">
+        <View className="flex-row items-center gap-1.5">
+          <Lock size={15} color={colors["muted-foreground"]} strokeWidth={2.2} />
+          <Txt weight={700} className="text-xs uppercase tracking-wider text-muted-foreground">
+            Not attempted · answer locked
+          </Txt>
+        </View>
+        <Txt className="mt-1.5 text-sm leading-6">
+          On the free plan, the review shows answers and explanations for the questions you answered. Subscribe to see them for every question.
+        </Txt>
+        <Pressable accessibilityRole="link" onPress={() => router.push("/subscription")} hitSlop={8} className="mt-2 self-start py-1">
+          <Txt weight={700} className="text-sm text-primary">
+            See plans
+          </Txt>
+        </Pressable>
+      </View>
+    );
+  }
   const Icon = status === "correct" ? CircleCheck : status === "incorrect" ? CircleX : Circle;
   const color = status === "correct" ? colors["success-foreground"] : status === "incorrect" ? colors["error-foreground"] : colors["muted-foreground"];
   return (

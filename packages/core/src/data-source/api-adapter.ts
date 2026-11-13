@@ -114,6 +114,8 @@ interface WireSessionSummary {
   pattern?: ExamPattern | null;
   sectionWindows?: ExamSectionWindow[] | null;
   marks?: Marks;
+  /** A submitted session's unanswered questions whose answer is for subscribers (free plan). */
+  lockedAnswers?: number;
 }
 
 /** History rows carry what the session covers, computed from its questions. */
@@ -235,6 +237,7 @@ function toDetail(wire: WireSession): SessionDetail {
     questions: wire.questions.map(toQuestion),
     submitted: wire.status === "SUBMITTED",
     marks: wire.marks,
+    lockedAnswers: wire.lockedAnswers ?? 0,
   };
 }
 

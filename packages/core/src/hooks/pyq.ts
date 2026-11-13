@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -9,6 +9,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { getCoreConfig } from "../config";
+import { shouldRetryQuery } from "../query";
 import { apiDataSource } from "../data-source/api-adapter";
 import {
   DailyLimitError,
@@ -282,7 +283,15 @@ export function useAnswer(sessionId: string) {
   return useMutation({
     mutationFn: (input: { questionId: string; optionId: string; timeSpentMs: number }) =>
       getDataSource().answer(sessionId, input.questionId, input.optionId, input.timeSpentMs),
-    onSuccess: (result, input) => {
+    // Saving the same answer again is harmless (the server keeps the first
+    // practice answer, and a test answer is just set again), so a dropped
+    // connection or a 5xx is retried rather than lost; a 4xx never is.
+    retry: shouldRetryQuery,
+    onSuccess: async (result, input) => {
+      // A session reload already in flight (a flag, a refocus) started before
+      // this answer existed; landing afterwards it would erase it from the
+      // screen. Cancel it first — the write below is the newer truth.
+      await client.cancelQueries({ queryKey: pyqKeys.session(sessionId) });
       const detail = client.getQueryData<SessionDetail>(pyqKeys.session(sessionId));
       const firstAnswer = !detail?.session.attempts[input.questionId];
       if (detail) {
@@ -365,7 +374,10 @@ export function useSetFlag(sessionId: string) {
       writeFlag(input.questionId, input.flagged);
       return { previous: Boolean(previous) };
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: pyqKeys.session(sessionId) }),
+    // The optimistic write above already holds what the server stored.
+    // Reloading the whole session here used to race an answer saved in the
+    // meantime and wipe it from the screen; re-assert the flag instead.
+    onSuccess: (_result, input) => writeFlag(input.questionId, input.flagged),
     onError: (error, input, context) => {
       if (context) writeFlag(input.questionId, context.previous);
       notifyError(error.message);
@@ -377,6 +389,9 @@ export function useSubmitSession() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (sessionId: string) => getDataSource().submitSession(sessionId),
+    // Submitting is idempotent on the server, so a dropped connection (above
+    // all the automatic submit at time-up) is retried, not left half-done.
+    retry: shouldRetryQuery,
     onSuccess: (detail) => {
       // The results screen reads these two; everything else the submit changed
       // (history, stats, revision) reloads when it is next opened.
@@ -471,10 +486,16 @@ export function useStartSession(handlers: StartSessionHandlers) {
     mutationFn: (input: CreateSessionInput) => getDataSource().createSession(input),
   });
   const { onStarted, onDailyLimit, getSourceHref } = handlers;
+  // One start at a time, whichever button or row asked: a double tap used to
+  // create two sessions (and open two runners). A ref, because both taps can
+  // land before a re-render shows `isPending`.
+  const inFlight = useRef(false);
 
   const start = useCallback(
     async (params: StartSessionParams) => {
       if (params.questionIds && params.questionIds.length === 0) return;
+      if (inFlight.current) return;
+      inFlight.current = true;
       const { startIndex, ...input } = params;
       // Captured at call time so "Save & exit" returns to the screen the user was on.
       const sourceHref = getSourceHref?.();
@@ -485,6 +506,8 @@ export function useStartSession(handlers: StartSessionHandlers) {
       } catch (error) {
         if (error instanceof DailyLimitError) onDailyLimit(error);
         else notifyError(error instanceof Error ? error.message : "Could not start the session.");
+      } finally {
+        inFlight.current = false;
       }
     },
     [mutation, invalidate, onStarted, onDailyLimit, getSourceHref]
@@ -504,9 +527,12 @@ export function useStartMock(handlers: StartSessionHandlers) {
       getDataSource().startMock(input.examId, input.sourceHref),
   });
   const { onStarted, onDailyLimit, getSourceHref } = handlers;
+  const inFlight = useRef(false);
 
   const start = useCallback(
     async (examId: ExamId) => {
+      if (inFlight.current) return;
+      inFlight.current = true;
       try {
         const id = await mutation.mutateAsync({ examId, sourceHref: getSourceHref?.() });
         void client.invalidateQueries({ queryKey: pyqKeys.sessionsAll, refetchType: "none" });
@@ -514,6 +540,8 @@ export function useStartMock(handlers: StartSessionHandlers) {
       } catch (error) {
         if (error instanceof DailyLimitError) onDailyLimit(error);
         else notifyError(error instanceof Error ? error.message : "Could not start the mock.");
+      } finally {
+        inFlight.current = false;
       }
     },
     [mutation, client, onStarted, onDailyLimit, getSourceHref]

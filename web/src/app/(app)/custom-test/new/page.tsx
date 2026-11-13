@@ -73,7 +73,8 @@ export default function CustomTestBuilderPage() {
       status: poolMode === "unattempted" ? "unattempted" : undefined,
     };
   }, [filters, poolMode]);
-  const { count: poolCount, isPending: countPending, error: countError } = useQuestionCount(query);
+  // `countSettling`: a changed filter's count is still loading and the old one is on screen.
+  const { count: poolCount, isPending: countPending, isPlaceholderData: countSettling, error: countError } = useQuestionCount(query);
 
   // Sessions hold at most 200 questions (backend MAX_SESSION_QUESTIONS).
   const availableCount = Math.min(poolCount, MAX_SESSION_QUESTIONS);
@@ -442,7 +443,7 @@ export default function CustomTestBuilderPage() {
             <Button variant="outline" onClick={() => setConfirmOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleConfirmStart}>
+            <Button onClick={handleConfirmStart} disabled={availableCount === 0 || countSettling || startSession.isPending}>
               <Sparkles />
               Start Test
             </Button>

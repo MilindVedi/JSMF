@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Circle, XCircle } from "lucide-react";
@@ -52,7 +52,14 @@ export default function ResultsPage() {
     setFilter((prev) => (prev === next ? "all" : next));
   }
 
-  if (isPending) return <PageLoading />;
+  // Results exist once a session is submitted; a running one (an old tab, a
+  // typed URL) goes back to its questions instead of showing a false 0%.
+  const running = Boolean(detail && !detail.submitted);
+  useEffect(() => {
+    if (running) router.replace(`/practice/${params.sessionId}`);
+  }, [running, router, params.sessionId]);
+
+  if (isPending || running) return <PageLoading />;
 
   if (error && !(error instanceof NotFoundError)) {
     return (
@@ -242,7 +249,7 @@ export default function ResultsPage() {
                 return (
                   <Link
                     key={q.id}
-                    href={`/practice/${session.id}?i=${i}`}
+                    href={`/practice/${session.id}/review?i=${i}&filter=all`}
                     className="flex items-center gap-3 px-4 py-3 text-sm transition-colors hover:bg-muted/50"
                   >
                     <span

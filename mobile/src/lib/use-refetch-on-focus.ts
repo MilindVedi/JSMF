@@ -18,6 +18,11 @@ interface Refetchable {
  * first focus is skipped — the screen's own mount has just fetched.
  */
 export function useRefetchOnFocus(...queries: Refetchable[]): void {
+  // Read while rendering on purpose: React Query only keeps a result field
+  // current (and re-renders on its change) once a render has read it. Read
+  // only inside the focus callback, `isStale` could still say false the first
+  // time a hidden tab came back after a write elsewhere, and skip the reload.
+  for (const query of queries) void query.isStale;
   const first = useRef(true);
   const latest = useRef(queries);
   // The newest results, for the focus callback (which is created once).

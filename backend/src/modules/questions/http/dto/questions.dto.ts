@@ -35,6 +35,10 @@ import {
 import { QUESTION_SORTS, type QuestionSort } from '../../application/question-bank.service';
 
 const SLUG = /^[a-z0-9]+(?:-{1,2}[a-z0-9]+)*$/;
+/** Postgres text can't hold a NUL byte; refusing it here keeps such input a 400, not a 500. */
+const NO_NUL = /^[^\u0000]*$/;
+/** Deep enough for any real list; bounds `skip` so a huge page number is a 400, not an overflow. */
+const MAX_PAGE = 10_000;
 
 /** `a,b` in a query string, or an already-split array, to a trimmed string array. */
 const toStringArray = ({ value }: { value: unknown }): unknown =>
@@ -96,6 +100,8 @@ export class QuestionFiltersDto {
   @Transform(toIntArray)
   @IsArray()
   @IsInt({ each: true })
+  @Min(1950, { each: true })
+  @Max(2100, { each: true })
   years?: number[];
 
   @ApiPropertyOptional({
@@ -125,6 +131,7 @@ export class QuestionFiltersDto {
   @IsOptional()
   @IsString()
   @MaxLength(200)
+  @Matches(NO_NUL, { message: 'search contains an invalid character' })
   search?: string;
 }
 
@@ -134,6 +141,7 @@ export class PageQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(MAX_PAGE)
   page: number = 1;
 
   @ApiPropertyOptional({ default: 20 })
@@ -158,6 +166,7 @@ export class ListQuestionsQueryDto extends QuestionFiltersDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(MAX_PAGE)
   page: number = 1;
 
   @ApiPropertyOptional({ default: 20 })
@@ -184,6 +193,7 @@ export class StartSessionDto {
   @IsOptional()
   @IsString()
   @MaxLength(200)
+  @Matches(NO_NUL, { message: 'label contains an invalid character' })
   label?: string;
 
   @ApiPropertyOptional({
@@ -242,12 +252,13 @@ export class AnswerDto {
   selectedOptionId!: string;
 
   @ApiPropertyOptional({
-    description: 'Time spent on this question since last report, ms',
+    description: 'Time spent on this question since last report, ms (the server counts at most 6 hours per answer)',
   })
   @IsOptional()
   @IsInt()
   @Min(0)
-  @Max(6 * 3600 * 1000)
+  // No upper bound here: a question left open overnight must still be
+  // answerable. PracticeService caps what one answer adds.
   timeSpentMs?: number;
 }
 

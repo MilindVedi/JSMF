@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { EntitlementStatus } from '@prisma/client';
+import { EntitlementStatus, type Prisma } from '@prisma/client';
 import { AppConfig } from '../../../config/config.module';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { IS_PYQ_PLAN } from '../../../shared/pyq-plan';
@@ -67,23 +67,30 @@ export class PyqAccessService {
     };
   }
 
-  /**
-   * Throws when one more answer would exceed the free allowance. Checked
-   * before the write rather than enforced by a constraint: two answers racing
-   * in the same instant can overshoot by one, which costs nothing.
-   *
-   * On the path of every answer, so it skips what only the access page needs
-   * (the trial offer) and stops as soon as access is known to be unlimited.
-   */
-  async assertCanAnswer(userId: string): Promise<void> {
+  /** Unlimited practice right now (a live plan or a running trial) — the cheap half of `describe`. */
+  async hasUnlimited(userId: string): Promise<boolean> {
     const [current, trial] = await Promise.all([
       this.currentPlan(userId),
       this.subscriptions.activeTrial(userId),
     ]);
-    if (current || trial) return;
+    return Boolean(current || trial);
+  }
+
+  /**
+   * Throws when one more answer would exceed the free allowance.
+   *
+   * Exact, not best-effort: the caller holds the student's answer lock
+   * (PracticeService) and passes its transaction, so the count includes every
+   * answer already committed and no two answers can pass on the same count.
+   *
+   * On the path of every answer, so it skips what only the access page needs
+   * (the trial offer) and stops as soon as access is known to be unlimited.
+   */
+  async assertCanAnswer(userId: string, db: Prisma.TransactionClient | PrismaService = this.prisma): Promise<void> {
+    if (await this.hasUnlimited(userId)) return;
 
     const dailyLimit = this.config.get('PYQ_FREE_DAILY_QUESTIONS');
-    if ((await this.answeredToday(userId)) >= dailyLimit) {
+    if ((await this.answeredToday(userId, db)) >= dailyLimit) {
       throw new ForbiddenException({
         code: 'PYQ_DAILY_LIMIT_REACHED',
         message: `You have used today's ${dailyLimit} free questions. Upgrade for unlimited practice.`,
@@ -117,8 +124,8 @@ export class PyqAccessService {
     };
   }
 
-  private answeredToday(userId: string): Promise<number> {
-    return this.prisma.attempt.count({
+  private answeredToday(userId: string, db: Prisma.TransactionClient | PrismaService = this.prisma): Promise<number> {
+    return db.attempt.count({
       where: { userId, answeredAt: { gte: startOfIndiaDay() } },
     });
   }

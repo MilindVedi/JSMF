@@ -6,6 +6,7 @@ import { Check, ChevronLeft, ChevronRight, TriangleAlert, X } from "lucide-react
 import {
   defaultReviewFilter,
   firstIndexForFilter,
+  isAnswerLocked,
   neighborIndex,
   reviewCounts,
   reviewIndices,
@@ -113,7 +114,7 @@ export default function ReviewScreen() {
           <>
             <QuestionCard question={question} submitted selectedOptionId={session.attempts[question.id]?.selectedOptionId ?? null} onSelect={() => {}} />
             <View className="mt-5">
-              <ExplanationPanel question={question} status={status} />
+              <ExplanationPanel question={question} status={status} locked={isAnswerLocked(detail, question)} />
             </View>
           </>
         )}

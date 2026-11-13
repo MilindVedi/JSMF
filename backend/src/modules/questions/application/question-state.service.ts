@@ -24,7 +24,11 @@ export class QuestionStateService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Rebuilds this user's state for these questions. Rows that no longer
+   * Rebuilds this user's state for these questions. `flagged` is the flag of
+   * the session that touched the question last: a mark-for-review made in a
+   * submitted test can't be undone in that test, so it lasts until the
+   * question is next practised (answered unflagged, or unflagged there) —
+   * never forever. Rows that no longer
    * describe anything (an unflag with no answer behind it) are removed, so
    * "has a row" keeps meaning "answered or flagged".
    */
@@ -42,7 +46,7 @@ export class QuestionStateService {
              max(a.answered_at) FILTER (WHERE a.answered_at IS NOT NULL AND NOT a.is_correct),
              count(a.answered_at)::int,
              count(*) FILTER (WHERE a.answered_at IS NOT NULL AND NOT a.is_correct)::int,
-             bool_or(a.flagged),
+             (array_agg(a.flagged ORDER BY a.updated_at DESC, a.id DESC))[1],
              now()
       FROM pyq.attempts a
       JOIN pyq.practice_sessions s ON s.id = a.session_id
@@ -112,13 +116,13 @@ export class QuestionStateService {
                max(a.answered_at) FILTER (WHERE a.answered_at IS NOT NULL AND NOT a.is_correct),
                count(a.answered_at)::int,
                count(*) FILTER (WHERE a.answered_at IS NOT NULL AND NOT a.is_correct)::int,
-               bool_or(a.flagged),
+               (array_agg(a.flagged ORDER BY a.updated_at DESC, a.id DESC))[1],
                now()
         FROM pyq.attempts a
         JOIN pyq.practice_sessions s ON s.id = a.session_id
         WHERE NOT (s.mode = 'TEST' AND s.status = 'IN_PROGRESS')
         GROUP BY a.user_id, a.question_id
-        HAVING count(a.answered_at) > 0 OR bool_or(a.flagged)`;
+        HAVING count(a.answered_at) > 0 OR (array_agg(a.flagged ORDER BY a.updated_at DESC, a.id DESC))[1]`;
       // A full rebuild has no record of what each student's goal was on each
       // past day — only what it is now — so days are judged by the current
       // target. Routine refreshes keep the real thing; this is the fallback

@@ -21,6 +21,17 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The request never reached the server (offline, DNS, connection dropped).
+ * Distinct from ApiError so screens can say so plainly, and safe to retry.
+ */
+export class NetworkError extends Error {
+  constructor() {
+    super("No internet connection. Check your connection and try again.");
+    this.name = "NetworkError";
+  }
+}
+
 /** The configured API prefix, e.g. `/api` on web. */
 export function apiBaseUrl(): string {
   return getCoreConfig().baseUrl;
@@ -163,12 +174,19 @@ async function send<T>(path: string, options: RequestOptions, isRetry = false): 
   // a request the server cannot parse.
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
 
-  const response = await doFetch(`${apiBaseUrl()}${path}`, {
-    method: options.method ?? "GET",
-    headers,
-    body: options.formData ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
-    signal: options.signal,
-  });
+  let response: Response;
+  try {
+    response = await doFetch(`${apiBaseUrl()}${path}`, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.formData ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
+      signal: options.signal,
+    });
+  } catch (error) {
+    // A caller's own cancel stays a cancel; anything else is the network.
+    if (options.signal?.aborted || (error as Error)?.name === "AbortError") throw error;
+    throw new NetworkError();
+  }
 
   if (response.status === 401 && !options.anonymous && !isRetry) {
     const refreshed = await ensureRefreshed();

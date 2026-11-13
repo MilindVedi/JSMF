@@ -67,6 +67,8 @@ export default function CustomTestScreen() {
   const {
     count: poolCount,
     isPending: countPending,
+    // A changed filter's count is still loading; the old one is on screen.
+    isPlaceholderData: countSettling,
     error: countError,
   } = useQuestionCount(query);
   const available = Math.min(poolCount, MAX_SESSION_QUESTIONS);
@@ -278,7 +280,12 @@ export default function CustomTestScreen() {
               variant="outline"
               onPress={() => setConfirmOpen(false)}
             />
-            <Button label="Start Test" icon={Sparkles} onPress={start} />
+            <Button
+              label="Start Test"
+              icon={Sparkles}
+              onPress={start}
+              disabled={finalCount === 0 || countSettling || startSession.isPending}
+            />
           </>
         }
       >

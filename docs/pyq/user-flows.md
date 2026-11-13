@@ -147,7 +147,7 @@ Diagram: [`diagrams/subscription-purchase.puml`](./diagrams/subscription-purchas
 
 Free users get `PYQ_FREE_DAILY_QUESTIONS` answers per India-time day, counted as `attempts WHERE user_id = ? AND answered_at >= startOfIndiaDay()`. Running out throws 403 with `code: PYQ_DAILY_LIMIT_REACHED`; the api adapter turns it into `DailyLimitError`; `notifyDailyLimit` shows a toast with a "See plans" action that routes to `/subscription`.
 
-The check is deliberately a read-then-write rather than a database constraint, so two answers in the same instant can overshoot by one. That is a known, accepted edge — see §4 of the README.
+The check runs under a per-student advisory lock in the same transaction as the write, so it is exact even when answers arrive in parallel (see features.md, free allowance). Saves that fail on a dropped connection or a 5xx are retried twice by the app (answer and submit are both safe to repeat); offline, a save fails at once with "No internet connection" instead of waiting silently. A single answer's time is capped at 6 hours rather than refused, so a question left open overnight can still be answered.
 
 Hitting the limit mid-session does not destroy the session: already-answered questions, flagging and submit all still work. Only the next *first* answer is refused.
 

@@ -71,7 +71,7 @@ Marks are stored as exact fractions (`{num, den}`, denominators up to 12), so IN
 
 The browser draws the picture. The server decides.
 
-- **Not begun:** a TEST is created with `clock_started_at` null. `GET` returns no questions, and answering or flagging is refused (409 `PYQ_TEST_NOT_BEGUN`). `POST pyq/sessions/:id/begin` sets the clock once. It is idempotent, so a second tap or a second device changes nothing.
+- **Not begun:** a TEST is created with `clock_started_at` null. `GET` returns no questions, and answering, flagging and submitting are refused (409 `PYQ_TEST_NOT_BEGUN` — a never-begun test submitted used to become a finished session with nothing to review). `POST pyq/sessions/:id/begin` sets the clock once. It is idempotent, so a second tap or a second device changes nothing.
 - **Deadlines** count from `clock_started_at`, with 30 s grace for network and clock slack. The paper's end is refused after that (409).
 - **Sections:** in a time-bound mock, an answer or flag for a question outside the running section's window is refused. That is 409 `PYQ_SECTION_NOT_OPEN` before the window opens, and 409 `PYQ_SECTION_CLOSED` after it closes plus the grace. Which section is open is computed from the session's own copy of the pattern.
 - **Clock skew:** every session response carries `serverTime`. The apps count down on the server's clock (`clockOffsetMs`), so a phone set five minutes fast can't close a section early. The countdown runs against a fixed end time rather than ticking down, so backgrounded tabs don't drift.

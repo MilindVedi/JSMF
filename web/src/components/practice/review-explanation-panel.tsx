@@ -1,4 +1,5 @@
-import { CheckCircle2, Circle, XCircle } from "lucide-react";
+import Link from "next/link";
+import { CheckCircle2, Circle, Lock, XCircle } from "lucide-react";
 import type { SessionQuestion } from "@jsmf/core/domain";
 import { FigurePlaceholder } from "@/components/common/figure-placeholder";
 import { cn } from "@/lib/utils";
@@ -11,10 +12,30 @@ import { cn } from "@/lib/utils";
 export function ReviewExplanationPanel({
   question,
   status,
+  locked = false,
 }: {
   question: SessionQuestion;
   status: "correct" | "incorrect" | "unattempted";
+  /** Free plan: an unanswered question's answer is held back (see isAnswerLocked). */
+  locked?: boolean;
 }) {
+  if (locked) {
+    return (
+      <div className="rounded-xl border border-border bg-muted/50 p-4">
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+          <Lock className="size-4.5" />
+          Not attempted · answer locked
+        </div>
+        <p className="text-sm leading-relaxed text-foreground">
+          On the free plan, the review shows answers and explanations for the questions you answered. Subscribe to
+          see them for every question.
+        </p>
+        <Link href="/subscription" className="mt-3 inline-block text-sm font-semibold text-primary hover:underline">
+          See plans
+        </Link>
+      </div>
+    );
+  }
   return (
     <div
       className={cn(

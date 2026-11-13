@@ -158,7 +158,8 @@ export default function PracticeScreen() {
       </View>
       <Button
         label="Practice these questions"
-        disabled={total === 0 || startSession.isPending}
+        // While a changed filter loads, the old count is still on screen.
+        disabled={total === 0 || list.isPlaceholderData || startSession.isPending}
         loading={startSession.isPending}
         onPress={practiceAll}
       />

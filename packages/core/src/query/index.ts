@@ -21,6 +21,11 @@ export function createQueryClient(): QueryClient {
         refetchOnWindowFocus: false,
         retry: shouldRetryQuery,
       },
+      // A save made offline fails at once with a NetworkError the screen can
+      // show, instead of pausing silently until the connection returns (the
+      // default "online" mode) — in a timed test that froze the buttons with
+      // no word of why.
+      mutations: { networkMode: "always" },
     },
   });
 }

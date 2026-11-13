@@ -2,7 +2,7 @@ import { HelpCircle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const SHORTCUTS: [string, string][] = [
-  ["1 – 4", "Select an option"],
+  ["1 – 6", "Select an option"],
   ["Enter", "Submit / Next question"],
   ["N / →", "Next question"],
   ["P / ←", "Previous question"],

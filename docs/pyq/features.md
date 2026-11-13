@@ -75,7 +75,7 @@ Capabilities are declared on the data source and read by screens through `pyqCap
 - An entitlement that is already perpetual and was not created by this order is left alone — an admin gift is never shortened by a purchase.
 - Because the decision keys on `sourceOrderId`, a redelivered webhook racing the browser's verify call cannot add days twice.
 
-**Edge cases.** Two answers submitted in the same instant can overshoot the free limit by one; this is deliberate (a check, not a constraint). A refund of the latest plan order revokes the plan entitlement outright, including days bought in earlier orders; refunding a superseded order revokes nothing.
+**Edge cases.** The free limit is exact, even for answers sent in parallel: each answer and each submit takes a per-student Postgres advisory lock (`pg_advisory_xact_lock`, in `practice.service.ts`) and counts the day's answers inside that transaction. (Until November 2026 it was a plain check-then-write that could be overshot by as many parallel requests as the rate limit allowed.) The same lock means an answer can no longer land after its session was submitted, and the day's count behind the streak is never under-counted by two simultaneous answers. A refund of the latest plan order revokes the plan entitlement outright, including days bought in earlier orders; refunding a superseded order revokes nothing.
 
 ## 3. Question bank and filtering
 
@@ -121,7 +121,7 @@ Practice answers are final once the explanation has been shown; otherwise "chang
 
 ## 5. Results and review
 
-`/practice/[sessionId]/results` shows the score card built from the same `scoreOf()` numbers the session row stores at submit: total, attempted, correct, incorrect, unattempted, accuracy (correct over *attempted*, rounded), and total time from the summed `timeSpentMs`. `/review` lists every question with the chosen option, the correct option and the explanation. Review is only reachable after submit; in PRACTICE the answered questions already carry their answers in `GET /sessions/:id`, question by question, as they are answered.
+`/practice/[sessionId]/results` shows the score card built from the same `scoreOf()` numbers the session row stores at submit: total, attempted, correct, incorrect, unattempted, accuracy (correct over *attempted*, rounded), and total time from the summed `timeSpentMs`. `/review` lists every question with the chosen option, the correct option and the explanation — **to a subscriber or trial user**. On the free plan the review reveals the answer and explanation only for the questions the student answered (and so spent allowance on); unanswered ones come without them and the response's `lockedAnswers` says how many. Both apps show "Not attempted · answer locked" with a link to the plans there (core's `isAnswerLocked`). Without this, starting a 200-question session and submitting it blank handed over 200 answers for free, any number of times a day. Review is only reachable after submit; in PRACTICE the answered questions already carry their answers in `GET /sessions/:id`, question by question, as they are answered.
 
 Edge case worth knowing: editing a question's correct answer in admin does **not** re-score past attempts. Historic `attempts.isCorrect` is frozen at the moment of answering, deliberately — a student's past score should not move under them.
 
@@ -137,10 +137,10 @@ Three overlapping lists, read from `user_question_states`, bookmarks and collect
 
 **Wrong questions** (`GET pyq/wrong-questions`): questions whose *latest* answer was wrong, newest first. Answering one correctly removes it from the list. Read from the same state as the bank's status filter, so unsubmitted TEST answers do not appear.
 
-**Revision** (`GET pyq/revision`, [`learning.service.ts`](../../backend/src/modules/questions/application/learning.service.ts)): every question worth another look — attempted, bookmarked *or* collected — each with the facts the screen filters and sorts by: `latestCorrect`, `lastAttemptedAt`, `lastCorrectAt`, `lastWrongAt`, `attemptCount`, `incorrectCount`, `neverCorrected` (answered at least once, never correctly), `flagged` (in any session), `bookmarkedAt`, `collectedAt` and `due`. An item is **due** when any of these holds:
+**Revision** (`GET pyq/revision`, [`learning.service.ts`](../../backend/src/modules/questions/application/learning.service.ts)): every question worth another look — attempted, bookmarked *or* collected — each with the facts the screen filters and sorts by: `latestCorrect`, `lastAttemptedAt`, `lastCorrectAt`, `lastWrongAt`, `attemptCount`, `incorrectCount`, `neverCorrected` (answered at least once, never correctly), `flagged` (as left by the last session that touched it), `bookmarkedAt`, `collectedAt` and `due`. An item is **due** when any of these holds:
 
 1. its latest answer was wrong, or
-2. it was flagged in any session, or
+2. it is flagged — the flag the student left in the last session that touched it (a mark-for-review made in a submitted test lasts until the question is next practised, where answering it unflagged or unflagging it clears it; it used to be "flagged in any session", which could never be cleared), or
 3. its latest answer was correct but older than `REVISION_STALE_DAYS` (30) — spaced revision, so a concept that was right a month ago comes round again.
 
 The window is returned as `staleDays` so the UI never hard-codes 30.

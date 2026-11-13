@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import {
   defaultReviewFilter,
   firstIndexForFilter,
+  isAnswerLocked,
   neighborIndex,
   reviewCounts,
   reviewIndices,
@@ -83,7 +84,18 @@ export default function ReviewPage() {
 
   const questionId = session.questionIds[index];
   const question = detail.questions.find((q) => q.id === questionId);
-  if (!question) return <PageLoading className="min-h-dvh" />;
+  if (!question) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        <EmptyState
+          icon={AlertTriangle}
+          title="This question isn't in the session"
+          description="The link may be out of date. Open the results to review the session from the start."
+          action={<Button onClick={() => router.push(`/practice/${sessionId}/results`)}>Back to results</Button>}
+        />
+      </div>
+    );
+  }
 
   const filteredIndices = reviewIndices(session, filter);
 
@@ -170,7 +182,7 @@ export default function ReviewPage() {
               onSelect={() => {}}
             />
             <div className="mt-5">
-              <ReviewExplanationPanel question={question} status={status} />
+              <ReviewExplanationPanel question={question} status={status} locked={isAnswerLocked(detail, question)} />
             </div>
           </>
         )}

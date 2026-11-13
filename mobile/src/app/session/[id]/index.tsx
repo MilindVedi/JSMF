@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Alert, BackHandler, Platform, Pressable, ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft, ArrowRight, Bookmark, CircleCheck, Flag, FlagTriangleRight, LayoutGrid, MessageSquareWarning, TriangleAlert } from "lucide-react-native";
@@ -119,9 +119,14 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
   const [timeLeft] = useState(() => (openWindow && hideResults ? sectionSecondsLeft(session, openWindow.index) : remainingSeconds(session)));
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(() => existingAttempt?.selectedOptionId ?? null);
   const startTime = useRef(0);
+  const mounted = useRef(true);
   useEffect(() => {
     // Mounted once per question (see the key above): the moment it was shown.
     startTime.current = Date.now();
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
   }, []);
 
   function goTo(next: number) {
@@ -141,6 +146,23 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
     else router.replace("/home");
   }
 
+  // Android's back button in a running test asks first, as the console's own
+  // Exit does by being a deliberate tap (iOS has swipe-back switched off for
+  // the runner). Saved answers stay and the clock keeps running either way.
+  useEffect(() => {
+    // Android only: the hardware/gesture back exists nowhere else.
+    if (!hideResults || Platform.OS !== "android") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      Alert.alert("Leave the test?", "Your saved answers are kept and the timer keeps running. An option you chose but didn't save is dropped.", [
+        { text: "Stay", style: "cancel" },
+        { text: "Leave", style: "destructive", onPress: exit },
+      ]);
+      return true;
+    });
+    return () => subscription.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hideResults]);
+
   // Time-up or Submit while an answer is still saving waits for that save, so
   // the answer the student just gave is in the score (web does the same).
   const finishAfterSave = useRef(false);
@@ -152,21 +174,31 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answer.isPending]);
 
+  /**
+   * The outcome is handled on the promise, not as mutate() callbacks: those
+   * are dropped once this question is left (the runner remounts per
+   * question), so a save that failed after a jump said nothing. An error
+   * always reaches the student; moving on only happens if they are still here.
+   */
   function saveAnswer(optionId: string, onSaved?: () => void) {
-    answer.mutate(
-      { questionId: question.id, optionId, timeSpentMs: Date.now() - startTime.current },
-      {
-        onSuccess: (saved) => {
-          setResult(saved);
-          // A finish is waiting on this save: stay on this question so this
-          // runner (keyed per question) is still mounted to submit. Moving on
-          // would remount it and drop the waiting submit.
-          if (!finishAfterSave.current) onSaved?.();
-        },
-        onError: (error) => {
-          if (error instanceof DailyLimitError) setLimitReached(true);
-          else toast.error(error.message || "Could not save your answer. Please try again.");
-        },
+    answer.mutateAsync({ questionId: question.id, optionId, timeSpentMs: Date.now() - startTime.current }).then(
+      (saved) => {
+        if (!mounted.current) return;
+        setResult(saved);
+        // What the server kept, which a practice answer never changes.
+        setSelectedOptionId(saved.selectedOptionId);
+        // A finish is waiting on this save: stay on this question so this
+        // runner (keyed per question) is still mounted to submit. Moving on
+        // would remount it and drop the waiting submit.
+        if (!finishAfterSave.current) onSaved?.();
+      },
+      (error: Error) => {
+        if (error instanceof DailyLimitError) {
+          if (mounted.current) setLimitReached(true);
+          else toast.error(error.message);
+        } else {
+          toast.error(error.message || "Could not save your answer. Please try again.");
+        }
       }
     );
   }
@@ -313,7 +345,7 @@ function Runner({ detail, question, index, total }: { detail: SessionDetail; que
           question={revealed}
           submitted={submitted}
           selectedOptionId={selectedOptionId}
-          onSelect={(id) => !submitted && setSelectedOptionId(id)}
+          onSelect={(id) => !submitted && !answer.isPending && setSelectedOptionId(id)}
           trailing={
             <IconButton
               icon={Bookmark}

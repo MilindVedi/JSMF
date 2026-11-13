@@ -40,6 +40,26 @@ import { QuestionBankService, type QuestionFilters } from './question-bank.servi
 import { PyqAccessService } from './pyq-access.service';
 
 export const MAX_SESSION_QUESTIONS = 200;
+/**
+ * The most time one answer can add. A question left open overnight is still
+ * answerable — its time is just capped — and a session's total stays far
+ * inside the Int column however often a test answer is changed.
+ */
+export const MAX_ANSWER_TIME_MS = 6 * 3600 * 1000;
+const MAX_ATTEMPT_TIME_MS = 2_000_000_000;
+
+/**
+ * Serialises one student's answers and submits (a transaction-scoped Postgres
+ * advisory lock, released at commit). That makes three things exact that a
+ * plain check-then-write races on: the free daily allowance (parallel first
+ * answers each saw the old count), an answer landing after its session was
+ * submitted, and the day's answered count behind the streak. Other students
+ * are never blocked — the key is per user.
+ */
+async function lockStudent(tx: Prisma.TransactionClient, userId: string): Promise<void> {
+  const key = `jsmf:pyq-answers:${userId}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+}
 /** Network and clock slack around a deadline (the paper's, or a section's) before answers are refused. */
 export const DEADLINE_GRACE_MS = 30_000;
 const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -250,9 +270,16 @@ export class PracticeService {
     // A test's questions stay hidden behind its instructions screen: reading
     // them must not be possible while the clock is not running.
     if (!session.clockStartedAt) {
-      return { ...this.summary(session, []), questions: [], attempts: {} };
+      const none: Record<string, ReturnType<typeof attemptView>> = {};
+      return { ...this.summary(session, []), lockedAnswers: 0, questions: [], attempts: none };
     }
     const reveal = revealsAnswers(session);
+    const submitted = session.status === PracticeSessionStatus.SUBMITTED;
+    // A submitted session's review shows every answer — to a subscriber. On
+    // the free plan it shows the ones the student answered (and spent
+    // allowance on); otherwise starting a big session and submitting it blank
+    // would hand over the bank's answers without spending any allowance.
+    const fullReview = submitted && (await this.access.hasUnlimited(userId));
     const [entries, attempts] = await Promise.all([
       this.prisma.sessionQuestion.findMany({
         where: { sessionId },
@@ -262,18 +289,21 @@ export class PracticeService {
       this.prisma.attempt.findMany({ where: { sessionId } }),
     ]);
     const attemptByQuestion = new Map(attempts.map((attempt) => [attempt.questionId, attempt]));
+    let lockedAnswers = 0;
+    const questions = entries.map(({ question }) => {
+      // In practice modes an answer is revealed per question, once answered.
+      const answered = Boolean(attemptByQuestion.get(question.id)?.answeredAt);
+      const show = reveal && (answered || fullReview);
+      if (submitted && !show) lockedAnswers += 1;
+      const view = show ? toAnsweredQuestionView(question) : toQuestionView(question);
+      return this.withOptionOrder(session, question, view);
+    });
 
     return {
       ...this.summary(session, attempts),
-      questions: entries.map(({ question }) => {
-        // In practice modes an answer is revealed per question, once answered.
-        const answered = Boolean(attemptByQuestion.get(question.id)?.answeredAt);
-        const view =
-          reveal && (answered || session.status === PracticeSessionStatus.SUBMITTED)
-            ? toAnsweredQuestionView(question)
-            : toQuestionView(question);
-        return this.withOptionOrder(session, question, view);
-      }),
+      /** Unanswered questions of a submitted session whose answer is for subscribers (free plan). */
+      lockedAnswers,
+      questions,
       attempts: Object.fromEntries(
         attempts.map((attempt) => [attempt.questionId, attemptView(attempt, reveal)]),
       ),
@@ -290,45 +320,43 @@ export class PracticeService {
       where: { id: input.selectedOptionId, questionId: input.questionId },
     });
     if (!option) throw new BadRequestException('That option does not belong to this question');
+    const spentMs = Math.min(MAX_ANSWER_TIME_MS, Math.max(0, input.timeSpentMs ?? 0));
 
-    const existing = await this.prisma.attempt.findUnique({
-      where: {
-        sessionId_questionId: { sessionId, questionId: input.questionId },
-      },
-    });
+    const attempt: Attempt = await this.prisma.$transaction(async (tx) => {
+      await lockStudent(tx, userId);
+      // Re-read under the lock: a submit that got there first has closed it.
+      const current = await tx.practiceSession.findUniqueOrThrow({ where: { id: sessionId } });
+      this.assertOpen(current);
 
-    let attempt: Attempt;
-    if (existing?.answeredAt && session.mode !== PracticeMode.TEST) {
+      const existing = await tx.attempt.findUnique({
+        where: { sessionId_questionId: { sessionId, questionId: input.questionId } },
+      });
       // Practice answers are final once the explanation has been shown —
       // otherwise "change to the right answer" would inflate every score.
-      attempt = existing;
-    } else {
+      if (existing?.answeredAt && session.mode !== PracticeMode.TEST) return existing;
+
       // Only a first answer spends allowance; changing a test answer does not.
-      if (!existing?.answeredAt) await this.access.assertCanAnswer(userId);
+      const firstAnswer = !existing?.answeredAt;
+      if (firstAnswer) await this.access.assertCanAnswer(userId, tx);
       const data = {
         selectedOptionId: option.id,
         isCorrect: option.isCorrect,
-        timeSpentMs: (existing?.timeSpentMs ?? 0) + Math.max(0, input.timeSpentMs ?? 0),
+        timeSpentMs: Math.min(MAX_ATTEMPT_TIME_MS, (existing?.timeSpentMs ?? 0) + spentMs),
         answeredAt: existing?.answeredAt ?? new Date(),
       };
-      const firstAnswer = !existing?.answeredAt;
-      attempt = await this.prisma.$transaction(async (tx) => {
-        const saved = await tx.attempt.upsert({
-          where: {
-            sessionId_questionId: { sessionId, questionId: input.questionId },
-          },
-          create: { sessionId, questionId: input.questionId, userId, ...data },
-          update: data,
-        });
-        // A running test's answers stay out of the per-question state until
-        // submit; they still count towards the day (and the streak).
-        if (session.mode !== PracticeMode.TEST) {
-          await this.states.refresh(userId, [input.questionId], tx);
-        }
-        if (firstAnswer) await this.states.refreshDay(userId, data.answeredAt, tx);
-        return saved;
+      const saved = await tx.attempt.upsert({
+        where: { sessionId_questionId: { sessionId, questionId: input.questionId } },
+        create: { sessionId, questionId: input.questionId, userId, ...data },
+        update: data,
       });
-    }
+      // A running test's answers stay out of the per-question state until
+      // submit; they still count towards the day (and the streak).
+      if (session.mode !== PracticeMode.TEST) {
+        await this.states.refresh(userId, [input.questionId], tx);
+      }
+      if (firstAnswer) await this.states.refreshDay(userId, data.answeredAt, tx);
+      return saved;
+    });
 
     if (session.mode === PracticeMode.TEST) {
       return {
@@ -372,15 +400,26 @@ export class PracticeService {
     return { questionId, flagged: attempt.flagged };
   }
 
-  /** Idempotent: submitting twice returns the same score. */
+  /**
+   * Idempotent: submitting twice returns the same score. Scored under the
+   * student's answer lock, so an answer still in flight is either in the
+   * score or refused — never saved after it.
+   */
   async submit(userId: string, sessionId: string) {
     const session = await this.owned(userId, sessionId);
     if (session.status === PracticeSessionStatus.IN_PROGRESS) {
-      const attempts = await this.prisma.attempt.findMany({
-        where: { sessionId },
-      });
-      const score = scoreOf(session.totalQuestions, attempts);
-      const updated = await this.prisma.$transaction(async (tx) => {
+      // A test never begun has nothing to score; submitting it would leave a
+      // finished session with no questions to review.
+      if (!session.clockStartedAt) {
+        throw new ConflictException({
+          code: 'PYQ_TEST_NOT_BEGUN',
+          message: 'Read the instructions and begin the test first',
+        });
+      }
+      const scored = await this.prisma.$transaction(async (tx) => {
+        await lockStudent(tx, userId);
+        const attempts = await tx.attempt.findMany({ where: { sessionId } });
+        const score = scoreOf(session.totalQuestions, attempts);
         const result = await tx.practiceSession.updateMany({
           where: { id: sessionId, status: PracticeSessionStatus.IN_PROGRESS },
           data: {
@@ -392,24 +431,25 @@ export class PracticeService {
             accuracy: score.accuracy,
           },
         });
+        if (result.count !== 1) return null;
         // A submitted test's answers now count: fold them into the state.
-        if (result.count === 1 && session.mode === PracticeMode.TEST) {
+        if (session.mode === PracticeMode.TEST) {
           await this.states.refresh(
             userId,
             attempts.map((attempt) => attempt.questionId),
             tx,
           );
         }
-        return result;
+        return score;
       });
-      if (updated.count === 1) {
+      if (scored) {
         const pattern = readExamPattern(session.pattern);
         activity(this.logger, 'practice.session_submitted', {
           userId,
           sessionId,
           mode: session.mode,
-          ...score,
-          ...(pattern ? { marks: marksFor(pattern, score.correct, score.incorrect) } : {}),
+          ...scored,
+          ...(pattern ? { marks: marksFor(pattern, scored.correct, scored.incorrect) } : {}),
         });
       }
     }
@@ -452,7 +492,7 @@ export class PracticeService {
         SELECT session_id AS "sessionId",
                count(answered_at)::int AS attempted,
                count(*) FILTER (WHERE answered_at IS NOT NULL AND is_correct)::int AS correct,
-               coalesce(sum(time_spent_ms), 0)::int AS "timeMs",
+               least(coalesce(sum(time_spent_ms), 0), 2147483647)::int AS "timeMs",
                max(answered_at) FILTER (WHERE answered_at IS NOT NULL AND NOT is_correct) AS "lastWrongAt"
         FROM pyq.attempts
         WHERE session_id = ANY(${ids}::uuid[])

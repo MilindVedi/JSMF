@@ -90,6 +90,12 @@ export interface SessionDetail {
   submitted: boolean;
   /** A submitted full mock's score under its exam's marking. */
   marks?: Marks;
+  /**
+   * Free plan: how many of a submitted session's unanswered questions come
+   * without their answer and explanation (those are for subscribers). Use
+   * `isAnswerLocked` per question.
+   */
+  lockedAnswers?: number;
 }
 
 /** A full mock a student can start: an exam's pattern, once the bank can fill it. */

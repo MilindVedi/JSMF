@@ -259,7 +259,11 @@ describe('test mode', () => {
       unattempted: 2,
       accuracy: 50,
     });
-    expect(review.questions.every((q) => 'explanation' in q)).toBe(true);
+    // A free user's review explains what they answered; the two left blank
+    // stay locked (the subscriber case is in "production hardening").
+    const explained = new Set(review.questions.filter((q) => 'explanation' in q).map((q) => q.id));
+    expect(explained).toEqual(new Set([q1.id, q2.id]));
+    expect(review.lockedAnswers).toBe(2);
     expect(review.attempts[q2.id].isCorrect).toBe(false);
 
     const stored = await prisma.practiceSession.findUniqueOrThrow({ where: { id: session.id } });
@@ -510,5 +514,105 @@ describe('read models', () => {
 
     const stats = await progress.stats(user.id);
     expect(stats).toMatchObject({ attempted: 2, correct: 1, incorrect: 1 });
+  });
+});
+
+describe('production hardening', () => {
+  async function grantPlan(userId: string) {
+    const plan = await prisma.product.create({
+      data: {
+        slug: `pyq-spec-plan-${randomUUID()}`,
+        title: 'PYQ Pro',
+        type: ProductType.COURSE,
+        status: ProductStatus.PUBLISHED,
+        accessType: AccessType.PAID,
+        priceAmountMinor: 49900n,
+        metadata: { [PYQ_PLAN_KEY]: true },
+      },
+    });
+    created.productIds.push(plan.id);
+    await entitlements.grant({ userId, productId: plan.id, source: EntitlementSource.ADMIN_GRANT });
+  }
+  const field = (question: object, key: string) => (question as Record<string, unknown>)[key];
+
+  it('a free review reveals only what was answered; a subscriber sees every answer', async () => {
+    const user = await createUser();
+    const rows = await questionIds();
+    const session = await practice.start(user.id, {
+      mode: PracticeMode.PRACTICE,
+      questionIds: rows.slice(0, 3).map((row) => row.id),
+    });
+    await practice.answer(user.id, session.id, { questionId: rows[0].id, selectedOptionId: rows[0].options[0].id });
+
+    const free = await practice.submit(user.id, session.id);
+    expect(free.lockedAnswers).toBe(2);
+    const byId = new Map(free.questions.map((q) => [q.id, q]));
+    expect(field(byId.get(rows[0].id)!, 'correctOptionId')).toBe(rows[0].options[0].id);
+    expect(field(byId.get(rows[1].id)!, 'correctOptionId')).toBeUndefined();
+    expect(field(byId.get(rows[1].id)!, 'explanation')).toBeUndefined();
+
+    await grantPlan(user.id);
+    const paid = await practice.review(user.id, session.id);
+    expect(paid.lockedAnswers).toBe(0);
+    expect(paid.questions.every((q) => typeof field(q, 'correctOptionId') === 'string')).toBe(true);
+  });
+
+  it('holds the free allowance exactly when answers arrive in parallel', async () => {
+    freeDaily = 2;
+    try {
+      const user = await createUser();
+      const rows = await questionIds();
+      const session = await practice.start(user.id, { mode: PracticeMode.PRACTICE, questionIds: rows.map((row) => row.id) });
+      const results = await Promise.allSettled(
+        rows.map((row) => practice.answer(user.id, session.id, { questionId: row.id, selectedOptionId: row.options[0].id })),
+      );
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(2);
+      expect(
+        results.filter((result) => result.status === 'rejected').every((result) => (result as PromiseRejectedResult).reason instanceof ForbiddenException),
+      ).toBe(true);
+      expect(await prisma.attempt.count({ where: { userId: user.id, answeredAt: { not: null } } })).toBe(2);
+      // The day's count behind the streak saw both, despite the race.
+      expect(await prisma.userDailyActivity.findFirst({ where: { userId: user.id } })).toMatchObject({ answered: 2 });
+    } finally {
+      freeDaily = 1000;
+    }
+  });
+
+  it('refuses to submit a test that was never begun', async () => {
+    const user = await createUser();
+    const rows = await questionIds();
+    const test = await practice.start(user.id, { mode: PracticeMode.TEST, questionIds: [rows[0].id] });
+    await expect(practice.submit(user.id, test.id)).rejects.toBeInstanceOf(ConflictException);
+    expect(await prisma.practiceSession.findUnique({ where: { id: test.id } })).toMatchObject({ status: 'IN_PROGRESS' });
+  });
+
+  it('a flag left in a submitted test clears when the question is next practised', async () => {
+    const user = await createUser();
+    const rows = await questionIds();
+    const state = () =>
+      prisma.userQuestionState.findUnique({ where: { userId_questionId: { userId: user.id, questionId: rows[3].id } } });
+
+    const test = await practice.begin(user.id, (await practice.start(user.id, { mode: PracticeMode.TEST, questionIds: [rows[3].id] })).id);
+    await practice.flag(user.id, test.id, rows[3].id, true);
+    await practice.submit(user.id, test.id);
+    expect(await state()).toMatchObject({ flagged: true });
+
+    const later = await practice.start(user.id, { mode: PracticeMode.PRACTICE, questionIds: [rows[3].id] });
+    await practice.answer(user.id, later.id, { questionId: rows[3].id, selectedOptionId: rows[3].options[0].id });
+    expect(await state()).toMatchObject({ flagged: false, latestCorrect: true });
+  });
+
+  it('accepts an answer to a question left open overnight, counting at most 6 hours', async () => {
+    const user = await createUser();
+    const rows = await questionIds();
+    const session = await practice.start(user.id, { mode: PracticeMode.PRACTICE, questionIds: [rows[4].id] });
+    await practice.answer(user.id, session.id, {
+      questionId: rows[4].id,
+      selectedOptionId: rows[4].options[0].id,
+      timeSpentMs: 30 * 3600 * 1000,
+    });
+    expect(
+      await prisma.attempt.findUnique({ where: { sessionId_questionId: { sessionId: session.id, questionId: rows[4].id } } }),
+    ).toMatchObject({ timeSpentMs: 6 * 3600 * 1000 });
   });
 });

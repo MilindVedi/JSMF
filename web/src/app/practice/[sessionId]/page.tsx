@@ -50,7 +50,18 @@ export default function PracticeSessionPage() {
     if (redirectTo !== null) router.replace(`/practice/${sessionId}?i=${redirectTo}`);
   }, [redirectTo, router, sessionId]);
 
-  if (isPending) return <PageLoading className="min-h-dvh" />;
+  // A session that was already finished when this page opened (an old link,
+  // the back button) is read in the review, where answers can't be sent —
+  // here Submit and Flag would only fail. Decided once, on first load: the
+  // runner's own submit then goes on to the results as before.
+  const [openedFinished, setOpenedFinished] = useState<boolean | null>(null);
+  if (detail && openedFinished === null) setOpenedFinished(detail.submitted);
+  useEffect(() => {
+    if (openedFinished) router.replace(`/practice/${sessionId}/review?i=${index}&filter=all`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openedFinished]);
+
+  if (isPending || openedFinished) return <PageLoading className="min-h-dvh" />;
 
   if (error && !(error instanceof NotFoundError)) {
     return (
@@ -150,10 +161,15 @@ function PracticeQuestionRunner({
     () => existingAttempt?.selectedOptionId ?? null
   );
   const startTimeRef = useRef(0);
+  const mounted = useRef(true);
   useEffect(() => {
     // A fresh mount happens once per question (see the `key` above), so this
     // "on mount" timestamp is exactly the moment this question was shown.
     startTimeRef.current = Date.now();
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
   }, []);
 
   function goTo(newIndex: number) {
@@ -168,20 +184,32 @@ function PracticeQuestionRunner({
     else handleFinish();
   }
 
+  /**
+   * The outcome is handled on the promise, not as mutate() callbacks: those
+   * are dropped once this question is left, so a save that failed after the
+   * student jumped elsewhere said nothing. An error always reaches them; the
+   * follow-up (moving on) only runs if they are still on this question.
+   */
   function saveAnswer(optionId: string, onSaved?: () => void) {
-    answer.mutate(
-      { questionId: question.id, optionId, timeSpentMs: Date.now() - startTimeRef.current },
-      {
-        onSuccess: (saved) => {
+    answer
+      .mutateAsync({ questionId: question.id, optionId, timeSpentMs: Date.now() - startTimeRef.current })
+      .then(
+        (saved) => {
+          if (!mounted.current) return;
           setResult(saved);
+          // What the server kept, which a practice answer never changes.
+          setSelectedOptionId(saved.selectedOptionId);
           onSaved?.();
         },
-        onError: (error) => {
-          if (error instanceof DailyLimitError) setLimitMessage(error.message);
-          else toast.error(error.message || "Could not save your answer. Please try again.");
-        },
-      }
-    );
+        (error: Error) => {
+          if (error instanceof DailyLimitError) {
+            if (mounted.current) setLimitMessage(error.message);
+            else toast.error(error.message);
+          } else {
+            toast.error(error.message || "Could not save your answer. Please try again.");
+          }
+        }
+      );
   }
 
   function handleSubmit() {
@@ -272,21 +300,22 @@ function PracticeQuestionRunner({
       // Keys belong to an open dialog or sheet (submit confirmation, the
       // question grid, report), never to the question behind it.
       if (e.defaultPrevented || (e.target as HTMLElement)?.closest?.('[role="dialog"],[role="alertdialog"]')) return;
+      // Ctrl/Cmd/Alt combinations are the browser's (find, print, switch tab).
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      if (["1", "2", "3", "4"].includes(e.key) && (!submitted || hideResults)) {
+      if (/^[1-6]$/.test(e.key) && (hideResults || (!submitted && !answer.isPending))) {
         const optIndex = Number(e.key) - 1;
         if (question.options[optIndex]) setSelectedOptionId(question.options[optIndex].id);
       } else if (e.key === "Enter") {
-        if (hideResults) {
-          // Other buttons and links (dialogs, the grid) keep their own Enter;
-          // a just-clicked option keeps focus, so it still means Save & Next.
-          const target = e.target as HTMLElement;
-          const ownEnter = tag === "A" || (tag === "BUTTON" && target.getAttribute("role") !== "radio");
-          if (!ownEnter) {
-            e.preventDefault();
-            handleSaveAndNext();
-          }
-        } else if (!submitted) handleSubmit();
+        // Other buttons and links (bookmark, flag, the palette, Finish) keep
+        // their own Enter — running both submitted twice or toggled a bookmark.
+        // A just-clicked option keeps focus, so it still means "go on".
+        const target = e.target as HTMLElement;
+        const ownEnter = tag === "A" || (tag === "BUTTON" && target.getAttribute("role") !== "radio");
+        if (ownEnter) return;
+        e.preventDefault();
+        if (hideResults) handleSaveAndNext();
+        else if (!submitted) handleSubmit();
         else if (isLast) handleFinish();
         else goTo(index + 1);
       } else if (e.key === "ArrowRight" || e.key.toLowerCase() === "n") {
@@ -302,7 +331,7 @@ function PracticeQuestionRunner({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submitted, selectedOptionId, isFirst, isLast, index, flagged, isBookmarked, hideResults, examBusy, limitMessage]);
+  }, [submitted, selectedOptionId, isFirst, isLast, index, flagged, isBookmarked, hideResults, examBusy, limitMessage, answer.isPending]);
 
   const flags = { ...session.flags, [question.id]: flagged };
   const attempts =
@@ -379,7 +408,7 @@ function PracticeQuestionRunner({
           question={revealed}
           submitted={submitted && !hideResults}
           selectedOptionId={selectedOptionId}
-          onSelect={(id) => !submitted && setSelectedOptionId(id)}
+          onSelect={(id) => !submitted && !answer.isPending && setSelectedOptionId(id)}
         />
         {submitted && hideResults && (
           <p className="mt-5 text-sm text-muted-foreground">
