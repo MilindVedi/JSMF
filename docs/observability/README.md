@@ -92,7 +92,8 @@ copy stops matching the server.
 
 ### Noise the apps drop before sending
 
-Errors from browser extensions, `ResizeObserver loop`, cross-origin
+Errors from browser extensions, scripts an app's in-app browser injects
+(Instagram/Facebook's `iabjs://`), `ResizeObserver loop`, cross-origin
 `Script error.`, `AbortError`, the user's network dropping ("Failed to
 fetch"), and the API answering 4xx (the screens handle those; 5xx are kept).
 Each page load sends at most 20 distinct errors; a repeat is counted, not

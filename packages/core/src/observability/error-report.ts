@@ -161,8 +161,9 @@ function describe(error: unknown): Described | null {
 
 /**
  * Errors that are not JSMF's to fix: browser quirks, extensions injected into
- * the page, cross-origin scripts that hide their details, and the user's
- * network dropping out.
+ * the page, scripts an app's in-app browser injects (Instagram and Facebook
+ * load theirs from iabjs://), cross-origin scripts that hide their details,
+ * and the user's network dropping out.
  */
 function isNoise({ name, message, stack }: Described): boolean {
   if (name === "AbortError") return true;
@@ -171,6 +172,7 @@ function isNoise({ name, message, stack }: Described): boolean {
   if (/^(Failed to fetch|NetworkError when attempting to fetch resource\.|Load failed|Network request failed)$/i.test(message))
     return true;
   if (stack && /(chrome|moz|safari(-web)?|ms-browser)-extension:\/\//i.test(stack)) return true;
+  if (stack && /\biabjs:\/\//i.test(stack)) return true;
   return false;
 }
 
