@@ -388,6 +388,11 @@ export function PyqQuestionForm({
               value={explanation}
               onChange={(event) => setExplanation(event.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              Start with “The correct answer is …” and why, in 1–4 sentences. Then sections: a line starting{" "}
+              <code>## </code> is a heading (<code>## Clinical clues</code> first, for a case), <code>• </code> a
+              bullet, <code>1. </code> a numbered step. Wrong options, pearls and quick revision have their own boxes.
+            </p>
             <QuestionImageField
               id="explanation-image"
               label="Explanation image (optional)"

@@ -16,7 +16,8 @@ Design and rules in code: [`question-release.ts`](../../backend/src/modules/ques
 
 ## The routine, per batch (one exam paper is a good batch)
 
-1. **Add** the questions locally (they arrive as drafts), upload their images.
+1. **Add** the questions locally (they arrive as drafts), fitted to
+   [the explanation pattern](explanation-pattern.md), and upload their images.
 2. **Review** them locally — admin editor and the local website. **Publish
    locally = approved.** Only published questions go into a release.
 3. **Export** (in `backend/`):

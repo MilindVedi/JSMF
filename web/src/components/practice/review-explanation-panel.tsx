@@ -56,7 +56,7 @@ export function ReviewExplanationPanel({
         {status === "correct" && <CheckCircle2 className="size-4.5" />}
         {status === "incorrect" && <XCircle className="size-4.5" />}
         {status === "unattempted" && <Circle className="size-4.5" />}
-        {status === "correct" ? "Correct" : status === "incorrect" ? "Incorrect" : "Not attempted"}
+        {status === "correct" ? "Correct" : status === "incorrect" ? "Incorrect" : "Not attempted"} · Explanation
       </div>
       <ExplanationBody question={question} />
     </div>

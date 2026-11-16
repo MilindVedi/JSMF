@@ -4,7 +4,15 @@ import { useRouter } from "expo-router";
 import { useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { Activity, Bone, Camera, CircleCheck, Circle, CircleX, Lock, Microscope, Scan, ScanLine, Workflow } from "lucide-react-native";
-import { DIFFICULTY_LABEL, explanationParts, OPTION_LETTERS, type FigureKind, type QuestionFigure, type SessionQuestion } from "@jsmf/core/domain";
+import {
+  DIFFICULTY_LABEL,
+  explanationParts,
+  OPTION_LETTERS,
+  type ExplanationBlock,
+  type FigureKind,
+  type QuestionFigure,
+  type SessionQuestion,
+} from "@jsmf/core/domain";
 import { useTaxonomyLookup } from "@jsmf/core/hooks";
 import { AnimatedPressable, AnimatedView } from "@/components/motion/animated";
 import { usePressScale } from "@/components/motion/loop";
@@ -266,27 +274,37 @@ export function ExplanationPanel({
 }
 
 /**
- * The explanation in the sections both apps show (core's explanationParts):
- * the explanation, why the right option is right (when written on its own),
- * why the others are wrong, pearls, quick revision. A question with only an
- * explanation shows exactly as before.
+ * The explanation in the order both apps show it (core's explanationParts;
+ * docs/pyq/explanation-pattern.md): the main explanation, why the right
+ * option is right (only when written on its own), the explanation's headed
+ * sections, its image, why the others are wrong, pearls, quick revision. A
+ * question with only plain explanation text shows as before.
  */
 function ExplanationSections({ question }: { question: SessionQuestion }) {
   const parts = explanationParts(question);
   return (
     <>
-      <Txt className="mt-1.5 text-sm leading-6">{parts.body}</Txt>
+      {parts.intro.length > 0 ? (
+        <View className="mt-1.5 gap-2">
+          <ExplanationBlocks blocks={parts.intro} />
+        </View>
+      ) : null}
+      {parts.correctWhy ? (
+        <ExplanationSection title={`Why “${parts.correctWhy.text}” is right`}>
+          <Txt className="text-sm leading-6">{parts.correctWhy.why}</Txt>
+        </ExplanationSection>
+      ) : null}
+      {parts.sections.map((section, index) => (
+        <ExplanationSection key={index} title={section.title}>
+          <ExplanationBlocks blocks={section.blocks} />
+        </ExplanationSection>
+      ))}
       {question.explanationImageUrl ? (
         <View className="mt-2.5">
           <QuestionImage uri={question.explanationImageUrl} label="Explanation image" />
         </View>
       ) : null}
       {question.explanationFigure ? <FigurePlaceholder figure={question.explanationFigure} /> : null}
-      {parts.correctWhy ? (
-        <ExplanationSection title={`Why “${parts.correctWhy.text}” is right`}>
-          <Txt className="text-sm leading-6">{parts.correctWhy.why}</Txt>
-        </ExplanationSection>
-      ) : null}
       {parts.wrongWhy.length > 0 ? (
         <ExplanationSection title="Why the other options are wrong">
           {parts.wrongWhy.map((entry) => (
@@ -315,6 +333,28 @@ function ExplanationSections({ question }: { question: SessionQuestion }) {
         </ExplanationSection>
       ) : null}
     </>
+  );
+}
+
+/** Paragraphs and lists of the explanation text, as written. */
+function ExplanationBlocks({ blocks }: { blocks: ExplanationBlock[] }) {
+  return blocks.map((block, index) =>
+    block.kind === "paragraph" ? (
+      <Txt key={index} className="text-sm leading-6">
+        {block.text}
+      </Txt>
+    ) : (
+      <View key={index} className="gap-0.5">
+        {block.items.map((item, i) => (
+          <View key={i} className="flex-row gap-2">
+            <Txt className="text-sm leading-6 text-muted-foreground">
+              {block.kind === "bullets" ? "•" : `${block.start + i}.`}
+            </Txt>
+            <Txt className="flex-1 text-sm leading-6">{item}</Txt>
+          </View>
+        ))}
+      </View>
+    ),
   );
 }
 

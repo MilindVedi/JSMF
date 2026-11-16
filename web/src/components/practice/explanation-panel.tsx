@@ -24,7 +24,7 @@ export function ExplanationPanel({
         )}
       >
         {isCorrect ? <CheckCircle2 className="size-4.5" /> : <XCircle className="size-4.5" />}
-        {isCorrect ? "Correct" : "Incorrect"}
+        {isCorrect ? "Correct" : "Incorrect"} · Explanation
       </div>
       <ExplanationBody question={question} />
     </div>

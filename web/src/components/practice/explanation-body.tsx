@@ -1,27 +1,41 @@
 import type { ReactNode } from "react";
-import { explanationParts, type SessionQuestion } from "@jsmf/core/domain";
+import { explanationParts, type ExplanationBlock, type SessionQuestion } from "@jsmf/core/domain";
 import { FigurePlaceholder } from "@/components/common/figure-placeholder";
 import { QuestionImage } from "./question-image";
 
 /**
- * An answered question's explanation in the sections both apps show, in
- * explanationParts' order: the explanation, why the right option is right
- * (when written on its own), why the others are wrong, pearls, quick revision.
- * A question with only an explanation shows exactly as before.
+ * An answered question's explanation in the order both apps show it
+ * (explanationParts; docs/pyq/explanation-pattern.md): the main explanation,
+ * why the right option is right (only when written on its own), the
+ * explanation's headed sections, its image, why the others are wrong, pearls,
+ * quick revision. A question with only plain explanation text shows as before.
  */
 export function ExplanationBody({ question }: { question: SessionQuestion }) {
   const parts = explanationParts(question);
   return (
     <div className="space-y-4">
-      <p className="prose-reading whitespace-pre-line text-foreground">{parts.body}</p>
-      {question.explanationImageUrl && <QuestionImage src={question.explanationImageUrl} alt="Explanation image" />}
-      {question.explanationFigure && <FigurePlaceholder figure={question.explanationFigure} />}
+      {parts.intro.length > 0 && (
+        <div className="prose-reading space-y-3 text-foreground">
+          <Blocks blocks={parts.intro} />
+        </div>
+      )}
 
       {parts.correctWhy && (
         <Section title={`Why “${parts.correctWhy.text}” is right`}>
           <p className="whitespace-pre-line">{parts.correctWhy.why}</p>
         </Section>
       )}
+
+      {parts.sections.map((section, index) => (
+        <Section key={index} title={section.title}>
+          <div className="space-y-3">
+            <Blocks blocks={section.blocks} />
+          </div>
+        </Section>
+      ))}
+
+      {question.explanationImageUrl && <QuestionImage src={question.explanationImageUrl} alt="Explanation image" />}
+      {question.explanationFigure && <FigurePlaceholder figure={question.explanationFigure} />}
 
       {parts.wrongWhy.length > 0 && (
         <Section title="Why the other options are wrong">
@@ -55,7 +69,30 @@ export function ExplanationBody({ question }: { question: SessionQuestion }) {
   );
 }
 
-/** A rule and a small-caps title set each part apart from the long explanation above it. */
+/** Paragraphs and lists of the explanation text, as written. */
+function Blocks({ blocks }: { blocks: ExplanationBlock[] }) {
+  return blocks.map((block, index) =>
+    block.kind === "paragraph" ? (
+      <p key={index} className="whitespace-pre-line">
+        {block.text}
+      </p>
+    ) : block.kind === "bullets" ? (
+      <ul key={index} className="list-disc space-y-1 pl-5 marker:text-muted-foreground">
+        {block.items.map((item, i) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ul>
+    ) : (
+      <ol key={index} start={block.start} className="list-decimal space-y-1 pl-5 marker:text-muted-foreground">
+        {block.items.map((item, i) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ol>
+    ),
+  );
+}
+
+/** A rule and a small-caps title set each part apart from the main explanation above it. */
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-2 border-t border-foreground/10 pt-4">
