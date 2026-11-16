@@ -23,6 +23,7 @@ import {
   pyqKeys,
   useAccess,
   usePreferences,
+  useTaxonomy,
   useTaxonomyLookup,
   useUpdatePreferences,
 } from "@jsmf/core/hooks";
@@ -68,6 +69,7 @@ export default function ProfileScreen() {
   const access = useAccess();
   const streak = useStreakState();
   const { taxonomy, examName } = useTaxonomyLookup();
+  const taxonomyLoaded = useTaxonomy().isSuccess;
   const colors = useColors();
   const memberSince = useQuery({
     queryKey: pyqKeys.memberSince,
@@ -262,18 +264,25 @@ export default function ProfileScreen() {
           <Txt weight={700} className="text-[13px]">
             Target exam
           </Txt>
-          {/* Three to a row, as web's grid: an admin-added exam wraps instead of squeezing. */}
-          <View className="flex-row flex-wrap gap-2">
-            {taxonomy.exams.map((e) => (
-              <Chip
-                key={e.id}
-                label={e.shortName}
-                selected={chosenExam === e.id}
-                onPress={() => setExamId(e.id)}
-                className="grow basis-[30%] justify-center"
-              />
-            ))}
-          </View>
+          {/* Three to a row, as web's grid: an admin-added exam wraps instead of squeezing.
+              The list holds only exams with published questions, so a new bank has none yet. */}
+          {taxonomy.exams.length > 0 ? (
+            <View className="flex-row flex-wrap gap-2">
+              {taxonomy.exams.map((e) => (
+                <Chip
+                  key={e.id}
+                  label={e.shortName}
+                  selected={chosenExam === e.id}
+                  onPress={() => setExamId(e.id)}
+                  className="grow basis-[30%] justify-center"
+                />
+              ))}
+            </View>
+          ) : taxonomyLoaded ? (
+            <Txt className="text-[11px] text-muted-foreground">
+              Exams will appear here once their questions are added.
+            </Txt>
+          ) : null}
         </View>
         <View className="gap-2">
           <Txt weight={700} className="text-[13px]">

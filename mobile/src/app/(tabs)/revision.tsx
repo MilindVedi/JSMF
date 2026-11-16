@@ -30,7 +30,7 @@ import { useStartSession } from "@/lib/start-session";
 import { useColors } from "@/theme/theme";
 import { Button, type IconComponent } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/field";
-import { Chip, EmptyState, IconTile, Loading, PressableCard, QueryError, type Tone } from "@/components/ui/primitives";
+import { EmptyState, IconTile, Loading, PressableCard, QueryError, type Tone } from "@/components/ui/primitives";
 import { Segmented, TabScreen } from "@/components/ui/screen";
 import { Txt } from "@/components/ui/text";
 import { CountUp } from "@/components/motion/count-up";
@@ -474,6 +474,11 @@ function useSectionState() {
 }
 type SectionState = ReturnType<typeof useSectionState>;
 
+/**
+ * A section's filters, in web's order: exam and year; the date window as one
+ * "Last 7 days ▾" picker with what the list shows beside it; search; then the
+ * sort on a row of its own, labelled, so it never reads as another filter.
+ */
 function SectionFilters({ state, sort, showDates, description }: { state: SectionState; sort: keyof typeof REVISION_SECTION_SORT_OPTIONS; showDates: boolean; description: string }) {
   const { taxonomy } = useTaxonomyLookup();
   return (
@@ -488,18 +493,29 @@ function SectionFilters({ state, sort, showDates, description }: { state: Sectio
           triggerLabel={state.examIds.length === 0 || state.examIds.length >= taxonomy.exams.length ? "All Exams" : state.examIds.length === 1 ? taxonomy.exams.find((e) => e.id === state.examIds[0])?.shortName : `${state.examIds.length} Exams`}
         />
         <MultiSelect label="Year" options={taxonomy.papers.map((paper) => ({ id: paper.key, label: paper.label }))} selected={state.papers} onChange={state.setPapers} />
-        <SortSheetButton value={state.sort} options={sortOptions(sort)} onChange={state.setSort} />
       </View>
       {showDates ? (
-        <View className="flex-row flex-wrap gap-1.5">
-          {DATE_PRESETS.map((p) => (
-            <Chip key={p.value} label={p.label} selected={state.preset === p.value} onPress={() => state.setPreset(p.value)} />
-          ))}
+        // Wraps: on a narrow phone the description drops under the picker instead of squeezing it.
+        <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1.5">
+          <MultiSelect
+            label="Date range"
+            singleSelect
+            options={DATE_PRESETS.map((p) => ({ id: p.value, label: p.label }))}
+            selected={[state.preset]}
+            onChange={(ids) => state.setPreset(ids[0] as DatePreset)}
+            triggerLabel={DATE_PRESETS.find((p) => p.value === state.preset)?.label}
+          />
+          <Txt className="shrink grow basis-40 text-xs text-muted-foreground">{description}</Txt>
         </View>
-      ) : null}
+      ) : (
+        <Txt className="text-xs text-muted-foreground">{description}</Txt>
+      )}
       {showDates && state.preset === "custom" ? <DateRangeField from={state.from} to={state.to} onChange={state.setRange} /> : null}
-      <Txt className="text-xs text-muted-foreground">{description}</Txt>
       <SearchField value={state.search} onChangeText={state.setSearch} />
+      <View className="flex-row items-center justify-end gap-2">
+        <Txt className="text-xs text-muted-foreground">Sort by</Txt>
+        <SortSheetButton value={state.sort} options={sortOptions(sort)} onChange={state.setSort} />
+      </View>
     </View>
   );
 }

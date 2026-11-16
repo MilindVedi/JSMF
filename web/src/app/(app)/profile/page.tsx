@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
-import { pyqKeys, usePreferences, useTaxonomyLookup, useUpdatePreferences } from "@/hooks/pyq";
+import { pyqKeys, usePreferences, useTaxonomy, useTaxonomyLookup, useUpdatePreferences } from "@/hooks/pyq";
 import { useStreakState } from "@/lib/use-streak-state";
 import { QueryError } from "@/components/pyq/query-states";
 import { usePlanLabel } from "@/lib/use-plan-label";
@@ -299,6 +299,7 @@ function ProfileForm({
   const updatePreferences = useUpdatePreferences();
   const [saving, setSaving] = useState(false);
   const { taxonomy } = useTaxonomyLookup();
+  const taxonomyLoaded = useTaxonomy().isSuccess;
 
   const [name, setName] = useState(profile.name);
   const [email, setEmail] = useState(profile.email);
@@ -357,23 +358,28 @@ function ProfileForm({
         </div>
         <div className="space-y-1.5">
           <Label>Target exam</Label>
-          <div className="grid grid-cols-3 gap-2">
-            {taxonomy.exams.map((exam) => (
-              <button
-                key={exam.id}
-                type="button"
-                onClick={() => setTargetExamId(exam.id)}
-                className={cn(
-                  "rounded-lg border px-2 py-2 text-center text-xs font-semibold transition-colors",
-                  targetExamId === exam.id
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:border-foreground/30"
-                )}
-              >
-                {exam.shortName}
-              </button>
-            ))}
-          </div>
+          {/* The list holds only exams with published questions, so a new bank has none yet. */}
+          {taxonomy.exams.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2">
+              {taxonomy.exams.map((exam) => (
+                <button
+                  key={exam.id}
+                  type="button"
+                  onClick={() => setTargetExamId(exam.id)}
+                  className={cn(
+                    "rounded-lg border px-2 py-2 text-center text-xs font-semibold transition-colors",
+                    targetExamId === exam.id
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-foreground/30"
+                  )}
+                >
+                  {exam.shortName}
+                </button>
+              ))}
+            </div>
+          ) : taxonomyLoaded ? (
+            <p className="text-xs text-muted-foreground">Exams will appear here once their questions are added.</p>
+          ) : null}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="profile-goal">Daily goal</Label>
