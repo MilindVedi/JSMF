@@ -69,11 +69,18 @@ export interface PublicQuestion {
   id: string;
   examId: ExamId;
   year: number;
+  /**
+   * The exam session's month, 1–12 (FMGE June 2026: year 2026, 6); absent or
+   * null when not recorded. See exam-paper.ts.
+   */
+  sessionMonth?: number | null;
   subjectId: string;
   /** Empty string when the question has no topic. */
   topicId: string;
   stem: string;
   stemFigure?: QuestionFigure;
+  /** An X-ray, photo or diagram that belongs to the question, shown under it. */
+  stemImageUrl?: string;
   options: QuestionOption[];
   difficulty: Difficulty;
 }
@@ -83,10 +90,27 @@ export interface Question extends PublicQuestion {
   correctOptionId: string;
   explanation: string;
   explanationFigure?: QuestionFigure;
+  /** An image shown with the explanation, once the answer is. */
+  explanationImageUrl?: string;
+  /** High-yield pearls / buzzwords. See explanation.ts for how they are shown. */
+  pearls?: string[];
+  quickRevision?: string;
+  /** Why an option is right or wrong, by option id (so it follows any shuffle). */
+  optionExplanations?: Record<string, string>;
 }
 
+/** The parts of a question that arrive with its answer, never before. */
+export type RevealedParts =
+  | "correctOptionId"
+  | "explanation"
+  | "explanationFigure"
+  | "explanationImageUrl"
+  | "pearls"
+  | "quickRevision"
+  | "optionExplanations";
+
 /** A question inside a session: the answer is present only once revealed. */
-export type SessionQuestion = PublicQuestion & Partial<Pick<Question, "correctOptionId" | "explanation" | "explanationFigure">>;
+export type SessionQuestion = PublicQuestion & Partial<Pick<Question, RevealedParts>>;
 
 // ---------------------------------------------------------------------------
 // Bookmarks
@@ -122,6 +146,8 @@ export type SessionMode = "browse" | "custom-test" | "full-mock" | "bookmarks" |
 export interface SessionFilters {
   examIds?: ExamId[];
   years?: number[];
+  /** Paper keys (`2026-06`, `2025`); see exam-paper.ts. */
+  papers?: string[];
   subjectIds?: string[];
   topicIds?: string[];
   collectionIds?: string[];

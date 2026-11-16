@@ -1,16 +1,29 @@
 import { View } from "react-native";
-import { EXAM_LABEL, type ExamId } from "@jsmf/core/domain";
+import { EXAM_LABEL, paperLabel, type ExamId } from "@jsmf/core/domain";
 import { useTaxonomyLookup } from "@jsmf/core/hooks";
 import { useColors } from "@/theme/theme";
 import { cn, Txt } from "@/components/ui/text";
 
-/** The exam (and, given one, the year) as a small lavender pill: "FMGE 2025". */
-export function ExamBadge({ examId, year, className }: { examId: ExamId | string; year?: number; className?: string }) {
+/**
+ * The exam (and, given one, the year — with the session's month where
+ * recorded) as a small lavender pill: "FMGE 2025", "FMGE Jun 2026".
+ */
+export function ExamBadge({
+  examId,
+  year,
+  month,
+  className,
+}: {
+  examId: ExamId | string;
+  year?: number;
+  month?: number | null;
+  className?: string;
+}) {
   return (
     <View className={cn("rounded-full bg-accent px-2 py-0.5", className)}>
       <Txt weight={700} className="text-[10px] text-primary">
         {EXAM_LABEL[examId as ExamId] ?? examId.toUpperCase()}
-        {year ? ` ${year}` : ""}
+        {year ? ` ${paperLabel(year, month, "short")}` : ""}
       </Txt>
     </View>
   );

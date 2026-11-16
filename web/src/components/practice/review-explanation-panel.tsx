@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CheckCircle2, Circle, Lock, XCircle } from "lucide-react";
 import type { SessionQuestion } from "@jsmf/core/domain";
-import { FigurePlaceholder } from "@/components/common/figure-placeholder";
+import { ExplanationBody } from "./explanation-body";
 import { cn } from "@/lib/utils";
 
 /**
@@ -58,8 +58,7 @@ export function ReviewExplanationPanel({
         {status === "unattempted" && <Circle className="size-4.5" />}
         {status === "correct" ? "Correct" : status === "incorrect" ? "Incorrect" : "Not attempted"}
       </div>
-      <p className="prose-reading text-foreground">{question.explanation}</p>
-      {question.explanationFigure && <FigurePlaceholder figure={question.explanationFigure} />}
+      <ExplanationBody question={question} />
     </div>
   );
 }

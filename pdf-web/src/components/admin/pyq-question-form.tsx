@@ -1,20 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Loader2, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PyqSelect } from "@/components/admin/pyq-select";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { directUpload } from "@/lib/direct-upload";
 import {
   adminPyqApi,
+  PYQ_SESSION_MONTHS,
   type PyqAdminQuestion,
   type PyqDifficulty,
+  type PyqImageField,
+  type PyqImageUpload,
   type PyqQuestionInput,
   type PyqTaxonomy,
 } from "@/lib/api/admin-pyq";
@@ -29,10 +40,12 @@ interface OptionRow {
   id?: string;
   text: string;
   imageUrl: string;
+  /** Why this option is right or wrong — stays with the option when shuffled. */
+  why: string;
 }
 
 let localKey = 0;
-const newRow = (): OptionRow => ({ key: `new-${++localKey}`, text: "", imageUrl: "" });
+const newRow = (): OptionRow => ({ key: `new-${++localKey}`, text: "", imageUrl: "", why: "" });
 
 /**
  * Create / edit form for one PYQ question. Options keep their server ids so
@@ -54,13 +67,25 @@ export function PyqQuestionForm({
   const [subjectId, setSubjectId] = useState(question?.subjectId ?? "");
   const [topicId, setTopicId] = useState(question?.topicId ?? "");
   const [year, setYear] = useState(String(question?.year ?? new Date().getFullYear()));
+  // "" = not recorded (shown as the year alone); otherwise "1"–"12".
+  const [sessionMonth, setSessionMonth] = useState(question?.sessionMonth ? String(question.sessionMonth) : "");
   const [difficulty, setDifficulty] = useState<PyqDifficulty>(question?.difficulty ?? "medium");
   const [stem, setStem] = useState(question?.stem ?? "");
   const [stemImageUrl, setStemImageUrl] = useState(question?.stemImageUrl ?? "");
+  // Uploaded images are saved (and removed) on the spot, not with the form.
+  const [stemUpload, setStemUpload] = useState(question?.stemImageUpload ?? null);
+  const [explanationUpload, setExplanationUpload] = useState(question?.explanationImageUpload ?? null);
   const [explanation, setExplanation] = useState(question?.explanation ?? "");
   const [explanationImageUrl, setExplanationImageUrl] = useState(
     question?.explanationImageUrl ?? "",
   );
+  // One pearl per line.
+  const [pearlsText, setPearlsText] = useState((question?.pearls ?? []).join("\n"));
+  const [quickRevision, setQuickRevision] = useState(question?.quickRevision ?? "");
+  const pearls = pearlsText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
   const [options, setOptions] = useState<OptionRow[]>(
     question
       ? question.options.map((option) => ({
@@ -68,6 +93,7 @@ export function PyqQuestionForm({
           id: option.id,
           text: option.text,
           imageUrl: option.imageUrl ?? "",
+          why: question.optionExplanations?.[option.id] ?? "",
         }))
       : [newRow(), newRow(), newRow(), newRow()],
   );
@@ -122,17 +148,21 @@ export function PyqQuestionForm({
         subjectId,
         topicId: topicId || null,
         year: Number(year),
+        sessionMonth: sessionMonth ? Number(sessionMonth) : null,
         difficulty,
         stem: stem.trim(),
         stemImageUrl: stemImageUrl.trim() || null,
         explanation: explanation.trim(),
         explanationImageUrl: explanationImageUrl.trim() || null,
+        pearls,
+        quickRevision: quickRevision.trim() || null,
         keepOptionOrder,
         options: options.map((row) => ({
           ...(row.id ? { id: row.id } : {}),
           text: row.text.trim(),
           imageUrl: row.imageUrl.trim() || null,
           isCorrect: row.key === correctKey,
+          explanation: row.why.trim() || null,
         })),
       });
     } catch (error) {
@@ -200,6 +230,16 @@ export function PyqQuestionForm({
             />
           </div>
           <div className="space-y-1.5">
+            <Label htmlFor="session-month">Session</Label>
+            <PyqSelect
+              id="session-month"
+              value={sessionMonth}
+              onChange={setSessionMonth}
+              emptyLabel="Not set (year only)"
+              options={PYQ_SESSION_MONTHS.map((name, index) => ({ value: String(index + 1), label: name }))}
+            />
+          </div>
+          <div className="space-y-1.5">
             <Label htmlFor="difficulty">Difficulty</Label>
             <PyqSelect
               id="difficulty"
@@ -239,15 +279,16 @@ export function PyqQuestionForm({
               onChange={(event) => setStem(event.target.value)}
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="stem-image">Image URL (optional)</Label>
-            <Input
-              id="stem-image"
-              placeholder="https://…"
-              value={stemImageUrl}
-              onChange={(event) => setStemImageUrl(event.target.value)}
-            />
-          </div>
+          <QuestionImageField
+            id="stem-image"
+            label="Question image (optional) — an X-ray, photo or diagram shown under the question"
+            field="stem"
+            questionId={question?.id}
+            value={stemImageUrl}
+            onChange={setStemImageUrl}
+            upload={stemUpload}
+            onUploadChange={setStemUpload}
+          />
         </CardContent>
       </Card>
 
@@ -277,6 +318,17 @@ export function PyqQuestionForm({
                     placeholder="Image URL (optional)"
                     value={row.imageUrl}
                     onChange={(event) => updateOption(row.key, { imageUrl: event.target.value })}
+                  />
+                  <Textarea
+                    rows={2}
+                    aria-label={`Why option ${LABELS[index]} is right or wrong`}
+                    placeholder={
+                      row.key === correctKey
+                        ? "Why this is right (optional — usually the explanation says it)"
+                        : "Why this option is wrong (optional)"
+                    }
+                    value={row.why}
+                    onChange={(event) => updateOption(row.key, { why: event.target.value })}
                   />
                 </div>
                 <Button
@@ -336,13 +388,34 @@ export function PyqQuestionForm({
               value={explanation}
               onChange={(event) => setExplanation(event.target.value)}
             />
+            <QuestionImageField
+              id="explanation-image"
+              label="Explanation image (optional)"
+              field="explanation"
+              questionId={question?.id}
+              value={explanationImageUrl}
+              onChange={setExplanationImageUrl}
+              upload={explanationUpload}
+              onUploadChange={setExplanationUpload}
+              showPreview={false}
+            />
             <div className="space-y-1.5">
-              <Label htmlFor="explanation-image">Image URL (optional)</Label>
-              <Input
-                id="explanation-image"
-                placeholder="https://…"
-                value={explanationImageUrl}
-                onChange={(event) => setExplanationImageUrl(event.target.value)}
+              <Label htmlFor="pearls">High-yield pearls (optional, one per line)</Label>
+              <Textarea
+                id="pearls"
+                rows={5}
+                placeholder={"Medial meniscus → attached to MCL\nMcMurray test → meniscal injury"}
+                value={pearlsText}
+                onChange={(event) => setPearlsText(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="quick-revision">Quick revision (optional)</Label>
+              <Textarea
+                id="quick-revision"
+                rows={3}
+                value={quickRevision}
+                onChange={(event) => setQuickRevision(event.target.value)}
               />
             </div>
           </div>
@@ -359,10 +432,38 @@ export function PyqQuestionForm({
             <p className="text-sm whitespace-pre-wrap">
               {explanation || <span className="text-muted-foreground">Nothing written yet.</span>}
             </p>
-            {explanationImageUrl.trim() && (
-              // eslint-disable-next-line @next/next/no-img-element -- arbitrary admin-entered URL
+            {options.some((row) => row.why.trim() && row.key !== correctKey) && (
+              <div className="space-y-1 pt-2">
+                <p className="text-sm font-semibold">Why the other options are wrong</p>
+                {options
+                  .filter((row) => row.why.trim() && row.key !== correctKey)
+                  .map((row) => (
+                    <p key={row.key} className="text-sm whitespace-pre-wrap">
+                      <span className="font-medium">{row.text || "(option)"}:</span> {row.why.trim()}
+                    </p>
+                  ))}
+              </div>
+            )}
+            {pearls.length > 0 && (
+              <div className="space-y-1 pt-2">
+                <p className="text-sm font-semibold">High-yield pearls</p>
+                <ul className="list-disc space-y-0.5 pl-5 text-sm">
+                  {pearls.map((pearl, index) => (
+                    <li key={index}>{pearl}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {quickRevision.trim() && (
+              <div className="space-y-1 pt-2">
+                <p className="text-sm font-semibold">Quick revision</p>
+                <p className="text-sm whitespace-pre-wrap">{quickRevision.trim()}</p>
+              </div>
+            )}
+            {(explanationUpload?.url || explanationImageUrl.trim()) && (
+              // eslint-disable-next-line @next/next/no-img-element -- an uploaded image's short-lived link, or an admin-entered URL
               <img
-                src={explanationImageUrl.trim()}
+                src={explanationUpload?.url || explanationImageUrl.trim()}
                 alt=""
                 className="max-h-64 rounded-md border object-contain"
               />
@@ -377,6 +478,160 @@ export function PyqQuestionForm({
           {submitLabel}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A question image: an uploaded file, or a pasted link to one hosted
+ * elsewhere. An upload is checked, kept in the private bucket and saved on
+ * the question at once (the "pyq.question_image" upload) — students only ever
+ * get a short-lived link to it — so it needs a question that exists: a new one
+ * is saved first. While an upload is set it is what students see, so the link
+ * box is hidden; removing it deletes the file at once.
+ */
+function QuestionImageField({
+  id,
+  label,
+  field,
+  questionId,
+  value,
+  onChange,
+  upload,
+  onUploadChange,
+  showPreview = true,
+}: {
+  id: string;
+  label: string;
+  field: PyqImageField;
+  questionId?: string;
+  value: string;
+  onChange: (value: string) => void;
+  upload: PyqImageUpload | null;
+  onUploadChange: (upload: PyqImageUpload | null) => void;
+  showPreview?: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  async function send(file: File) {
+    if (!questionId) return;
+    setBusy(true);
+    try {
+      const result = await directUpload<{ stemImageUpload: PyqImageUpload | null; explanationImageUpload: PyqImageUpload | null }>({
+        purpose: "pyq.question_image",
+        targetId: questionId,
+        context: { field },
+        file,
+      });
+      onUploadChange(field === "stem" ? result.stemImageUpload : result.explanationImageUpload);
+      // The server cleared the pasted link too; keep the form from saving it back.
+      onChange("");
+      toast.success(upload ? "Image replaced" : "Image uploaded and saved on the question");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not upload the image");
+    } finally {
+      setBusy(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+
+  async function remove() {
+    if (!questionId) return;
+    setBusy(true);
+    try {
+      await adminPyqApi.removeQuestionImage(questionId, field);
+      onUploadChange(null);
+      setConfirmRemove(false);
+      toast.success("Image removed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove the image");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const pick = (
+    <input
+      ref={fileInput}
+      type="file"
+      accept="image/png,image/jpeg,image/webp"
+      className="hidden"
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+        if (file) void send(file);
+      }}
+    />
+  );
+
+  if (upload) {
+    return (
+      <div className="space-y-1.5">
+        <Label>{label}</Label>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm text-muted-foreground">
+            Uploaded image — private: students get a link that expires.
+          </p>
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => fileInput.current?.click()}>
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            Replace
+          </Button>
+          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => setConfirmRemove(true)}>
+            <Trash2 className="size-4" />
+            Remove
+          </Button>
+          {pick}
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element -- a short-lived signed link, not a static asset */}
+        <img src={upload.url} alt="" className="max-h-56 rounded-md border object-contain" />
+        <AlertDialog open={confirmRemove} onOpenChange={(open) => !open && !busy && setConfirmRemove(false)}>
+          <AlertDialogContent>
+            <AlertDialogTitle>Remove this image?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Its file is deleted straight away, and students stop seeing it. This cannot be undone — you can upload
+              it again.
+            </AlertDialogDescription>
+            <AlertDialogFooter>
+              <Button variant="ghost" size="lg" disabled={busy} onClick={() => setConfirmRemove(false)}>
+                Cancel
+              </Button>
+              <Button variant="destructive" size="lg" disabled={busy} onClick={() => void remove()}>
+                {busy && <Loader2 className="size-4 animate-spin" />}
+                Remove
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex gap-2">
+        <Input id={id} placeholder="https://…" value={value} onChange={(event) => onChange(event.target.value)} />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!questionId || busy}
+          onClick={() => fileInput.current?.click()}
+        >
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+          Upload
+        </Button>
+        {pick}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {questionId
+          ? "Upload keeps the image private. A pasted link is shown as it is, to anyone who has it."
+          : "Save the question first, then upload an image here."}
+      </p>
+      {showPreview && value.trim() && (
+        // eslint-disable-next-line @next/next/no-img-element -- arbitrary admin-entered URL
+        <img src={value.trim()} alt="" className="max-h-56 rounded-md border object-contain" />
+      )}
     </div>
   );
 }

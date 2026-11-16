@@ -1834,33 +1834,69 @@ model Topic {
 
 /// A single-best-answer MCQ.
 model Question {
-  id                  String         @id @default(uuid(7)) @db.Uuid
+  id                              String           @id @default(uuid(7)) @db.Uuid
   /// The content pipeline's own identifier. Import is an upsert on this, so
   /// re-running the same file updates rather than duplicates.
-  externalKey         String         @unique @map("external_key") @db.VarChar(160)
-  examId              String         @map("exam_id") @db.Uuid
-  subjectId           String         @map("subject_id") @db.Uuid
-  topicId             String?        @map("topic_id") @db.Uuid
-  year                Int            @db.SmallInt
-  stem                String
-  stemImageUrl        String?        @map("stem_image_url")
+  externalKey                     String           @unique @map("external_key") @db.VarChar(160)
+  examId                          String           @map("exam_id") @db.Uuid
+  subjectId                       String           @map("subject_id") @db.Uuid
+  topicId                         String?          @map("topic_id") @db.Uuid
+  year                            Int              @db.SmallInt
+  /// The exam session's month (1–12) for exams held more than once a year:
+  /// FMGE June 2026 is `year 2026, sessionMonth 6`. Null when not recorded or
+  /// the exam is held once a year — shown as the year alone. Range is a CHECK
+  /// constraint in the migration.
+  sessionMonth                    Int?             @map("session_month") @db.SmallInt
+  stem                            String
+  /// A pasted link to an image hosted elsewhere. An image uploaded here is a
+  /// stored file instead (the three `stemImage*` columns below) and wins
+  /// over this when both are set.
+  stemImageUrl                    String?          @map("stem_image_url")
+  /// The uploaded question image: provider + bucket + object key, all three
+  /// null together (a CHECK in the migration). Kept in the PRIVATE bucket and
+  /// shown through a short-lived signed link made when the question is sent
+  /// (QuestionImageLinks), never stored as a URL. Written only by the
+  /// "pyq.question_image" upload and its removal.
+  stemImageStorageProvider        StorageProvider? @map("stem_image_storage_provider")
+  stemImageBucket                 String?          @map("stem_image_bucket") @db.VarChar(255)
+  stemImageObjectKey              String?          @map("stem_image_object_key")
   /// Placeholder figure (`{ kind, caption }`) the web app renders until real
   /// images exist. Display-only, never queried.
-  stemFigure          Json?          @map("stem_figure")
-  explanation         String
-  explanationImageUrl String?        @map("explanation_image_url")
-  explanationFigure   Json?          @map("explanation_figure")
-  difficulty          Difficulty     @default(MEDIUM)
-  status              QuestionStatus @default(DRAFT)
+  stemFigure                      Json?            @map("stem_figure")
+  explanation                     String
+  explanationImageUrl             String?          @map("explanation_image_url")
+  /// The uploaded explanation image, as the stem image above.
+  explanationImageStorageProvider StorageProvider? @map("explanation_image_storage_provider")
+  explanationImageBucket          String?          @map("explanation_image_bucket") @db.VarChar(255)
+  explanationImageObjectKey       String?          @map("explanation_image_object_key")
+  explanationFigure               Json?            @map("explanation_figure")
+  /// High-yield pearls / buzzwords, one per item ("Medial meniscus → attached
+  /// to MCL"). Shown with the explanation, only once the answer is.
+  pearls                          String[]         @default([])
+  /// The one-paragraph recap shown last with the explanation.
+  quickRevision                   String?          @map("quick_revision")
+  difficulty                      Difficulty       @default(MEDIUM)
+  status                          QuestionStatus   @default(DRAFT)
   /// The admin's "keep option order": this question's options are never
   /// shuffled. Questions whose options or explanation refer to other options
   /// ("All of the above", "Both A and C", "option B is…") are kept in order
   /// whatever this says — detected on every read by domain/option-order.ts,
   /// so improving the detector needs no backfill.
-  keepOptionOrder     Boolean        @default(false) @map("keep_option_order")
-  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt           DateTime?      @map("deleted_at") @db.Timestamptz(6)
+  keepOptionOrder                 Boolean          @default(false) @map("keep_option_order")
+  /// The last content release (a package pushed from the editorial copy —
+  /// application/question-release.ts) that wrote this question; all three or
+  /// none (CHECK in the migration). `releasedContentHash`: the package content
+  /// it applied, images by their bytes — the same package again is "unchanged".
+  /// `releasedStateHash`: this row's content as that push left it, images by
+  /// stored object — so an edit made here since (text or image) shows as a
+  /// difference, and the next push refuses to overwrite it unless told to.
+  /// Status is in neither: publishing never counts as an edit.
+  releasedContentHash             String?          @map("released_content_hash") @db.Char(64)
+  releasedStateHash               String?          @map("released_state_hash") @db.Char(64)
+  releasedAt                      DateTime?        @map("released_at") @db.Timestamptz(6)
+  createdAt                       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                       DateTime?        @map("deleted_at") @db.Timestamptz(6)
 
   exam    Exam    @relation(fields: [examId], references: [id], onDelete: Restrict)
   subject Subject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
@@ -1882,18 +1918,22 @@ model Question {
 }
 
 model QuestionOption {
-  id         String   @id @default(uuid(7)) @db.Uuid
-  questionId String   @map("question_id") @db.Uuid
+  id          String   @id @default(uuid(7)) @db.Uuid
+  questionId  String   @map("question_id") @db.Uuid
   /// `A`, `B`, `C`, `D` — what the student sees beside the option.
-  label      String   @db.VarChar(4)
-  text       String
-  imageUrl   String?  @map("image_url")
+  label       String   @db.VarChar(4)
+  text        String
+  imageUrl    String?  @map("image_url")
+  /// Why this option is right or wrong. On the option, not in the question's
+  /// explanation, so it stays with it when options are shuffled. Revealed
+  /// with the answer, never before.
+  explanation String?
   /// Never serialised to a student before they have answered (PRACTICE) or
   /// submitted (TEST).
-  isCorrect  Boolean  @default(false) @map("is_correct")
-  sortOrder  Int      @map("sort_order")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isCorrect   Boolean  @default(false) @map("is_correct")
+  sortOrder   Int      @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 

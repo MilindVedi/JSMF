@@ -1,6 +1,6 @@
 import { CheckCircle2, XCircle } from "lucide-react";
 import type { SessionQuestion } from "@jsmf/core/domain";
-import { FigurePlaceholder } from "@/components/common/figure-placeholder";
+import { ExplanationBody } from "./explanation-body";
 import { cn } from "@/lib/utils";
 
 export function ExplanationPanel({
@@ -26,8 +26,7 @@ export function ExplanationPanel({
         {isCorrect ? <CheckCircle2 className="size-4.5" /> : <XCircle className="size-4.5" />}
         {isCorrect ? "Correct" : "Incorrect"}
       </div>
-      <p className="prose-reading text-foreground">{question.explanation}</p>
-      {question.explanationFigure && <FigurePlaceholder figure={question.explanationFigure} />}
+      <ExplanationBody question={question} />
     </div>
   );
 }

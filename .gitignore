@@ -13,3 +13,6 @@ node_modules/
 
 temp_env_updates_info.json
 tem_app_to_do_next.md
+# Content releases (backend: npm run pyq:release:export). Paid content: kept out of git;
+# each one is also archived in the private bucket under pyq/releases/.
+content-releases/

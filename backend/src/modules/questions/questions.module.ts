@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../shared/prisma/prisma.module';
 import { EntitlementsModule } from '../entitlements/entitlements.module';
+import { StorageModule } from '../storage/storage.module';
+import { QuestionImageLinks } from './application/question-image-links';
+import { QuestionImageUploads } from './application/question-image-uploads';
+import { QuestionReleaseService } from './application/question-release.service';
 import { PracticeService } from './application/practice.service';
 import { ProgressService } from './application/progress.service';
 import { PyqAccessService } from './application/pyq-access.service';
@@ -10,6 +14,7 @@ import { QuestionImportService } from './application/question-import.service';
 import { PyqTaxonomyAdminService } from './application/pyq-taxonomy-admin.service';
 import { QuestionAdminService } from './application/question-admin.service';
 import { AdminQuestionContentController } from './http/admin-question-content.controller';
+import { AdminQuestionReleasesController } from './http/admin-question-releases.controller';
 import { AdminQuestionsController } from './http/admin-questions.controller';
 import { PyqController } from './http/pyq.controller';
 import { PyqLearningController } from './http/pyq-learning.controller';
@@ -32,13 +37,14 @@ import { AdminExamSetupController } from './http/admin-exam-setup.controller';
  * depends on this module.
  */
 @Module({
-  imports: [PrismaModule, EntitlementsModule],
+  imports: [PrismaModule, EntitlementsModule, StorageModule],
   controllers: [
     PyqController,
     PyqLearningController,
     PyqPlansController,
     AdminQuestionsController,
     AdminQuestionContentController,
+    AdminQuestionReleasesController,
     AdminPyqSubscriptionController,
     AdminExamSetupController,
   ],
@@ -57,6 +63,9 @@ import { AdminExamSetupController } from './http/admin-exam-setup.controller';
     QuestionAdminService,
     PyqTaxonomyAdminService,
     ExamSetupService,
+    QuestionImageLinks,
+    QuestionImageUploads,
+    QuestionReleaseService,
   ],
   exports: [QuestionImportService, QuestionStateService],
 })

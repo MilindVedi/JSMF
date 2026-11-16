@@ -20,9 +20,15 @@ import {
   toAnsweredQuestionView,
 } from "../domain/question-view";
 import { optionOrderLock } from "../domain/option-order";
+import { cleanPearls } from "./question-import.service";
+import { QuestionImageUploads } from "./question-image-uploads";
 
 export const MIN_OPTIONS = 2;
 export const MAX_OPTIONS = 6;
+/** One bulk publish/unpublish at most — the same as one import file. */
+export const MAX_BULK_QUESTIONS = 2000;
+/** How the admin list is ordered, and so the order "select all matching" ids come in. */
+const LIST_ORDER: Prisma.QuestionOrderByWithRelationInput[] = [{ updatedAt: "desc" }, { id: "asc" }];
 const OPTION_LABELS = ["A", "B", "C", "D", "E", "F"];
 
 export interface AdminOptionInput {
@@ -30,6 +36,8 @@ export interface AdminOptionInput {
   text: string;
   imageUrl?: string | null;
   isCorrect: boolean;
+  /** Why this option is right or wrong; null or omitted: none. */
+  explanation?: string | null;
 }
 
 export interface AdminQuestionInput {
@@ -39,10 +47,15 @@ export interface AdminQuestionInput {
   subjectId: string;
   topicId?: string | null;
   year: number;
+  /** The exam session's month, 1–12; null or omitted: none. */
+  sessionMonth?: number | null;
   stem: string;
   stemImageUrl?: string | null;
   explanation: string;
   explanationImageUrl?: string | null;
+  /** High-yield pearls / buzzwords, one per item. */
+  pearls?: string[];
+  quickRevision?: string | null;
   difficulty: Difficulty;
   status?: QuestionStatus;
   /** Never shuffle this question's options. Some questions are kept in order regardless (see optionOrderLock). */
@@ -74,9 +87,12 @@ export interface AdminQuestionFilters {
 export class QuestionAdminService {
   private readonly logger = new Logger(QuestionAdminService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly images: QuestionImageUploads,
+  ) {}
 
-  async list(filters: AdminQuestionFilters, page: number, pageSize: number) {
+  private whereFor(filters: AdminQuestionFilters): Prisma.QuestionWhereInput {
     const and: Prisma.QuestionWhereInput[] = [{ deletedAt: null }];
     if (filters.examId) and.push({ exam: { slug: filters.examId } });
     if (filters.subjectId) and.push({ subject: { slug: filters.subjectId } });
@@ -88,14 +104,18 @@ export class QuestionAdminService {
     if (filters.reported) {
       and.push({ reports: { some: { status: QuestionReportStatus.OPEN } } });
     }
-    const where: Prisma.QuestionWhereInput = { AND: and };
+    return { AND: and };
+  }
+
+  async list(filters: AdminQuestionFilters, page: number, pageSize: number) {
+    const where = this.whereFor(filters);
 
     const [total, rows] = await Promise.all([
       this.prisma.question.count({ where }),
       this.prisma.question.findMany({
         where,
         include: QUESTION_VIEW_INCLUDE,
-        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        orderBy: LIST_ORDER,
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -105,8 +125,22 @@ export class QuestionAdminService {
       total,
       page,
       pageSize,
-      items: rows.map((row) => this.view(row, counts.get(row.id))),
+      items: await Promise.all(rows.map((row) => this.view(row, counts.get(row.id)))),
     };
+  }
+
+  /**
+   * The ids of every question the list would show for these filters, in its
+   * order — what "Select all N matching" selects for a bulk action. At most
+   * MAX_BULK_QUESTIONS; `truncated` says when there were more.
+   */
+  async ids(filters: AdminQuestionFilters) {
+    const where = this.whereFor(filters);
+    const [total, rows] = await Promise.all([
+      this.prisma.question.count({ where }),
+      this.prisma.question.findMany({ where, select: { id: true }, orderBy: LIST_ORDER, take: MAX_BULK_QUESTIONS }),
+    ]);
+    return { total, ids: rows.map((row) => row.id), truncated: total > rows.length };
   }
 
   async get(id: string) {
@@ -145,10 +179,13 @@ export class QuestionAdminService {
         externalKey,
         ...taxonomy,
         year: input.year,
+        sessionMonth: input.sessionMonth ?? null,
         stem: input.stem,
         stemImageUrl: input.stemImageUrl ?? null,
         explanation: input.explanation,
         explanationImageUrl: input.explanationImageUrl ?? null,
+        pearls: cleanPearls(input.pearls ?? []),
+        quickRevision: input.quickRevision?.trim() || null,
         difficulty: input.difficulty,
         status: input.status ?? QuestionStatus.DRAFT,
         keepOptionOrder: input.keepOptionOrder ?? false,
@@ -158,6 +195,7 @@ export class QuestionAdminService {
             text: option.text,
             imageUrl: option.imageUrl ?? null,
             isCorrect: option.isCorrect,
+            explanation: option.explanation?.trim() || null,
             sortOrder: index,
           })),
         },
@@ -201,6 +239,7 @@ export class QuestionAdminService {
       );
     }
     if (input.year !== undefined) data.year = input.year;
+    if (input.sessionMonth !== undefined) data.sessionMonth = input.sessionMonth;
     if (input.stem !== undefined) data.stem = input.stem;
     if (input.stemImageUrl !== undefined)
       data.stemImageUrl = input.stemImageUrl;
@@ -209,6 +248,8 @@ export class QuestionAdminService {
       data.explanationImageUrl = input.explanationImageUrl;
     }
     if (input.difficulty !== undefined) data.difficulty = input.difficulty;
+    if (input.pearls !== undefined) data.pearls = cleanPearls(input.pearls);
+    if (input.quickRevision !== undefined) data.quickRevision = input.quickRevision?.trim() || null;
     if (input.keepOptionOrder !== undefined) data.keepOptionOrder = input.keepOptionOrder;
 
     if (input.options) {
@@ -264,6 +305,7 @@ export class QuestionAdminService {
             text: option.text,
             imageUrl: option.imageUrl ?? null,
             isCorrect: option.isCorrect,
+            explanation: option.explanation?.trim() || null,
             sortOrder: index,
           };
           if (option.id) {
@@ -313,6 +355,28 @@ export class QuestionAdminService {
     });
     const counts = await this.reportCounts([id]);
     return this.view(row, counts.get(id));
+  }
+
+  /**
+   * Publish or unpublish many questions at once: exactly these ids, as the
+   * admin selected them, so questions someone imports meanwhile are never
+   * published unseen. Deleted questions are skipped and ones already in that
+   * status left alone, so `changed` counts real changes and a retry is a no-op.
+   */
+  async setStatusMany(ids: string[], status: QuestionStatus, actorId: string) {
+    const unique = [...new Set(ids)];
+    const { count } = await this.prisma.question.updateMany({
+      where: { id: { in: unique }, deletedAt: null, status: { not: status } },
+      data: { status },
+    });
+    activity(this.logger, "pyq.questions_status_changed", {
+      actorId,
+      status,
+      requested: unique.length,
+      changed: count,
+      questionIds: unique,
+    });
+    return { requested: unique.length, changed: count };
   }
 
   /** Soft delete: hidden from students and admin lists; history keeps pointing at it. */
@@ -495,12 +559,19 @@ export class QuestionAdminService {
     return counts;
   }
 
-  private view(
+  /**
+   * A question as the admin editor shows it. `stemImageUrl` /
+   * `explanationImageUrl` are the pasted-link columns the form edits;
+   * `stemImageUpload` / `explanationImageUpload` are the uploaded files (a
+   * short-lived preview link each), which win over a link when both are set.
+   */
+  private async view(
     row: QuestionWithRelations,
     reports: { open: number; total: number } | undefined,
   ) {
     return {
       ...toAnsweredQuestionView(row),
+      ...(await this.images.viewOf(row)),
       status: row.status,
       keepOptionOrder: row.keepOptionOrder,
       /** Why students always see these options in the order written; null when they may be shuffled. */

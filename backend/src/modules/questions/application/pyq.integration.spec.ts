@@ -24,6 +24,7 @@ import { QuestionBankService } from './question-bank.service';
 import { QuestionImportService, type ImportInput } from './question-import.service';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { PyqSubscriptionService } from './pyq-subscription.service';
+import { QuestionImageLinks } from './question-image-links';
 
 /**
  * The PYQ bank and practice flow against a real Postgres, wired by hand like
@@ -54,7 +55,12 @@ const states = new QuestionStateService(prisma);
 const importer = new QuestionImportService(prisma);
 // Options in written order here; shuffling has its own spec (exam-mode.integration.spec.ts).
 const examSetup = { settings: async () => ({ shuffleOptions: false }) } as unknown as ExamSetupService;
-const practice = new PracticeService(prisma, bank, access, states, examSetup);
+// No test here uploads an image, so signing one would be a bug: this storage refuses.
+const imageLinks = new QuestionImageLinks(
+  { getSignedDownloadUrl: () => Promise.reject(new Error('no image storage in this test')) } as never,
+  config as never,
+);
+const practice = new PracticeService(prisma, bank, access, states, examSetup, imageLinks);
 const progress = new ProgressService(prisma, bank);
 
 const run = randomUUID().slice(0, 8);
@@ -97,6 +103,15 @@ async function createUser() {
 
 const filters = { subjectIds: [SUBJECT] };
 
+// Exam papers (session month) get their own subject and an unused year, so
+// they never change what the other tests draw from or count.
+const PAPER_SUBJECT = `spec-papers-${run}`;
+const PAPER_KEY_PREFIX = `spec-paper-${run}-`;
+const PAPER_YEAR = 1951;
+// Explanation parts likewise get their own subject.
+const PARTS_SUBJECT = `spec-parts-${run}`;
+const PARTS_KEY_PREFIX = `spec-parts-${run}-`;
+
 async function questionIds() {
   const rows = await prisma.question.findMany({
     where: { externalKey: { startsWith: `spec-${run}-` } },
@@ -114,8 +129,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma.practiceSession.deleteMany({ where: { userId: { in: created.userIds } } });
   await prisma.question.deleteMany({ where: { externalKey: { startsWith: `spec-${run}-` } } });
+  await prisma.question.deleteMany({ where: { externalKey: { startsWith: PAPER_KEY_PREFIX } } });
+  await prisma.question.deleteMany({ where: { externalKey: { startsWith: PARTS_KEY_PREFIX } } });
   await prisma.topic.deleteMany({ where: { slug: TOPIC } });
-  await prisma.subject.deleteMany({ where: { slug: SUBJECT } });
+  await prisma.subject.deleteMany({ where: { slug: { in: [SUBJECT, PAPER_SUBJECT, PARTS_SUBJECT] } } });
   await prisma.exam.deleteMany({ where: { slug: EXAM } });
   await prisma.entitlement.deleteMany({ where: { userId: { in: created.userIds } } });
   await prisma.product.deleteMany({ where: { id: { in: created.productIds } } });
@@ -145,6 +162,37 @@ describe('import', () => {
       },
     ];
     await expect(importer.import(input)).rejects.toThrow(/exactly one correct/);
+  });
+
+  it('refuses an exam or subject it does not know, and writes nothing', async () => {
+    const typo = `spec-subjectt-${run}`;
+    const missingExam = `spec-no-exam-${run}`;
+    const input = importInput();
+    input.questions = [
+      { ...input.questions[0], externalKey: `spec-${run}-typo`, subjectSlug: typo, topicSlug: null },
+      { ...input.questions[1], externalKey: `spec-${run}-no-exam`, examSlug: missingExam },
+    ];
+
+    const refused = importer.import(input);
+    await expect(refused).rejects.toThrow(`Unknown subject "${typo}" (question spec-${run}-typo)`);
+    await expect(refused).rejects.toThrow(`Unknown exam "${missingExam}" (question spec-${run}-no-exam)`);
+    // A topic naming an unknown subject is refused the same way.
+    await expect(
+      importer.import({ ...importInput(), topics: [{ slug: `${typo}--x`, subjectSlug: typo, name: 'X' }] }),
+    ).rejects.toThrow(`Unknown subject "${typo}" (topic ${typo}--x)`);
+
+    expect(await prisma.subject.count({ where: { slug: typo } })).toBe(0);
+    expect(await prisma.exam.count({ where: { slug: missingExam } })).toBe(0);
+    expect(await prisma.question.count({ where: { externalKey: { in: [`spec-${run}-typo`, `spec-${run}-no-exam`] } } })).toBe(0);
+
+    // Described in the file, the same subject is welcome.
+    const described = await importer.import({
+      subjects: [{ slug: typo, name: 'Spec Typo', group: 'clinical' }],
+      questions: [input.questions[0]],
+    });
+    expect(described).toMatchObject({ created: 1 });
+    await prisma.question.deleteMany({ where: { externalKey: `spec-${run}-typo` } });
+    await prisma.subject.deleteMany({ where: { slug: typo } });
   });
 });
 
@@ -614,5 +662,226 @@ describe('production hardening', () => {
     expect(
       await prisma.attempt.findUnique({ where: { sessionId_questionId: { sessionId: session.id, questionId: rows[4].id } } }),
     ).toMatchObject({ timeSpentMs: 6 * 3600 * 1000 });
+  });
+});
+
+describe('exam papers (session month)', () => {
+  const key = (i: number) => `${PAPER_KEY_PREFIX}${i}`;
+  /** `undefined` leaves sessionMonth out of the file. */
+  function paperInput(months: (number | null | undefined)[]): ImportInput {
+    return {
+      subjects: [{ slug: PAPER_SUBJECT, name: 'Spec Papers', group: 'clinical' }],
+      questions: months.map((sessionMonth, i) => ({
+        externalKey: key(i),
+        examSlug: EXAM,
+        subjectSlug: PAPER_SUBJECT,
+        year: PAPER_YEAR,
+        ...(sessionMonth === undefined ? {} : { sessionMonth }),
+        stem: `Paper question ${i}`,
+        explanation: 'Because',
+        difficulty: Difficulty.EASY,
+        status: QuestionStatus.PUBLISHED,
+        options: ['A', 'B'].map((text, j) => ({ text, isCorrect: j === 0 })),
+      })),
+    };
+  }
+  const months = async () =>
+    (
+      await prisma.question.findMany({
+        where: { externalKey: { startsWith: PAPER_KEY_PREFIX } },
+        orderBy: { externalKey: 'asc' },
+        select: { sessionMonth: true },
+      })
+    ).map((row) => row.sessionMonth);
+
+  it('imports the month, keeps it when a later file leaves it out, and clears it on null', async () => {
+    await importer.import(paperInput([6, 12, null]));
+    expect(await months()).toEqual([6, 12, null]);
+
+    await importer.import(paperInput([undefined, undefined, undefined]));
+    expect(await months()).toEqual([6, 12, null]);
+
+    await importer.import(paperInput([6, null, 12]));
+    expect(await months()).toEqual([6, null, 12]);
+
+    await importer.import(paperInput([6, 12, null]));
+    expect(await months()).toEqual([6, 12, null]);
+  });
+
+  it('counts each paper in the taxonomy, filters by paper, and sorts the later session first', async () => {
+    // The import endpoint drops the cached taxonomy (InvalidateTaxonomyInterceptor); do the same.
+    await bank.invalidateTaxonomy();
+    const taxonomy = await bank.taxonomy();
+    expect(taxonomy.papers.filter((paper) => paper.year === PAPER_YEAR)).toEqual([
+      { key: `${PAPER_YEAR}-12`, year: PAPER_YEAR, month: 12, questionCount: 1 },
+      { key: `${PAPER_YEAR}-06`, year: PAPER_YEAR, month: 6, questionCount: 1 },
+      { key: `${PAPER_YEAR}`, year: PAPER_YEAR, month: null, questionCount: 1 },
+    ]);
+    // Older app versions still get the year, counting every session in it.
+    expect(taxonomy.years.find((row) => row.year === PAPER_YEAR)).toEqual({ year: PAPER_YEAR, questionCount: 3 });
+
+    const user = await createUser();
+    const keysFor = async (query: { papers?: string[]; years?: number[] }) =>
+      (await bank.list(user.id, { subjectIds: [PAPER_SUBJECT], ...query }, 1, 50)).items.map((item) => item.externalKey).sort();
+    expect(await keysFor({ papers: [`${PAPER_YEAR}-06`] })).toEqual([key(0)]);
+    expect(await keysFor({ papers: [`${PAPER_YEAR}-12`] })).toEqual([key(1)]);
+    expect(await keysFor({ papers: [`${PAPER_YEAR}-06`, `${PAPER_YEAR}`] })).toEqual([key(0), key(2)]);
+    expect(await keysFor({ years: [PAPER_YEAR] })).toEqual([key(0), key(1), key(2)]);
+
+    const newestFirst = await bank.list(user.id, { subjectIds: [PAPER_SUBJECT] }, 1, 50, 'newest-exam-year');
+    expect(newestFirst.items.map((item) => item.sessionMonth)).toEqual([12, 6, null]);
+
+    // A session drawn for one paper only ever contains that paper's questions.
+    const session = await practice.start(user.id, {
+      mode: PracticeMode.PRACTICE,
+      filters: { subjectIds: [PAPER_SUBJECT], papers: [`${PAPER_YEAR}-12`] },
+      count: 5,
+    });
+    const detail = await practice.get(user.id, session.id);
+    expect(detail.questions.map((question) => question.sessionMonth)).toEqual([12]);
+  });
+});
+
+describe('explanation parts (pearls, quick revision, why each option)', () => {
+  const key = `${PARTS_KEY_PREFIX}0`;
+  function partsInput(parts: { pearls?: string[]; quickRevision?: string | null; why?: boolean } = {}): ImportInput {
+    const why = parts.why ?? true;
+    return {
+      subjects: [{ slug: PARTS_SUBJECT, name: 'Spec Parts', group: 'clinical' }],
+      questions: [
+        {
+          externalKey: key,
+          examSlug: EXAM,
+          subjectSlug: PARTS_SUBJECT,
+          year: 2024,
+          stem: 'Which nerve is injured in a fibular neck fracture?',
+          explanation: 'The common peroneal nerve winds round the fibular neck.',
+          ...(parts.pearls !== undefined ? { pearls: parts.pearls } : {}),
+          ...(parts.quickRevision !== undefined ? { quickRevision: parts.quickRevision } : {}),
+          difficulty: Difficulty.EASY,
+          status: QuestionStatus.PUBLISHED,
+          options: [
+            { text: 'Common peroneal nerve', isCorrect: true },
+            { text: 'Tibial nerve', isCorrect: false, ...(why ? { explanation: 'Plantarflexion, not dorsiflexion.' } : {}) },
+            { text: 'Deep peroneal nerve', isCorrect: false, ...(why ? { explanation: 'Spares eversion.' } : {}) },
+          ],
+        },
+      ],
+    };
+  }
+  const row = () =>
+    prisma.question.findUniqueOrThrow({
+      where: { externalKey: key },
+      include: { options: { orderBy: { sortOrder: 'asc' } } },
+    });
+
+  it('imports them, keeps them when a later file leaves them out, and clears them on [] / null', async () => {
+    await importer.import(partsInput({ pearls: ['  Fibular neck → common peroneal ', '', 'Foot drop'], quickRevision: 'Deep = dorsiflexion.' }));
+    let saved = await row();
+    expect(saved.pearls).toEqual(['Fibular neck → common peroneal', 'Foot drop']);
+    expect(saved.quickRevision).toBe('Deep = dorsiflexion.');
+    expect(saved.options.map((option) => option.explanation)).toEqual([null, 'Plantarflexion, not dorsiflexion.', 'Spares eversion.']);
+
+    await importer.import(partsInput({ why: false }));
+    saved = await row();
+    expect(saved.pearls).toHaveLength(2);
+    expect(saved.quickRevision).toBe('Deep = dorsiflexion.');
+    expect(saved.options[1].explanation).toBe('Plantarflexion, not dorsiflexion.');
+
+    await importer.import(partsInput({ pearls: [], quickRevision: null }));
+    saved = await row();
+    expect(saved.pearls).toEqual([]);
+    expect(saved.quickRevision).toBeNull();
+
+    await importer.import(partsInput({ pearls: ['Foot drop'], quickRevision: 'Deep = dorsiflexion.' }));
+  });
+
+  it('are revealed with the answer in practice, never before, and never in a running test', async () => {
+    const user = await createUser();
+    const question = await row();
+    const [right, wrong, other] = question.options;
+    const hidden = (view: Record<string, unknown>) =>
+      !('pearls' in view) && !('quickRevision' in view) && !('optionExplanations' in view) && !('explanation' in view);
+
+    const practiceSession = await practice.start(user.id, { mode: PracticeMode.PRACTICE, questionIds: [question.id] });
+    expect(hidden((await practice.get(user.id, practiceSession.id)).questions[0] as never)).toBe(true);
+
+    const answer = await practice.answer(user.id, practiceSession.id, { questionId: question.id, selectedOptionId: wrong.id });
+    expect(answer).toMatchObject({
+      isCorrect: false,
+      correctOptionId: right.id,
+      pearls: ['Foot drop'],
+      quickRevision: 'Deep = dorsiflexion.',
+      optionExplanations: { [wrong.id]: 'Plantarflexion, not dorsiflexion.', [other.id]: 'Spares eversion.' },
+    });
+    const revealed = (await practice.get(user.id, practiceSession.id)).questions[0] as unknown as Record<string, unknown>;
+    expect(revealed).toMatchObject({ pearls: ['Foot drop'], quickRevision: 'Deep = dorsiflexion.' });
+    // Keyed by option id: no entry for an option without its own "why".
+    expect(Object.keys(revealed.optionExplanations as object).sort()).toEqual([wrong.id, other.id].sort());
+
+    const test = await practice.begin(user.id, (await practice.start(user.id, { mode: PracticeMode.TEST, questionIds: [question.id], timeLimitSec: 600 })).id);
+    const recorded = await practice.answer(user.id, test.id, { questionId: question.id, selectedOptionId: wrong.id });
+    expect(hidden(recorded as never)).toBe(true);
+    expect(hidden((await practice.get(user.id, test.id)).questions[0] as never)).toBe(true);
+  });
+
+  it('sends uploaded images by the same rule: the question image with the question, the explanation image only with the answer', async () => {
+    const signed = (objectKey: string) => `https://signed.test/${objectKey}`;
+    const signing = new PracticeService(
+      prisma,
+      bank,
+      access,
+      states,
+      examSetup,
+      new QuestionImageLinks(
+        { getSignedDownloadUrl: async (ref: { objectKey: string }) => signed(ref.objectKey) } as never,
+        { get: () => 3600 } as never,
+      ),
+    );
+    const question = await row();
+    const files = { stem: `pyq/questions/${question.id}/stem.png`, why: `pyq/questions/${question.id}/why.png` };
+    const none = {
+      stemImageStorageProvider: null,
+      stemImageBucket: null,
+      stemImageObjectKey: null,
+      explanationImageStorageProvider: null,
+      explanationImageBucket: null,
+      explanationImageObjectKey: null,
+    };
+    await prisma.question.update({
+      where: { id: question.id },
+      data: {
+        stemImageStorageProvider: 'LOCAL',
+        stemImageBucket: 'private',
+        stemImageObjectKey: files.stem,
+        explanationImageStorageProvider: 'LOCAL',
+        explanationImageBucket: 'private',
+        explanationImageObjectKey: files.why,
+      },
+    });
+    try {
+      const user = await createUser();
+      const session = await signing.start(user.id, { mode: PracticeMode.PRACTICE, questionIds: [question.id] });
+      const before = (await signing.get(user.id, session.id)).questions[0] as unknown as Record<string, unknown>;
+      expect(before.stemImageUrl).toBe(signed(files.stem));
+      expect('explanationImageUrl' in before).toBe(false);
+
+      const answer = await signing.answer(user.id, session.id, { questionId: question.id, selectedOptionId: question.options[0].id });
+      expect(answer).toMatchObject({ explanationImageUrl: signed(files.why) });
+      expect((await signing.get(user.id, session.id)).questions[0]).toMatchObject({
+        stemImageUrl: signed(files.stem),
+        explanationImageUrl: signed(files.why),
+      });
+
+      const test = await signing.begin(
+        user.id,
+        (await signing.start(user.id, { mode: PracticeMode.TEST, questionIds: [question.id], timeLimitSec: 600 })).id,
+      );
+      const inTest = (await signing.get(user.id, test.id)).questions[0] as unknown as Record<string, unknown>;
+      expect(inTest.stemImageUrl).toBe(signed(files.stem));
+      expect('explanationImageUrl' in inTest).toBe(false);
+    } finally {
+      await prisma.question.update({ where: { id: question.id }, data: none });
+    }
   });
 });

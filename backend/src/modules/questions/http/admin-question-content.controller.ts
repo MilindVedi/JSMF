@@ -1,6 +1,7 @@
 import { UseInterceptors } from "@nestjs/common";
 import { InvalidateTaxonomyInterceptor } from "./invalidate-taxonomy.interceptor";
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -19,9 +20,12 @@ import { Roles } from "../../../common/decorators/roles.decorator";
 import type { AuthenticatedUser } from "../../identity/application/auth.service";
 import { PyqTaxonomyAdminService } from "../application/pyq-taxonomy-admin.service";
 import { QuestionAdminService } from "../application/question-admin.service";
+import { QUESTION_IMAGE_FIELDS, type QuestionImageField } from "../application/question-image-links";
+import { QuestionImageUploads } from "../application/question-image-uploads";
 import {
   AdminQuestionListQueryDto,
   AdminReportListQueryDto,
+  BulkQuestionStatusDto,
   CreateExamDto,
   CreateQuestionDto,
   CreateSubjectDto,
@@ -45,6 +49,7 @@ export class AdminQuestionContentController {
   constructor(
     private readonly questions: QuestionAdminService,
     private readonly taxonomy: PyqTaxonomyAdminService,
+    private readonly images: QuestionImageUploads,
   ) {}
 
   // --- Questions ------------------------------------------------------------
@@ -56,6 +61,26 @@ export class AdminQuestionContentController {
   list(@Query() query: AdminQuestionListQueryDto) {
     const { page, pageSize, ...filters } = query;
     return this.questions.list(filters, page, pageSize);
+  }
+
+  // Before `questions/:id`, so "ids" and "status" are never read as an id.
+  @Get("questions/ids")
+  @ApiOperation({
+    summary: "Ids of every question matching the list filters (at most 2000), for bulk actions",
+  })
+  ids(@Query() query: AdminQuestionListQueryDto) {
+    return this.questions.ids(query);
+  }
+
+  @Patch("questions/status")
+  @ApiOperation({
+    summary: "Publish or unpublish many questions at once (exactly these ids)",
+  })
+  setStatusMany(
+    @Body() dto: BulkQuestionStatusDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.questions.setStatusMany(dto.ids, dto.status, user.id);
   }
 
   @Get("questions/:id")
@@ -107,6 +132,23 @@ export class AdminQuestionContentController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.questions.remove(id, user.id);
+  }
+
+  @Delete("questions/:id/images/:field")
+  @ApiOperation({
+    summary:
+      "Remove a question's uploaded image (`stem` or `explanation`) and delete its file; returns the question",
+  })
+  async removeImage(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("field") field: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!QUESTION_IMAGE_FIELDS.includes(field as QuestionImageField)) {
+      throw new BadRequestException('field must be "stem" or "explanation".');
+    }
+    await this.images.remove(id, field as QuestionImageField, user.id);
+    return this.questions.get(id);
   }
 
   // --- Taxonomy -------------------------------------------------------------

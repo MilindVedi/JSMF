@@ -30,6 +30,8 @@ export interface ImportOption {
   text: string;
   imageUrl?: string | null;
   isCorrect: boolean;
+  /** Why this option is right or wrong. Omitted: unchanged; null clears it. */
+  explanation?: string | null;
 }
 
 export interface ImportQuestion {
@@ -38,12 +40,22 @@ export interface ImportQuestion {
   subjectSlug: string;
   topicSlug?: string | null;
   year: number;
+  /**
+   * The exam session's month, 1–12 (FMGE June 2026: year 2026, 6). Omitted:
+   * unchanged (none for a new question), so an older file re-imported keeps
+   * a month set since; null clears it.
+   */
+  sessionMonth?: number | null;
   stem: string;
   stemImageUrl?: string | null;
   stemFigure?: Prisma.InputJsonValue | null;
   explanation: string;
   explanationImageUrl?: string | null;
   explanationFigure?: Prisma.InputJsonValue | null;
+  /** High-yield pearls / buzzwords. Omitted: unchanged; [] clears them. */
+  pearls?: string[];
+  /** Omitted: unchanged; null clears it. */
+  quickRevision?: string | null;
   difficulty: Difficulty;
   /** Omitted: new questions start as DRAFT, existing ones keep their status. */
   status?: QuestionStatus;
@@ -59,6 +71,19 @@ export interface ImportInput {
   questions: ImportQuestion[];
 }
 
+/** Columns a caller of `writeQuestion` may set besides the imported content. */
+export type QuestionExtraColumns = Partial<
+  Pick<
+    Prisma.QuestionUncheckedCreateInput,
+    | 'stemImageStorageProvider'
+    | 'stemImageBucket'
+    | 'stemImageObjectKey'
+    | 'explanationImageStorageProvider'
+    | 'explanationImageBucket'
+    | 'explanationImageObjectKey'
+  >
+>;
+
 export interface ImportResult {
   exams: number;
   subjects: number;
@@ -69,13 +94,41 @@ export interface ImportResult {
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-/** `general-medicine` → `General Medicine`, for taxonomy referenced but not described. */
+/** Pearls as stored: trimmed, blanks dropped. */
+export function cleanPearls(pearls: string[]): string[] {
+  return pearls.map((pearl) => pearl.trim()).filter(Boolean);
+}
+
+/** `bone-tumors` → `Bone Tumors`, for a topic referenced but not described. */
 function titleFromSlug(slug: string): string {
   return slug
     .split(/-+/)
     .filter(Boolean)
     .map((word) => word[0].toUpperCase() + word.slice(1))
     .join(' ');
+}
+
+/**
+ * The message for slugs used but neither known nor described, naming where
+ * each is first used and what exists — or null when all are fine.
+ */
+function unknownReferences(
+  kind: 'exam' | 'subject',
+  list: 'exams' | 'subjects',
+  uses: { slug: string; by: string }[],
+  allowed: string[],
+  existing: string[],
+): string | null {
+  const ok = new Set(allowed);
+  const firstUse = new Map<string, string>();
+  for (const use of uses) if (!ok.has(use.slug) && !firstUse.has(use.slug)) firstUse.set(use.slug, use.by);
+  if (!firstUse.size) return null;
+  const unknown = [...firstUse].map(([slug, by]) => `"${slug}" (${by})`).join(', ');
+  return (
+    `Unknown ${kind}${firstUse.size > 1 ? 's' : ''} ${unknown}. ` +
+    `Use an existing ${kind} — ${existing.join(', ') || 'none yet'} — ` +
+    `or describe a new one in the file's "${list}" list.`
+  );
 }
 
 /**
@@ -95,6 +148,7 @@ export class QuestionImportService {
 
   async import(input: ImportInput, actorId: string | null = null): Promise<ImportResult> {
     this.validate(input);
+    await this.checkReferences(input);
 
     const examIds = new Map<string, string>();
     const subjectIds = new Map<string, string>();
@@ -155,69 +209,10 @@ export class QuestionImportService {
         ? await this.topicId(question.topicSlug, subjectId, topicIds)
         : null;
 
-      const fields = {
-        examId,
-        subjectId,
-        topicId,
-        year: question.year,
-        stem: question.stem,
-        stemImageUrl: question.stemImageUrl ?? null,
-        stemFigure: question.stemFigure ?? Prisma.DbNull,
-        explanation: question.explanation,
-        explanationImageUrl: question.explanationImageUrl ?? null,
-        explanationFigure: question.explanationFigure ?? Prisma.DbNull,
-        difficulty: question.difficulty,
-        ...(question.keepOptionOrder !== undefined ? { keepOptionOrder: question.keepOptionOrder } : {}),
-      };
-
-      const wasNew = await this.prisma.$transaction(async (tx) => {
-        const existing = await tx.question.findUnique({
-          where: { externalKey: question.externalKey },
-          select: { id: true },
-        });
-
-        const row = existing
-          ? await tx.question.update({
-              where: { id: existing.id },
-              data: {
-                ...fields,
-                ...(question.status ? { status: question.status } : {}),
-              },
-            })
-          : await tx.question.create({
-              data: {
-                externalKey: question.externalKey,
-                ...fields,
-                status: question.status ?? QuestionStatus.DRAFT,
-              },
-            });
-
-        for (const [index, option] of question.options.entries()) {
-          const data = {
-            label: OPTION_LABELS[index],
-            text: option.text,
-            imageUrl: option.imageUrl ?? null,
-            isCorrect: option.isCorrect,
-          };
-          await tx.questionOption.upsert({
-            where: {
-              questionId_sortOrder: { questionId: row.id, sortOrder: index },
-            },
-            create: { questionId: row.id, sortOrder: index, ...data },
-            update: data,
-          });
-        }
-        await tx.questionOption.deleteMany({
-          where: {
-            questionId: row.id,
-            sortOrder: { gte: question.options.length },
-          },
-        });
-
-        return !existing;
-      });
-
-      if (wasNew) created += 1;
+      const written = await this.prisma.$transaction((tx) =>
+        this.writeQuestion(tx, question, { examId, subjectId, topicId }),
+      );
+      if (written.created) created += 1;
       else updated += 1;
     }
 
@@ -232,10 +227,94 @@ export class QuestionImportService {
     return result;
   }
 
+  /**
+   * Writes one question — its fields and options — in the caller's
+   * transaction: updated in place when its `externalKey` exists, else created
+   * (DRAFT unless it says otherwise). Options are updated by position, so
+   * their ids — which students' past attempts point at — stay stable. Shared
+   * with the release push (question-release.service.ts), which passes the id
+   * a new question gets and its own extra columns.
+   */
+  async writeQuestion(
+    tx: Prisma.TransactionClient,
+    question: ImportQuestion,
+    refs: { examId: string; subjectId: string; topicId: string | null },
+    options: { id?: string; extra?: QuestionExtraColumns } = {},
+  ): Promise<{ id: string; created: boolean }> {
+    const fields = {
+      ...refs,
+      year: question.year,
+      ...(question.sessionMonth !== undefined ? { sessionMonth: question.sessionMonth } : {}),
+      stem: question.stem,
+      stemImageUrl: question.stemImageUrl ?? null,
+      stemFigure: question.stemFigure ?? Prisma.DbNull,
+      explanation: question.explanation,
+      explanationImageUrl: question.explanationImageUrl ?? null,
+      explanationFigure: question.explanationFigure ?? Prisma.DbNull,
+      ...(question.pearls !== undefined ? { pearls: cleanPearls(question.pearls) } : {}),
+      ...(question.quickRevision !== undefined ? { quickRevision: question.quickRevision?.trim() || null } : {}),
+      difficulty: question.difficulty,
+      ...(question.keepOptionOrder !== undefined ? { keepOptionOrder: question.keepOptionOrder } : {}),
+      ...options.extra,
+    };
+
+    const existing = await tx.question.findUnique({
+      where: { externalKey: question.externalKey },
+      select: { id: true },
+    });
+
+    const row = existing
+      ? await tx.question.update({
+          where: { id: existing.id },
+          data: {
+            ...fields,
+            ...(question.status ? { status: question.status } : {}),
+          },
+        })
+      : await tx.question.create({
+          data: {
+            ...(options.id ? { id: options.id } : {}),
+            externalKey: question.externalKey,
+            ...fields,
+            status: question.status ?? QuestionStatus.DRAFT,
+          },
+        });
+
+    for (const [index, option] of question.options.entries()) {
+      const data = {
+        label: OPTION_LABELS[index],
+        text: option.text,
+        imageUrl: option.imageUrl ?? null,
+        isCorrect: option.isCorrect,
+        ...(option.explanation !== undefined ? { explanation: option.explanation?.trim() || null } : {}),
+      };
+      await tx.questionOption.upsert({
+        where: {
+          questionId_sortOrder: { questionId: row.id, sortOrder: index },
+        },
+        create: { questionId: row.id, sortOrder: index, ...data },
+        update: data,
+      });
+    }
+    await tx.questionOption.deleteMany({
+      where: {
+        questionId: row.id,
+        sortOrder: { gte: question.options.length },
+      },
+    });
+
+    return { id: row.id, created: !existing };
+  }
+
   /** Whole-file checks first, so a bad row fails the import before anything is written. */
   private validate(input: ImportInput): void {
+    this.validateQuestions(input.questions);
+  }
+
+  /** The per-question checks the DTO cannot express: unique keys, 2–6 options, exactly one correct. */
+  validateQuestions(questions: ImportQuestion[]): void {
     const seen = new Set<string>();
-    for (const question of input.questions) {
+    for (const question of questions) {
       const where = `Question ${question.externalKey}`;
       if (seen.has(question.externalKey)) {
         throw new BadRequestException(`${where} appears more than once in this import`);
@@ -252,14 +331,47 @@ export class QuestionImportService {
     }
   }
 
+  /**
+   * Every exam and subject a question or topic names must already exist, or be
+   * described in the file's `exams` / `subjects` list. Never created from a
+   * bare slug: a typo ("orthopaedics") would quietly become a second subject —
+   * named from the slug, in the wrong group — splitting its questions and
+   * students' stats. (The admin editor holds the same line.) Topics are still
+   * created on first use: they grow with the content. Checked up front, so a
+   * bad file writes nothing.
+   */
+  private async checkReferences(input: ImportInput): Promise<void> {
+    const [exams, subjects] = await Promise.all([
+      this.prisma.exam.findMany({ select: { slug: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+      this.prisma.subject.findMany({ select: { slug: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+    ]);
+    const problems = [
+      unknownReferences(
+        'exam',
+        'exams',
+        input.questions.map((q) => ({ slug: q.examSlug, by: `question ${q.externalKey}` })),
+        [...(input.exams ?? []).map((e) => e.slug), ...exams.map((e) => e.slug)],
+        exams.map((e) => e.slug),
+      ),
+      unknownReferences(
+        'subject',
+        'subjects',
+        [
+          ...input.questions.map((q) => ({ slug: q.subjectSlug, by: `question ${q.externalKey}` })),
+          ...(input.topics ?? []).map((t) => ({ slug: t.subjectSlug, by: `topic ${t.slug}` })),
+        ],
+        [...(input.subjects ?? []).map((s) => s.slug), ...subjects.map((s) => s.slug)],
+        subjects.map((s) => s.slug),
+      ),
+    ].filter(Boolean);
+    if (problems.length) throw new BadRequestException(problems.join(' '));
+  }
+
+  /** Exams and subjects are known by now (checkReferences). */
   private async examId(slug: string, cache: Map<string, string>): Promise<string> {
     const known = cache.get(slug);
     if (known) return known;
-    const row = await this.prisma.exam.upsert({
-      where: { slug },
-      create: { slug, name: slug.toUpperCase(), shortName: slug.toUpperCase() },
-      update: {},
-    });
+    const row = await this.prisma.exam.findUniqueOrThrow({ where: { slug }, select: { id: true } });
     cache.set(slug, row.id);
     return row.id;
   }
@@ -267,11 +379,7 @@ export class QuestionImportService {
   private async subjectId(slug: string, cache: Map<string, string>): Promise<string> {
     const known = cache.get(slug);
     if (known) return known;
-    const row = await this.prisma.subject.upsert({
-      where: { slug },
-      create: { slug, name: titleFromSlug(slug), group: 'clinical' },
-      update: {},
-    });
+    const row = await this.prisma.subject.findUniqueOrThrow({ where: { slug }, select: { id: true } });
     cache.set(slug, row.id);
     return row.id;
   }

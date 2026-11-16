@@ -261,10 +261,11 @@ export function sortQuestions<T extends PublicQuestion = Question>(
       arr.sort((a, b) => compareRecency(a.id, b.id, ctx.lastAttemptedAt, "asc"));
       break;
     case "newest-exam-year":
-      arr.sort((a, b) => b.year - a.year);
+      // Within a year, the later session (December before June) first.
+      arr.sort((a, b) => b.year - a.year || (b.sessionMonth ?? 0) - (a.sessionMonth ?? 0));
       break;
     case "oldest-exam-year":
-      arr.sort((a, b) => a.year - b.year);
+      arr.sort((a, b) => a.year - b.year || (a.sessionMonth ?? 13) - (b.sessionMonth ?? 13));
       break;
     case "name-az":
       arr.sort((a, b) =>

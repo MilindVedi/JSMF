@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { Activity, Bone, Camera, CircleCheck, Circle, CircleX, Lock, Microscope, Scan, ScanLine, Workflow } from "lucide-react-native";
-import { DIFFICULTY_LABEL, OPTION_LETTERS, type FigureKind, type QuestionFigure, type SessionQuestion } from "@jsmf/core/domain";
+import { DIFFICULTY_LABEL, explanationParts, OPTION_LETTERS, type FigureKind, type QuestionFigure, type SessionQuestion } from "@jsmf/core/domain";
 import { useTaxonomyLookup } from "@jsmf/core/hooks";
 import { AnimatedPressable, AnimatedView } from "@/components/motion/animated";
 import { usePressScale } from "@/components/motion/loop";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/primitives";
 import { cn, Txt } from "@/components/ui/text";
 import { useColors } from "@/theme/theme";
 import { ExamBadge } from "./badges";
+import { QuestionImage } from "./question-image";
 
 const FIGURE_META: Record<FigureKind, { label: string; icon: IconComponent }> = {
   xray: { label: "Radiograph", icon: Bone },
@@ -78,7 +79,7 @@ export function QuestionCard({
     <View className="gap-4">
       {!hideMeta ? (
         <View className="flex-row items-center gap-2">
-          <ExamBadge examId={question.examId} year={question.year} />
+          <ExamBadge examId={question.examId} year={question.year} month={question.sessionMonth} />
           <Txt className="flex-1 text-[11px] text-muted-foreground" numberOfLines={1}>
             {where}
           </Txt>
@@ -89,6 +90,7 @@ export function QuestionCard({
       <Txt weight={500} className="text-[15px] leading-6">
         {question.stem}
       </Txt>
+      {question.stemImageUrl ? <QuestionImage uri={question.stemImageUrl} label="Question image" /> : null}
       {question.stemFigure ? <FigurePlaceholder figure={question.stemFigure} /> : null}
       <View accessibilityRole="radiogroup" className="gap-2.5">
         {question.options.map((option, i) => (
@@ -257,9 +259,73 @@ export function ExplanationPanel({
             · Explanation
           </Txt>
         </View>
-        <Txt className="mt-1.5 text-sm leading-6">{question.explanation}</Txt>
-        {question.explanationFigure ? <FigurePlaceholder figure={question.explanationFigure} /> : null}
+        <ExplanationSections question={question} />
       </View>
     </Rise>
+  );
+}
+
+/**
+ * The explanation in the sections both apps show (core's explanationParts):
+ * the explanation, why the right option is right (when written on its own),
+ * why the others are wrong, pearls, quick revision. A question with only an
+ * explanation shows exactly as before.
+ */
+function ExplanationSections({ question }: { question: SessionQuestion }) {
+  const parts = explanationParts(question);
+  return (
+    <>
+      <Txt className="mt-1.5 text-sm leading-6">{parts.body}</Txt>
+      {question.explanationImageUrl ? (
+        <View className="mt-2.5">
+          <QuestionImage uri={question.explanationImageUrl} label="Explanation image" />
+        </View>
+      ) : null}
+      {question.explanationFigure ? <FigurePlaceholder figure={question.explanationFigure} /> : null}
+      {parts.correctWhy ? (
+        <ExplanationSection title={`Why “${parts.correctWhy.text}” is right`}>
+          <Txt className="text-sm leading-6">{parts.correctWhy.why}</Txt>
+        </ExplanationSection>
+      ) : null}
+      {parts.wrongWhy.length > 0 ? (
+        <ExplanationSection title="Why the other options are wrong">
+          {parts.wrongWhy.map((entry) => (
+            <View key={entry.optionId} className="gap-0.5">
+              <Txt weight={700} className="text-sm leading-6">
+                {entry.text}
+              </Txt>
+              <Txt className="text-sm leading-6">{entry.why}</Txt>
+            </View>
+          ))}
+        </ExplanationSection>
+      ) : null}
+      {parts.pearls.length > 0 ? (
+        <ExplanationSection title="High-yield pearls">
+          {parts.pearls.map((pearl, index) => (
+            <View key={index} className="flex-row gap-2">
+              <Txt className="text-sm leading-6 text-muted-foreground">•</Txt>
+              <Txt className="flex-1 text-sm leading-6">{pearl}</Txt>
+            </View>
+          ))}
+        </ExplanationSection>
+      ) : null}
+      {parts.quickRevision ? (
+        <ExplanationSection title="Quick revision">
+          <Txt className="text-sm leading-6">{parts.quickRevision}</Txt>
+        </ExplanationSection>
+      ) : null}
+    </>
+  );
+}
+
+/** A rule and a small-caps title (like the panel's own label) set each part apart. */
+function ExplanationSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View className="mt-4 gap-1.5 border-t border-primary/15 pt-3.5">
+      <Txt weight={700} className="text-xs uppercase tracking-wider text-primary">
+        {title}
+      </Txt>
+      {children}
+    </View>
   );
 }

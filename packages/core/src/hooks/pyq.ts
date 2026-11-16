@@ -86,7 +86,7 @@ export function useTaxonomy() {
   return useQuery({ queryKey: pyqKeys.taxonomy, queryFn: () => getDataSource().getTaxonomy(), staleTime: Infinity });
 }
 
-const EMPTY_TAXONOMY: Taxonomy = { exams: [], subjects: [], topics: [], years: [] };
+const EMPTY_TAXONOMY: Taxonomy = { exams: [], subjects: [], topics: [], years: [], papers: [] };
 
 /**
  * An exam's display name ("NEET-PG"), never its raw slug: the taxonomy's own
@@ -318,6 +318,10 @@ export function useAnswer(sessionId: string) {
                       correctOptionId: result.correctOptionId,
                       explanation: result.explanation,
                       explanationFigure: result.explanationFigure,
+                      explanationImageUrl: result.explanationImageUrl,
+                      pearls: result.pearls,
+                      quickRevision: result.quickRevision,
+                      optionExplanations: result.optionExplanations,
                     }
                   : q
               )

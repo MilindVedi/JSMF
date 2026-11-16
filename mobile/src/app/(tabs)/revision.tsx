@@ -17,7 +17,7 @@ import {
   groupBySubject,
   type QuestionSortContext,
   isWithinRange,
-  matchesExamYear,
+  matchesExamPaper,
   sortQuestions,
   type DatePreset,
   type PublicQuestion,
@@ -135,14 +135,14 @@ export default function RevisionScreen() {
 
   const wrongRange = computeDateRange(wrong.preset, wrong.from, wrong.to, today);
   const facets = useMemo(
-    () => getWrongFacetsFromRevision(facts, all.filter((q) => matchesExamYear(q, wrong.examIds, wrong.years)), wrongRange),
+    () => getWrongFacetsFromRevision(facts, all.filter((q) => matchesExamPaper(q, wrong.examIds, wrong.papers)), wrongRange),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [facts, all, wrong.examIds, wrong.years, wrong.preset, wrong.from, wrong.to]
+    [facts, all, wrong.examIds, wrong.papers, wrong.preset, wrong.from, wrong.to]
   );
   const wrongList = filterByStem(sortQuestions(wrongMode === "never" ? facets.neverCorrected : facets.recent, wrong.sort, sortContext), wrong.search);
 
   const bookmarkCount = useMemo(() => items.filter((i) => i.bookmarkedAt).length, [items]);
-  const bookmarkedPool = items.filter((i) => i.bookmarkedAt && matchesExamYear(i.question, marked.examIds, marked.years));
+  const bookmarkedPool = items.filter((i) => i.bookmarkedAt && matchesExamPaper(i.question, marked.examIds, marked.papers));
   const markedRange = computeDateRange(marked.preset, marked.from, marked.to, today);
   const markedInRange = bookmarkedPool.filter((i) => markedRange && isWithinRange(i.bookmarkedAt!.slice(0, 10), markedRange));
   // By subject groups the whole exam/year-filtered pool, not the date window (web does the same).
@@ -156,7 +156,7 @@ export default function RevisionScreen() {
     marked.search
   );
 
-  const reinforcePool = items.filter((i) => i.latestCorrect === true && i.lastAttemptedAt && matchesExamYear(i.question, reinforce.examIds, reinforce.years));
+  const reinforcePool = items.filter((i) => i.latestCorrect === true && i.lastAttemptedAt && matchesExamPaper(i.question, reinforce.examIds, reinforce.papers));
   const reinforceRange = computeDateRange(reinforce.preset, reinforce.from, reinforce.to, today);
   const reinforceInRange = reinforcePool.filter((i) => reinforceRange && isWithinRange(i.lastAttemptedAt!.slice(0, 10), reinforceRange));
   const reinforceBySubject = groupBySubject(reinforcePool.map((i) => i.question));
@@ -173,7 +173,7 @@ export default function RevisionScreen() {
   const byRecency = [...collections].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const activeCollection = byRecency.find((c) => c.id === collectionId) ?? byRecency[0];
   const collPool = activeCollection
-    ? getQuestionsInCollections(collections, [activeCollection.id], all).filter((q) => matchesExamYear(q, coll.examIds, coll.years))
+    ? getQuestionsInCollections(collections, [activeCollection.id], all).filter((q) => matchesExamPaper(q, coll.examIds, coll.papers))
     : [];
   const collRange = computeDateRange(coll.preset, coll.from, coll.to, today);
   // A collection is timestamped as a whole, so the window filters the whole selection.
@@ -467,10 +467,10 @@ function useSectionState() {
     setTo(nextTo);
   };
   const [examIds, setExamIds] = useState<string[]>([]);
-  const [years, setYears] = useState<number[]>([]);
+  const [papers, setPapers] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<QuestionSortOption>("recently-attempted");
-  return { preset, setPreset, from, to, setRange, examIds, setExamIds, years, setYears, search, setSearch, sort, setSort };
+  return { preset, setPreset, from, to, setRange, examIds, setExamIds, papers, setPapers, search, setSearch, sort, setSort };
 }
 type SectionState = ReturnType<typeof useSectionState>;
 
@@ -487,7 +487,7 @@ function SectionFilters({ state, sort, showDates, description }: { state: Sectio
           onChange={state.setExamIds}
           triggerLabel={state.examIds.length === 0 || state.examIds.length >= taxonomy.exams.length ? "All Exams" : state.examIds.length === 1 ? taxonomy.exams.find((e) => e.id === state.examIds[0])?.shortName : `${state.examIds.length} Exams`}
         />
-        <MultiSelect label="Year" options={taxonomy.years.map((y) => ({ id: String(y), label: String(y) }))} selected={state.years.map(String)} onChange={(ids) => state.setYears(ids.map(Number))} />
+        <MultiSelect label="Year" options={taxonomy.papers.map((paper) => ({ id: paper.key, label: paper.label }))} selected={state.papers} onChange={state.setPapers} />
         <SortSheetButton value={state.sort} options={sortOptions(sort)} onChange={state.setSort} />
       </View>
       {showDates ? (

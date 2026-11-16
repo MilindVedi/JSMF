@@ -7,6 +7,13 @@ import { FileWarning, Flag, Loader2, Pencil, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { PyqSelect } from "@/components/admin/pyq-select";
 import { PyqStatusBadge } from "@/components/admin/pyq-status-badge";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,6 +30,8 @@ import {
 } from "@/components/ui/table";
 import {
   adminPyqApi,
+  PYQ_MAX_BULK,
+  pyqPaperLabel,
   type PyqAdminQuestion,
   type PyqQuestionStatus,
   type PyqTaxonomy,
@@ -50,6 +59,30 @@ export default function PyqQuestionsPage() {
   const [topicId, setTopicId] = useState("");
   const [reported, setReported] = useState(false);
   const [query, setQuery] = useState("");
+  // Bulk actions: the questions picked, kept across pages.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [selectingAll, setSelectingAll] = useState(false);
+  const [bulkAction, setBulkAction] = useState<PyqQuestionStatus | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const filters = useMemo(
+    () => ({
+      status: status === "ALL" ? undefined : status,
+      examId: examId || undefined,
+      subjectId: subjectId || undefined,
+      topicId: topicId || undefined,
+      reported,
+      q: query || undefined,
+    }),
+    [status, examId, subjectId, topicId, reported, query],
+  );
+  // A selection belongs to the filters it was made under: changing them clears it.
+  const filterKey = JSON.stringify(filters);
+  const [selectionKey, setSelectionKey] = useState(filterKey);
+  if (selectionKey !== filterKey) {
+    setSelectionKey(filterKey);
+    setSelected(new Set());
+  }
 
   useEffect(() => {
     adminPyqApi
@@ -61,16 +94,7 @@ export default function PyqQuestionsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await adminPyqApi.listQuestions({
-        status: status === "ALL" ? undefined : status,
-        examId: examId || undefined,
-        subjectId: subjectId || undefined,
-        topicId: topicId || undefined,
-        reported,
-        q: query || undefined,
-        page,
-        pageSize: PAGE_SIZE,
-      });
+      const result = await adminPyqApi.listQuestions({ ...filters, page, pageSize: PAGE_SIZE });
       setItems(result.items);
       setTotal(result.total);
     } catch (error) {
@@ -78,7 +102,7 @@ export default function PyqQuestionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, examId, subjectId, topicId, reported, query, page]);
+  }, [filters, page]);
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), query ? 300 : 0);
@@ -107,6 +131,68 @@ export default function PyqQuestionsPage() {
       toast.error(error instanceof Error ? error.message : "Could not change status");
     } finally {
       setBusyId(null);
+    }
+  }
+
+  const pageIds = items.map((question) => question.id);
+  const pageAllSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const pageSomeSelected = pageIds.some((id) => selected.has(id));
+
+  function togglePage() {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      for (const id of pageIds) {
+        if (pageAllSelected) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleOne(id: string) {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function selectAllMatching() {
+    setSelectingAll(true);
+    try {
+      const result = await adminPyqApi.questionIds(filters);
+      setSelected(new Set(result.ids));
+      if (result.truncated) {
+        toast.warning(
+          `Selected the first ${result.ids.length} of ${result.total}. Act on these, then select again for the rest.`,
+        );
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not select the matching questions");
+    } finally {
+      setSelectingAll(false);
+    }
+  }
+
+  async function runBulk() {
+    if (!bulkAction) return;
+    setBulkBusy(true);
+    try {
+      const result = await adminPyqApi.setStatusMany([...selected], bulkAction);
+      const publishing = bulkAction === "PUBLISHED";
+      const skipped = result.requested - result.changed;
+      toast.success(
+        `${publishing ? "Published" : "Unpublished"} ${result.changed} question${result.changed === 1 ? "" : "s"}` +
+          (skipped > 0 ? ` · ${skipped} already ${publishing ? "published" : "in draft"} or deleted` : ""),
+      );
+      setSelected(new Set());
+      setBulkAction(null);
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not change status");
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -192,6 +278,43 @@ export default function PyqQuestionsPage() {
         </div>
       </div>
 
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm">
+          <span className="font-medium">{selected.size} selected</span>
+          {pageAllSelected && total > selected.size && (
+            <Button
+              variant="link"
+              size="sm"
+              disabled={selectingAll}
+              onClick={() => void selectAllMatching()}
+            >
+              {selectingAll && <Loader2 className="size-4 animate-spin" />}
+              Select all {Math.min(total, PYQ_MAX_BULK)} matching
+            </Button>
+          )}
+          <div className="ml-auto flex gap-2">
+            <Button
+              size="sm"
+              disabled={selected.size > PYQ_MAX_BULK}
+              onClick={() => setBulkAction("PUBLISHED")}
+            >
+              Publish
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={selected.size > PYQ_MAX_BULK}
+              onClick={() => setBulkAction("DRAFT")}
+            >
+              Unpublish
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
+
       <Card>
         <CardContent className="p-0">
           {loading ? (
@@ -210,6 +333,18 @@ export default function PyqQuestionsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      aria-label="Select every question on this page"
+                      className="size-4 cursor-pointer align-middle accent-primary"
+                      checked={pageAllSelected}
+                      ref={(element) => {
+                        if (element) element.indeterminate = pageSomeSelected && !pageAllSelected;
+                      }}
+                      onChange={togglePage}
+                    />
+                  </TableHead>
                   <TableHead>Question</TableHead>
                   <TableHead className="hidden md:table-cell">Exam · Subject</TableHead>
                   <TableHead>Status</TableHead>
@@ -226,6 +361,15 @@ export default function PyqQuestionsPage() {
                     className="cursor-pointer"
                     onClick={() => router.push(`/admin/pyq/questions/${question.id}`)}
                   >
+                    <TableCell className="w-10" onClick={(event) => event.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        aria-label="Select this question"
+                        className="size-4 cursor-pointer align-middle accent-primary"
+                        checked={selected.has(question.id)}
+                        onChange={() => toggleOne(question.id)}
+                      />
+                    </TableCell>
                     <TableCell className="max-w-md">
                       <Link
                         href={`/admin/pyq/questions/${question.id}`}
@@ -234,7 +378,7 @@ export default function PyqQuestionsPage() {
                         {question.stem}
                       </Link>
                       <p className="text-xs text-muted-foreground">
-                        {question.year} · {question.difficulty} · {question.externalKey}
+                        {pyqPaperLabel(question.year, question.sessionMonth)} · {question.difficulty} · {question.externalKey}
                       </p>
                     </TableCell>
                     <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
@@ -314,6 +458,29 @@ export default function PyqQuestionsPage() {
           </div>
         </div>
       )}
+
+      <AlertDialog open={bulkAction !== null} onOpenChange={(open) => !open && !bulkBusy && setBulkAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogTitle>
+            {bulkAction === "PUBLISHED" ? "Publish" : "Unpublish"} {selected.size} question
+            {selected.size === 1 ? "" : "s"}?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {bulkAction === "PUBLISHED"
+              ? "Students will see them in the question bank and in new sessions straight away."
+              : "They leave the question bank and new sessions. Sessions that already include them keep working."}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <Button variant="ghost" size="lg" disabled={bulkBusy} onClick={() => setBulkAction(null)}>
+              Cancel
+            </Button>
+            <Button size="lg" disabled={bulkBusy} onClick={() => void runBulk()}>
+              {bulkBusy && <Loader2 className="size-4 animate-spin" />}
+              {bulkAction === "PUBLISHED" ? "Publish" : "Unpublish"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

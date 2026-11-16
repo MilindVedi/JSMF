@@ -120,8 +120,3 @@ export function filterByStem<T extends PublicQuestion>(questions: T[], search: s
   if (!term) return questions;
   return questions.filter((q) => q.stem.toLowerCase().includes(term));
 }
-
-/** Exam/Year narrowing shared by every Revision section ("empty = all"). */
-export function matchesExamYear(q: PublicQuestion, examIds: string[], years: number[]): boolean {
-  return (examIds.length === 0 || examIds.includes(q.examId)) && (years.length === 0 || years.includes(q.year));
-}

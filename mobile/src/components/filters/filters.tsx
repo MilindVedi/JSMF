@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { ArrowUpDown, Check, ChevronDown, X } from "lucide-react-native";
-import type { Exam, ExamId, SubjectGroup } from "@jsmf/core/domain";
+import { offeredInFilter, paperKeyLabel, type Exam, type ExamId, type SubjectGroup } from "@jsmf/core/domain";
 import type { QuestionQuery } from "@jsmf/core/data-source";
 import { examDisplayName, useCollections, useTaxonomyLookup } from "@jsmf/core/hooks";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -12,19 +12,20 @@ import { useColors } from "@/theme/theme";
 /** The question filters shared by the bank and the custom-test builder (web's QuestionFiltersState). Empty = all. */
 export interface QuestionFiltersState {
   examIds: ExamId[];
-  years: number[];
+  /** Paper keys — a year, or a year's session ("2026-06"); see exam-paper.ts. */
+  papers: string[];
   subjectIds: string[];
   topicIds: string[];
   collectionIds: string[];
 }
 
-export const EMPTY_QUESTION_FILTERS: QuestionFiltersState = { examIds: [], years: [], subjectIds: [], topicIds: [], collectionIds: [] };
+export const EMPTY_QUESTION_FILTERS: QuestionFiltersState = { examIds: [], papers: [], subjectIds: [], topicIds: [], collectionIds: [] };
 
 export function filtersToQuery(filters: QuestionFiltersState): QuestionQuery {
   const pick = <T,>(list: T[]) => (list.length ? list : undefined);
   return {
     examIds: pick(filters.examIds),
-    years: pick(filters.years),
+    papers: pick(filters.papers),
     subjectIds: pick(filters.subjectIds),
     topicIds: pick(filters.topicIds),
     collectionIds: pick(filters.collectionIds),
@@ -158,29 +159,34 @@ export function FilterBar({
 }) {
   const { data: collections = [] } = useCollections();
   const { taxonomy, topic: getTopic } = useTaxonomyLookup();
+  // Only what has questions (plus whatever is already ticked) — see offeredInFilter.
+  const exams = useMemo(() => offeredInFilter(taxonomy.exams, value.examIds), [taxonomy.exams, value.examIds]);
+  const subjects = useMemo(() => offeredInFilter(taxonomy.subjects, value.subjectIds), [taxonomy.subjects, value.subjectIds]);
   const subjectOptions = useMemo(
-    () => taxonomy.subjects.map((s) => ({ id: s.id, label: s.name, hint: SUBJECT_GROUP_LABEL[s.group] })),
-    [taxonomy.subjects]
+    () => subjects.map((s) => ({ id: s.id, label: s.name, hint: SUBJECT_GROUP_LABEL[s.group] })),
+    [subjects]
   );
   const topicOptions = useMemo(() => {
-    const relevant = value.subjectIds.length > 0 ? value.subjectIds : taxonomy.subjects.map((s) => s.id);
-    return taxonomy.topics.filter((t) => relevant.includes(t.subjectId)).map((t) => ({ id: t.id, label: t.name }));
-  }, [value.subjectIds, taxonomy]);
+    const relevant = value.subjectIds.length > 0 ? value.subjectIds : subjects.map((s) => s.id);
+    return offeredInFilter(taxonomy.topics, value.topicIds)
+      .filter((t) => relevant.includes(t.subjectId))
+      .map((t) => ({ id: t.id, label: t.name }));
+  }, [value.subjectIds, value.topicIds, subjects, taxonomy.topics]);
   const filters = (
     <>
       <MultiSelect
         label="Exam"
         allOption="All Exams"
-        options={taxonomy.exams.map((e) => ({ id: e.id, label: e.shortName }))}
+        options={exams.map((e) => ({ id: e.id, label: e.shortName }))}
         selected={value.examIds}
         onChange={(ids) => onChange({ ...value, examIds: ids as ExamId[] })}
-        triggerLabel={examTriggerLabel(value.examIds, taxonomy.exams)}
+        triggerLabel={examTriggerLabel(value.examIds, exams)}
       />
       <MultiSelect
         label="Year"
-        options={taxonomy.years.map((y) => ({ id: String(y), label: String(y) }))}
-        selected={value.years.map(String)}
-        onChange={(ids) => onChange({ ...value, years: ids.map(Number) })}
+        options={taxonomy.papers.map((paper) => ({ id: paper.key, label: paper.label }))}
+        selected={value.papers}
+        onChange={(ids) => onChange({ ...value, papers: ids })}
       />
       <MultiSelect
         label="Subject"
@@ -224,7 +230,7 @@ export function ActiveFilterChips({ value, onChange }: { value: QuestionFiltersS
   const colors = useColors();
   const chips: { key: string; label: string; remove: () => void }[] = [];
   for (const id of value.examIds) chips.push({ key: `e-${id}`, label: examName(id), remove: () => onChange({ ...value, examIds: value.examIds.filter((e) => e !== id) }) });
-  for (const y of value.years) chips.push({ key: `y-${y}`, label: String(y), remove: () => onChange({ ...value, years: value.years.filter((v) => v !== y) }) });
+  for (const p of value.papers) chips.push({ key: `p-${p}`, label: paperKeyLabel(p), remove: () => onChange({ ...value, papers: value.papers.filter((v) => v !== p) }) });
   for (const id of value.subjectIds)
     chips.push({
       key: `s-${id}`,

@@ -15,7 +15,10 @@ import {
   getSessionSummary,
   getStatistics,
   getWrongQuestions,
+  comparePapersNewestFirst,
+  paperKeyOf,
   sortQuestions,
+  toExamPaper,
   type Question,
   type QuestionSortOption,
   type SessionFilters,
@@ -113,6 +116,7 @@ function filterQuestions(query: QuestionQuery): Question[] {
     (q) =>
       has(query.examIds, q.examId) &&
       has(query.years, q.year) &&
+      has(query.papers, paperKeyOf(q)) &&
       has(query.subjectIds, q.subjectId) &&
       has(query.topicIds, q.topicId) &&
       (!needle || q.stem.toLowerCase().includes(needle))
@@ -152,6 +156,7 @@ function toSessionFilters(query?: QuestionQuery): SessionFilters | undefined {
   return {
     examIds: pick(query.examIds),
     years: pick(query.years),
+    papers: pick(query.papers),
     subjectIds: pick(query.subjectIds),
     topicIds: pick(query.topicIds),
     collectionIds: pick(query.collectionIds),
@@ -243,6 +248,12 @@ export const mockDataSource: PyqDataSource = {
       subjects: SUBJECTS.map((s) => ({ ...s, questionCount: counts.get(s.id) ?? 0 })),
       topics: TOPICS,
       years: [...new Set(QUESTIONS.map((q) => q.year))].sort((a, b) => b - a),
+      papers: [...new Set(QUESTIONS.map((q) => paperKeyOf(q)))]
+        .map((key) => {
+          const q = QUESTIONS.find((question) => paperKeyOf(question) === key)!;
+          return toExamPaper(q.year, q.sessionMonth ?? null);
+        })
+        .sort(comparePapersNewestFirst),
     };
   },
 

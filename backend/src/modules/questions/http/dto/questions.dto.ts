@@ -33,8 +33,9 @@ import {
   type SessionOrder,
 } from '../../application/practice.service';
 import { QUESTION_SORTS, type QuestionSort } from '../../application/question-bank.service';
+import { PAPER_KEY } from '../../domain/exam-paper';
 
-const SLUG = /^[a-z0-9]+(?:-{1,2}[a-z0-9]+)*$/;
+export const SLUG = /^[a-z0-9]+(?:-{1,2}[a-z0-9]+)*$/;
 /** Postgres text can't hold a NUL byte; refusing it here keeps such input a 400, not a 500. */
 const NO_NUL = /^[^\u0000]*$/;
 /** Deep enough for any real list; bounds `skip` so a huge page number is a 400, not an overflow. */
@@ -103,6 +104,17 @@ export class QuestionFiltersDto {
   @Min(1950, { each: true })
   @Max(2100, { each: true })
   years?: number[];
+
+  @ApiPropertyOptional({
+    description: 'Papers: `2026-06` is the June 2026 session, `2025` a year with no month recorded',
+    example: '2026-06,2026-12,2025',
+  })
+  @IsOptional()
+  @Transform(toStringArray)
+  @IsArray()
+  @ArrayMaxSize(200)
+  @Matches(PAPER_KEY, { each: true, message: 'each paper must look like 2026-06 or 2025' })
+  papers?: string[];
 
   @ApiPropertyOptional({
     enum: Difficulty,
@@ -323,6 +335,15 @@ export class ImportOptionDto {
   @ApiProperty() @IsString() @MinLength(1) text!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() imageUrl?: string;
   @ApiProperty() @IsBoolean() isCorrect!: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Why this option is right or wrong. Omitted: unchanged; null clears it',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  explanation?: string | null;
 }
 
 export class ImportQuestionDto {
@@ -339,12 +360,40 @@ export class ImportQuestionDto {
   @ApiPropertyOptional() @IsOptional() @Matches(SLUG) topicSlug?: string;
 
   @ApiProperty() @IsInt() @Min(1950) @Max(2100) year!: number;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Month of the exam session, 1–12 (6 = June). Omitted: unchanged (none for a new question); null clears it',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  sessionMonth?: number | null;
+
   @ApiProperty() @IsString() @MinLength(1) stem!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() stemImageUrl?: string;
   @ApiPropertyOptional() @IsOptional() @IsObject() stemFigure?: Prisma.InputJsonObject;
   @ApiProperty() @IsString() @MinLength(1) explanation!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() explanationImageUrl?: string;
   @ApiPropertyOptional() @IsOptional() @IsObject() explanationFigure?: Prisma.InputJsonObject;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'High-yield pearls / buzzwords, one per item. Omitted: unchanged; [] clears them',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(1000, { each: true })
+  pearls?: string[];
+
+  @ApiPropertyOptional({ nullable: true, description: 'The quick revision recap. Omitted: unchanged; null clears it' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10000)
+  quickRevision?: string | null;
 
   @ApiProperty({ enum: Difficulty })
   @Transform(toUpper)

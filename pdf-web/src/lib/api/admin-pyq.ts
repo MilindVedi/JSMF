@@ -20,6 +20,14 @@ export interface PyqOption {
   imageUrl: string | null;
 }
 
+/** Where on a question an image goes: under the question, or with its explanation. */
+export type PyqImageField = "stem" | "explanation";
+
+/** An image uploaded for a question. Kept private: `url` is a short-lived link, for showing only. */
+export interface PyqImageUpload {
+  url: string;
+}
+
 export interface PyqAdminQuestion {
   id: string;
   externalKey: string;
@@ -28,12 +36,24 @@ export interface PyqAdminQuestion {
   subjectId: string;
   topicId: string | null;
   year: number;
+  /** The exam session's month, 1–12 (6 = June); null when not recorded. */
+  sessionMonth: number | null;
   stem: string;
+  /** A pasted link to an image hosted elsewhere. An uploaded image (below) wins over it. */
   stemImageUrl: string | null;
+  /** The uploaded question image: private, so `url` is a short-lived preview link. */
+  stemImageUpload: PyqImageUpload | null;
   options: PyqOption[];
   correctOptionId: string | null;
   explanation: string;
+  /** As `stemImageUrl` / `stemImageUpload`, for the image shown with the explanation. */
   explanationImageUrl: string | null;
+  explanationImageUpload: PyqImageUpload | null;
+  /** High-yield pearls / buzzwords, one per item. */
+  pearls: string[];
+  quickRevision: string | null;
+  /** Why an option is right or wrong, by option id. */
+  optionExplanations: Record<string, string>;
   difficulty: PyqDifficulty;
   status: PyqQuestionStatus;
   /** Admin's "keep option order": never shuffled for students. */
@@ -52,11 +72,34 @@ export interface PyqAdminQuestion {
   reports: { open: number; total: number };
 }
 
+export const PYQ_SESSION_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+/** "June 2026", or the year alone when no session month is recorded. */
+export function pyqPaperLabel(year: number, sessionMonth: number | null | undefined): string {
+  const month = sessionMonth ? PYQ_SESSION_MONTHS[sessionMonth - 1] : undefined;
+  return month ? `${month} ${year}` : String(year);
+}
+
 export interface PyqOptionInput {
   id?: string;
   text: string;
   imageUrl?: string | null;
   isCorrect: boolean;
+  /** Why this option is right or wrong; null: none. */
+  explanation?: string | null;
 }
 
 export interface PyqQuestionInput {
@@ -65,10 +108,14 @@ export interface PyqQuestionInput {
   subjectId: string;
   topicId?: string | null;
   year: number;
+  /** 1–12; null: none. */
+  sessionMonth?: number | null;
   stem: string;
   stemImageUrl?: string | null;
   explanation: string;
   explanationImageUrl?: string | null;
+  pearls?: string[];
+  quickRevision?: string | null;
   difficulty: PyqDifficulty;
   status?: PyqQuestionStatus;
   keepOptionOrder?: boolean;
@@ -128,6 +175,24 @@ export interface PyqReport {
   };
 }
 
+/** What a release push would do with one question (see backend question-release.ts). */
+export type PyqReleaseVerdict = "NEW" | "CHANGED" | "UNCHANGED" | "CONFLICT" | "DELETED";
+
+export interface PyqReleasePreview {
+  questions: { externalKey: string; verdict: PyqReleaseVerdict; reason?: string; published: boolean }[];
+  /** Exams, subjects and topics the push will create here — it never changes existing ones. */
+  create: { exams: string[]; subjects: string[]; topics: string[] };
+  /** Images (SHA-256) not uploaded yet. */
+  missingImages: string[];
+  problems: string[];
+}
+
+export type PyqReleaseOutcome = "CREATED" | "UPDATED" | "OVERWRITTEN" | "UNCHANGED" | "SKIPPED" | "FAILED";
+
+export interface PyqReleaseApplyResult {
+  questions: { externalKey: string; outcome: PyqReleaseOutcome; reason?: string }[];
+}
+
 export interface PyqImportResult {
   exams: number;
   subjects: number;
@@ -135,6 +200,9 @@ export interface PyqImportResult {
   created: number;
   updated: number;
 }
+
+/** One bulk publish/unpublish at most (the server's MAX_BULK_QUESTIONS). */
+export const PYQ_MAX_BULK = 2000;
 
 export interface PyqQuestionFilters {
   examId?: string;
@@ -173,10 +241,30 @@ export const adminPyqApi = {
   setStatus: (id: string, status: PyqQuestionStatus) =>
     api.patch<PyqAdminQuestion>(`/admin/pyq/questions/${id}/status`, { status }),
 
+  /** Ids of every question matching the filters (at most PYQ_MAX_BULK), for "Select all N matching". */
+  questionIds: (filters: Omit<PyqQuestionFilters, "page" | "pageSize"> = {}) =>
+    api.get<{ total: number; ids: string[]; truncated: boolean }>(
+      `/admin/pyq/questions/ids${queryString({ ...filters })}`,
+    ),
+
+  /** Publish or unpublish exactly these questions; `changed` leaves out deleted ones and ones already so. */
+  setStatusMany: (ids: string[], status: PyqQuestionStatus) =>
+    api.patch<{ requested: number; changed: number }>("/admin/pyq/questions/status", { ids, status }),
+
   deleteQuestion: (id: string) => api.delete<void>(`/admin/pyq/questions/${id}`),
+
+  /** Removes a question's uploaded image and deletes its file; returns the question. */
+  removeQuestionImage: (id: string, field: PyqImageField) =>
+    api.delete<PyqAdminQuestion>(`/admin/pyq/questions/${id}/images/${field}`),
 
   importQuestions: (payload: unknown) =>
     api.post<PyqImportResult>("/admin/pyq/questions/import", payload),
+
+  /** What pushing these release questions would do. Writes nothing. */
+  previewRelease: (body: unknown) => api.post<PyqReleasePreview>("/admin/pyq/releases/preview", body),
+
+  /** Pushes release questions (one chunk). Safe to repeat. */
+  applyRelease: (body: unknown) => api.post<PyqReleaseApplyResult>("/admin/pyq/releases/apply", body),
 
   taxonomy: () => api.get<PyqTaxonomy>("/admin/pyq/taxonomy"),
 

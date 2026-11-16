@@ -32,6 +32,8 @@ import { QuestionStateService } from './question-state.service';
 import { QuestionBankService } from "./question-bank.service";
 import { AuditService } from "../../../shared/audit/audit.service";
 import { PyqSubscriptionService } from "./pyq-subscription.service";
+import { QuestionImageLinks } from './question-image-links';
+import { QuestionImageUploads } from './question-image-uploads';
 
 /**
  * Admin content editing against a real Postgres. What matters: invalid
@@ -55,9 +57,15 @@ const bank = new QuestionBankService(prisma, cache);
 const states = new QuestionStateService(prisma);
 // Options in written order here; shuffling has its own spec (exam-mode.integration.spec.ts).
 const examSetup = { settings: async () => ({ shuffleOptions: false }) } as unknown as ExamSetupService;
-const practice = new PracticeService(prisma, bank, access, states, examSetup);
+// No test here uploads an image, so signing one would be a bug: this storage refuses.
+const imageLinks = new QuestionImageLinks(
+  { getSignedDownloadUrl: () => Promise.reject(new Error('no image storage in this test')) } as never,
+  config as never,
+);
+const practice = new PracticeService(prisma, bank, access, states, examSetup, imageLinks);
 const progress = new ProgressService(prisma, bank);
-const admin = new QuestionAdminService(prisma);
+const imageUploads = new QuestionImageUploads({} as never, prisma, {} as never, config as never, imageLinks);
+const admin = new QuestionAdminService(prisma, imageUploads);
 const taxonomy = new PyqTaxonomyAdminService(prisma);
 
 const run = randomUUID().slice(0, 8);
@@ -237,6 +245,44 @@ describe("editing", () => {
     expect(updated.correctOptionId).toBe(b.id);
   });
 
+  it("keeps each option's \"why\" with its option through edits, and saves pearls and quick revision", async () => {
+    const created = await admin.create(
+      input({
+        pearls: [" Loop diuretic → thick ascending limb ", ""],
+        quickRevision: "Furosemide = loop.",
+        options: [
+          { text: "Furosemide", isCorrect: true },
+          { text: "Spironolactone", isCorrect: false, explanation: "Aldosterone antagonist." },
+          { text: "Mannitol", isCorrect: false, explanation: "" },
+        ],
+      }),
+      actorId,
+    );
+    const [a, b, c] = created.options;
+    expect(created.pearls).toEqual(["Loop diuretic → thick ascending limb"]);
+    expect(created.quickRevision).toBe("Furosemide = loop.");
+    // A blank "why" is no "why".
+    expect(created.optionExplanations).toEqual({ [b.id]: "Aldosterone antagonist." });
+
+    const updated = await admin.update(
+      created.id,
+      {
+        pearls: [],
+        quickRevision: null,
+        options: [
+          { id: b.id, text: "Spironolactone", isCorrect: false, explanation: "Aldosterone antagonist." },
+          { id: c.id, text: "Mannitol", isCorrect: false, explanation: "Osmotic." },
+          { id: a.id, text: "Furosemide", isCorrect: true },
+        ],
+      },
+      actorId,
+    );
+    expect(updated.options.map((o) => o.id)).toEqual([b.id, c.id, a.id]);
+    expect(updated.optionExplanations).toEqual({ [b.id]: "Aldosterone antagonist.", [c.id]: "Osmotic." });
+    expect(updated.pearls).toEqual([]);
+    expect(updated.quickRevision).toBeNull();
+  });
+
   it("will not remove an option a student has chosen", async () => {
     const created = await admin.create(input(), actorId);
     const student = await createUser();
@@ -398,6 +444,40 @@ describe("reports", () => {
   });
 });
 
+describe("bulk publish", () => {
+  it("publishes exactly the given questions, skips deleted ones, and a retry changes nothing", async () => {
+    const drafts = [];
+    for (let i = 0; i < 3; i++) {
+      drafts.push(await admin.create(input({ stem: `Bulk ${run} ${i}`, status: QuestionStatus.DRAFT }), actorId));
+    }
+    const deleted = await admin.create(input({ stem: `Bulk ${run} gone`, status: QuestionStatus.DRAFT }), actorId);
+    await admin.remove(deleted.id, actorId);
+
+    // "Select all matching": the drafts the filtered list shows, never the deleted one.
+    const matching = await admin.ids({ subjectId: SUBJECT, status: QuestionStatus.DRAFT, q: `bulk ${run}` });
+    expect(new Set(matching.ids)).toEqual(new Set(drafts.map((q) => q.id)));
+    expect(matching).toMatchObject({ total: 3, truncated: false });
+
+    // Two drafts (one listed twice) and the deleted one: only the two change.
+    expect(
+      await admin.setStatusMany([drafts[0].id, drafts[1].id, drafts[0].id, deleted.id], QuestionStatus.PUBLISHED, actorId),
+    ).toEqual({ requested: 3, changed: 2 });
+    const status = async (id: string) =>
+      (await prisma.question.findUnique({ where: { id }, select: { status: true } }))?.status;
+    expect(await status(drafts[0].id)).toBe(QuestionStatus.PUBLISHED);
+    expect(await status(drafts[1].id)).toBe(QuestionStatus.PUBLISHED);
+    expect(await status(drafts[2].id)).toBe(QuestionStatus.DRAFT);
+    expect(await status(deleted.id)).toBe(QuestionStatus.DRAFT);
+
+    expect(await admin.setStatusMany([drafts[0].id, drafts[1].id], QuestionStatus.PUBLISHED, actorId)).toEqual({
+      requested: 2,
+      changed: 0,
+    });
+    expect(await admin.setStatusMany([drafts[1].id], QuestionStatus.DRAFT, actorId)).toEqual({ requested: 1, changed: 1 });
+    expect(await status(drafts[1].id)).toBe(QuestionStatus.DRAFT);
+  });
+});
+
 describe("roles", () => {
   const guard = new RolesGuard(new Reflector());
   function contextFor(
@@ -427,6 +507,8 @@ describe("roles", () => {
           "create",
           "update",
           "setStatus",
+          "ids",
+          "setStatusMany",
           "remove",
           "tree",
           "createExam",

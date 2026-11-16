@@ -11,6 +11,7 @@ import type {
   TestSession,
 } from "../domain/types";
 import type { ExamPattern, Marks } from "../domain/exam-pattern";
+import type { ExamPaper } from "../domain/exam-paper";
 
 /**
  * The port every PYQ screen talks to. Two adapters implement it — `api` (the
@@ -27,15 +28,23 @@ export interface TaxonomyTopic {
   id: string;
   subjectId: string;
   name: string;
+  /** Published questions in this topic. Absent: unknown (web's demo data). */
+  questionCount?: number;
 }
 
 export interface Taxonomy {
-  exams: Exam[];
+  /** `questionCount` as for topics: absent means unknown. */
+  exams: (Exam & { questionCount?: number })[];
   /** `questionCount` = questions available in the bank for that subject. */
   subjects: (Subject & { questionCount: number })[];
   topics: TaxonomyTopic[];
   /** Exam years that have published questions, newest first. */
   years: number[];
+  /**
+   * Papers (a year, plus the session's month where recorded) that have
+   * published questions, newest first: what the Year filter offers.
+   */
+  papers: ExamPaper[];
 }
 
 /** History narrowed to sessions still open, or to finished ones. */
@@ -47,6 +56,8 @@ export type QuestionStatusFilter = QuestionUserStatus | "bookmarked";
 export interface QuestionQuery {
   examIds?: ExamId[];
   years?: number[];
+  /** Paper keys (`2026-06`, `2025`); see domain/exam-paper.ts. */
+  papers?: string[];
   subjectIds?: string[];
   topicIds?: string[];
   status?: QuestionStatusFilter;
@@ -138,6 +149,10 @@ export interface AnswerResult {
   correctOptionId: string;
   explanation: string;
   explanationFigure?: SessionQuestion["explanationFigure"];
+  explanationImageUrl?: string;
+  pearls?: string[];
+  quickRevision?: string;
+  optionExplanations?: Record<string, string>;
 }
 
 export interface BookmarkItem {

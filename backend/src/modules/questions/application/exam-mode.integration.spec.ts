@@ -23,6 +23,8 @@ import { QuestionAdminService } from './question-admin.service';
 import { QuestionBankService } from './question-bank.service';
 import { QuestionImportService } from './question-import.service';
 import { QuestionStateService } from './question-state.service';
+import { QuestionImageLinks } from './question-image-links';
+import { QuestionImageUploads } from './question-image-uploads';
 
 /**
  * The exam side of practice against the dev Postgres: shuffled options (and
@@ -50,9 +52,15 @@ const access = new PyqAccessService(prisma, config, subscriptions);
 const bank = new QuestionBankService(prisma, new CacheService({ get: () => false } as never));
 const states = new QuestionStateService(prisma);
 const examSetup = new ExamSetupService(prisma, audit, passThroughCache);
-const practice = new PracticeService(prisma, bank, access, states, examSetup);
+// No test here uploads an image, so signing one would be a bug: this storage refuses.
+const imageLinks = new QuestionImageLinks(
+  { getSignedDownloadUrl: () => Promise.reject(new Error('no image storage in this test')) } as never,
+  config as never,
+);
+const practice = new PracticeService(prisma, bank, access, states, examSetup, imageLinks);
 const importer = new QuestionImportService(prisma);
-const questionAdmin = new QuestionAdminService(prisma);
+const imageUploads = new QuestionImageUploads({} as never, prisma, {} as never, config as never, imageLinks);
+const questionAdmin = new QuestionAdminService(prisma, imageUploads);
 
 const run = randomUUID().slice(0, 8);
 const EXAM = `mode-exam-${run}`;

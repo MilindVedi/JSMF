@@ -15,6 +15,7 @@ import { QuestionBankService } from './question-bank.service';
 import { QuestionImportService } from './question-import.service';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { PyqSubscriptionService } from './pyq-subscription.service';
+import { QuestionImageLinks } from './question-image-links';
 
 /**
  * Phase 2 learning features against a real Postgres: collections (and that
@@ -39,7 +40,12 @@ const states = new QuestionStateService(prisma);
 const importer = new QuestionImportService(prisma);
 // Options in written order here; shuffling has its own spec (exam-mode.integration.spec.ts).
 const examSetup = { settings: async () => ({ shuffleOptions: false }) } as unknown as ExamSetupService;
-const practice = new PracticeService(prisma, bank, access, states, examSetup);
+// No test here uploads an image, so signing one would be a bug: this storage refuses.
+const imageLinks = new QuestionImageLinks(
+  { getSignedDownloadUrl: () => Promise.reject(new Error('no image storage in this test')) } as never,
+  config as never,
+);
+const practice = new PracticeService(prisma, bank, access, states, examSetup, imageLinks);
 const progress = new ProgressService(prisma, bank);
 const collections = new CollectionsService(prisma);
 const learning = new LearningService(prisma);

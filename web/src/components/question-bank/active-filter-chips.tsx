@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { paperKeyLabel } from "@jsmf/core/domain";
 import { useCollections, useTaxonomyLookup } from "@/hooks/pyq";
 import { EMPTY_QUESTION_FILTERS, type QuestionFiltersState } from "./filter-panel";
 
@@ -27,11 +28,11 @@ export function ActiveFilterChips({
     });
   }
 
-  for (const year of value.years) {
+  for (const paper of value.papers) {
     chips.push({
-      key: `year-${year}`,
-      label: String(year),
-      remove: () => onChange({ ...value, years: value.years.filter((y) => y !== year) }),
+      key: `paper-${paper}`,
+      label: paperKeyLabel(paper),
+      remove: () => onChange({ ...value, papers: value.papers.filter((p) => p !== paper) }),
     });
   }
 

@@ -13,6 +13,8 @@ import { ProductService } from '../../catalog/application/product.service';
 import { EntitlementService } from '../../entitlements/application/entitlement.service';
 import { LiveSessionService } from '../../events/application/live-session.service';
 import { SessionTestimonialUploads } from '../../events/application/session-testimonial-uploads';
+import { QuestionImageLinks } from '../../questions/application/question-image-links';
+import { QuestionImageUploads } from '../../questions/application/question-image-uploads';
 import { OrderService } from '../../orders/application/order.service';
 import { StubPaymentAdapter } from '../../payments/infrastructure/stub-payment.adapter';
 import { StorageService } from '../../storage/application/storage.service';
@@ -42,6 +44,7 @@ const env: Record<string, unknown> = {
   MAX_IMAGE_UPLOAD_SIZE_MB: 1,
   DIRECT_UPLOAD_CHUNK_MB: 1,
   DIRECT_UPLOAD_EXPIRY_HOURS: 24,
+  QUESTION_IMAGE_LINK_TTL_SECONDS: 3600,
   CORS_ORIGINS: ['http://localhost:3001'],
   STOREFRONT_URL: 'http://localhost:3001',
 };
@@ -57,10 +60,14 @@ let uploads: UploadService;
 let assets: ProductAssetService;
 let products: ProductService;
 let sessions: LiveSessionService;
+let imageLinks: QuestionImageLinks;
+let imageUploads: QuestionImageUploads;
 
 const MB = 1024 * 1024;
 const tag = randomUUID().slice(0, 8);
-const created = { userIds: [] as string[], productIds: [] as string[] };
+const created = { userIds: [] as string[], productIds: [] as string[], questionIds: [] as string[] };
+const QUESTION_EXAM = `upload-spec-exam-${tag}`;
+const QUESTION_SUBJECT = `upload-spec-subject-${tag}`;
 let admin: UploadActor;
 let other: UploadActor;
 let student: UploadActor;
@@ -139,6 +146,9 @@ beforeAll(async () => {
   );
   new ProductUploadPurposes(registry, prisma, assets, config).onModuleInit();
   new SessionTestimonialUploads(registry, prisma, storage, config).onModuleInit();
+  imageLinks = new QuestionImageLinks(storage, config);
+  imageUploads = new QuestionImageUploads(registry, prisma, storage, config, imageLinks);
+  imageUploads.onModuleInit();
   uploads = new UploadService(prisma, storage, registry, audit, config, new SweepRegistry());
 
   for (const label of ['admin', 'other', 'student']) {
@@ -162,6 +172,9 @@ afterAll(async () => {
   await prisma.productAsset.deleteMany({ where: { productId: { in: created.productIds } } });
   await prisma.auditLog.deleteMany({ where: { actorUserId: { in: created.userIds } } });
   await prisma.product.deleteMany({ where: { id: { in: created.productIds } } });
+  await prisma.question.deleteMany({ where: { id: { in: created.questionIds } } });
+  await prisma.subject.deleteMany({ where: { slug: QUESTION_SUBJECT } });
+  await prisma.exam.deleteMany({ where: { slug: QUESTION_EXAM } });
   await prisma.user.deleteMany({ where: { id: { in: created.userIds } } });
   await prisma.$disconnect();
   await rm(root, { recursive: true, force: true });
@@ -328,6 +341,87 @@ describe('direct uploads: session screenshots', () => {
   });
 });
 
+describe('direct uploads: question images', () => {
+  it('keeps a question image private: stored in the private bucket, shown through short-lived links — admins only', async () => {
+    const exam = await prisma.exam.create({ data: { slug: QUESTION_EXAM, name: 'Upload spec', shortName: 'US' } });
+    const subject = await prisma.subject.create({ data: { slug: QUESTION_SUBJECT, name: 'Upload spec', group: 'clinical' } });
+    const question = await prisma.question.create({
+      data: {
+        externalKey: `upload-spec-${tag}`,
+        examId: exam.id,
+        subjectId: subject.id,
+        year: 2026,
+        stem: 'What does the X-ray show?',
+        stemImageUrl: 'https://example.com/pasted.png',
+        explanation: 'Posterior dislocation.',
+      },
+    });
+    created.questionIds.push(question.id);
+
+    await expect(start('pyq.question_image', question.id, pngBytes(100), {}, student)).rejects.toThrow();
+    await expect(start('pyq.question_image', randomUUID(), pngBytes(100))).rejects.toThrow(/Question not found/);
+    await expect(
+      start('pyq.question_image', question.id, pngBytes(100), { context: { field: 'option' } }),
+    ).rejects.toThrow(/field must be/);
+
+    const xray = pngBytes(4000);
+    const session = await start('pyq.question_image', question.id, xray);
+    await send(session.uploadUrl, xray);
+    const result = (await uploads.complete(session.uploadId, admin)) as {
+      questionId: string;
+      stemImageUpload: { url: string } | null;
+      explanationImageUpload: { url: string } | null;
+    };
+    expect(result.questionId).toBe(question.id);
+    expect(result.explanationImageUpload).toBeNull();
+    // Stored as a file in the private bucket, never as a link; the pasted link it replaces is cleared.
+    const saved = await prisma.question.findUniqueOrThrow({ where: { id: question.id } });
+    expect(saved).toMatchObject({ stemImageUrl: null, stemImageStorageProvider: 'LOCAL', stemImageBucket: 'private' });
+    expect(saved.stemImageObjectKey).toMatch(new RegExp(`^pyq/questions/${question.id}/`));
+    const first = { provider: 'LOCAL' as const, bucket: 'private', objectKey: saved.stemImageObjectKey! };
+    expect(await local.exists(first)).toBe(true);
+    // The preview is a signed link that runs out (QUESTION_IMAGE_LINK_TTL_SECONDS), not one that lasts.
+    const link = new URL(result.stemImageUpload!.url);
+    expect(link.searchParams.get('bucket')).toBe('private');
+    const expires = Number(link.searchParams.get('expires')) - Date.now() / 1000;
+    expect(expires).toBeGreaterThan(3500);
+    expect(expires).toBeLessThanOrEqual(3600);
+    // Students get the same link for a while — one signing, and the browser can cache it.
+    expect(await imageLinks.linkFor(saved, 'stem')).toBe(result.stemImageUpload!.url);
+    // A pasted link is still used as it is when there is no file.
+    expect(await imageLinks.linkFor({ ...saved, explanationImageUrl: 'https://example.com/x.png' }, 'explanation')).toBe(
+      'https://example.com/x.png',
+    );
+
+    const diagram = pngBytes(3000);
+    const second = await start('pyq.question_image', question.id, diagram, { context: { field: 'explanation' } });
+    await send(second.uploadUrl, diagram);
+    await uploads.complete(second.uploadId, admin);
+    const both = await prisma.question.findUniqueOrThrow({ where: { id: question.id } });
+    expect(both.stemImageObjectKey).toBe(first.objectKey);
+    expect(both.explanationImageBucket).toBe('private');
+    expect(both.explanationImageObjectKey).not.toBe(first.objectKey);
+
+    // Replacing the question image deletes the file it replaces.
+    const better = pngBytes(5000);
+    const third = await start('pyq.question_image', question.id, better);
+    await send(third.uploadUrl, better);
+    await uploads.complete(third.uploadId, admin);
+    const replaced = await prisma.question.findUniqueOrThrow({ where: { id: question.id } });
+    expect(replaced.stemImageObjectKey).not.toBe(first.objectKey);
+    expect(await local.exists(first)).toBe(false);
+
+    // Removing one forgets it and deletes its file; the other stays.
+    const explanationFile = { provider: 'LOCAL' as const, bucket: 'private', objectKey: both.explanationImageObjectKey! };
+    await imageUploads.remove(question.id, 'explanation', admin.id);
+    const removed = await prisma.question.findUniqueOrThrow({ where: { id: question.id } });
+    expect(removed).toMatchObject({ explanationImageStorageProvider: null, explanationImageBucket: null, explanationImageObjectKey: null });
+    expect(removed.stemImageObjectKey).toBe(replaced.stemImageObjectKey);
+    expect(await local.exists(explanationFile)).toBe(false);
+    await imageUploads.remove(question.id, 'explanation', admin.id); // nothing left: a no-op
+  });
+});
+
 describe('direct uploads: rules and cleanup', () => {
   it('checks the request before any byte moves', async () => {
     const product = await createProduct();
@@ -392,6 +486,7 @@ describe('direct uploads: rules and cleanup', () => {
       'product.cover_image',
       'product.primary_file',
       'product.sample_preview',
+      'pyq.question_image',
       'session.testimonial',
     ]);
     expect(forAdmin.purposes['product.primary_file']).toEqual({ maxBytes: 5 * MB, mimeTypes: ['application/pdf'] });

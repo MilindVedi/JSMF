@@ -37,6 +37,7 @@ import {
   filterByStem,
   groupBySubject,
   isWithinRange,
+  paperKeyOf,
   type DatePreset,
 } from "@jsmf/core/domain";
 import { useClientSnapshot } from "@/lib/use-client-snapshot";
@@ -87,17 +88,18 @@ function SectionSearch({
 }
 
 /** The Exam + Year filter row shared by all four sections — same controls,
- *  same "All Exams" convention, just different state per section. */
+ *  same "All Exams" convention, just different state per section. "Year"
+ *  offers papers: a year, or a year's session ("June 2026"). */
 function ExamYearFilterRow({
   examIds,
   onExamIdsChange,
-  years,
-  onYearsChange,
+  papers,
+  onPapersChange,
 }: {
   examIds: ExamId[];
   onExamIdsChange: (ids: ExamId[]) => void;
-  years: number[];
-  onYearsChange: (years: number[]) => void;
+  papers: string[];
+  onPapersChange: (papers: string[]) => void;
 }) {
   const { taxonomy } = useTaxonomyLookup();
   const EXAMS = taxonomy.exams;
@@ -119,9 +121,9 @@ function ExamYearFilterRow({
       />
       <MultiSelectPopover
         label="Year"
-        options={taxonomy.years.map((y) => ({ id: String(y), label: String(y) }))}
-        selected={years.map(String)}
-        onChange={(ids) => onYearsChange(ids.map(Number))}
+        options={taxonomy.papers.map((paper) => ({ id: paper.key, label: paper.label }))}
+        selected={papers}
+        onChange={onPapersChange}
       />
     </div>
   );
@@ -253,25 +255,25 @@ export default function RevisionPage() {
   const [recentWrongFrom, setRecentWrongFrom] = useState("");
   const [recentWrongTo, setRecentWrongTo] = useState("");
   const [wrongExamIds, setWrongExamIds] = useState<ExamId[]>([]);
-  const [wrongYears, setWrongYears] = useState<number[]>([]);
+  const [wrongPapers, setWrongPapers] = useState<string[]>([]);
 
   const [bookmarkedPreset, setBookmarkedPreset] = useState<DatePreset>("7d");
   const [bookmarkedFrom, setBookmarkedFrom] = useState("");
   const [bookmarkedTo, setBookmarkedTo] = useState("");
   const [bookmarkedExamIds, setBookmarkedExamIds] = useState<ExamId[]>([]);
-  const [bookmarkedYears, setBookmarkedYears] = useState<number[]>([]);
+  const [bookmarkedPapers, setBookmarkedPapers] = useState<string[]>([]);
 
   const [reinforcePreset, setReinforcePreset] = useState<DatePreset>("7d");
   const [reinforceFrom, setReinforceFrom] = useState("");
   const [reinforceTo, setReinforceTo] = useState("");
   const [reinforceExamIds, setReinforceExamIds] = useState<ExamId[]>([]);
-  const [reinforceYears, setReinforceYears] = useState<number[]>([]);
+  const [reinforcePapers, setReinforcePapers] = useState<string[]>([]);
 
   const [collectionsPreset, setCollectionsPreset] = useState<DatePreset>("7d");
   const [collectionsFrom, setCollectionsFrom] = useState("");
   const [collectionsTo, setCollectionsTo] = useState("");
   const [collectionsExamIds, setCollectionsExamIds] = useState<ExamId[]>([]);
-  const [collectionsYears, setCollectionsYears] = useState<number[]>([]);
+  const [collectionsPapers, setCollectionsPapers] = useState<string[]>([]);
 
   const [wrongSearch, setWrongSearch] = useState("");
   const [bookmarkedSearch, setBookmarkedSearch] = useState("");
@@ -349,9 +351,9 @@ export default function RevisionPage() {
       allQuestions.filter(
         (q) =>
           (wrongExamIds.length === 0 || wrongExamIds.includes(q.examId)) &&
-          (wrongYears.length === 0 || wrongYears.includes(q.year))
+          (wrongPapers.length === 0 || wrongPapers.includes(paperKeyOf(q)))
       ),
-    [allQuestions, wrongExamIds, wrongYears]
+    [allQuestions, wrongExamIds, wrongPapers]
   );
   const facets = useMemo(
     () => getWrongFacetsFromRevision(factsById, wrongExamPool, recentWrongRange),
@@ -375,9 +377,9 @@ export default function RevisionPage() {
       .filter(
         ({ question }) =>
           (bookmarkedExamIds.length === 0 || bookmarkedExamIds.includes(question.examId)) &&
-          (bookmarkedYears.length === 0 || bookmarkedYears.includes(question.year))
+          (bookmarkedPapers.length === 0 || bookmarkedPapers.includes(paperKeyOf(question)))
       );
-  }, [items, bookmarkedExamIds, bookmarkedYears]);
+  }, [items, bookmarkedExamIds, bookmarkedPapers]);
   const bookmarkedBySubject = useMemo(
     () => groupBySubject(bookmarkedPool.map(({ question }) => question)),
     [bookmarkedPool]
@@ -402,9 +404,9 @@ export default function RevisionPage() {
       .filter(
         ({ question }) =>
           (reinforceExamIds.length === 0 || reinforceExamIds.includes(question.examId)) &&
-          (reinforceYears.length === 0 || reinforceYears.includes(question.year))
+          (reinforcePapers.length === 0 || reinforcePapers.includes(paperKeyOf(question)))
       );
-  }, [items, reinforceExamIds, reinforceYears]);
+  }, [items, reinforceExamIds, reinforcePapers]);
   const reinforceBySubject = useMemo(
     () => groupBySubject(reinforcePool.map(({ question }) => question)),
     [reinforcePool]
@@ -447,9 +449,9 @@ export default function RevisionPage() {
     return inCollections.filter(
       (q) =>
         (collectionsExamIds.length === 0 || collectionsExamIds.includes(q.examId)) &&
-        (collectionsYears.length === 0 || collectionsYears.includes(q.year))
+        (collectionsPapers.length === 0 || collectionsPapers.includes(paperKeyOf(q)))
     );
-  }, [collections, allQuestions, effectiveCollectionIds, collectionsExamIds, collectionsYears]);
+  }, [collections, allQuestions, effectiveCollectionIds, collectionsExamIds, collectionsPapers]);
   const collectionsBySubject = useMemo(() => groupBySubject(collectionsPool), [collectionsPool]);
   // Mock data only timestamps a collection as a whole, not each question's
   // individual add date — so "added in the last N days" filters the whole
@@ -615,8 +617,8 @@ export default function RevisionPage() {
           <ExamYearFilterRow
             examIds={wrongExamIds}
             onExamIdsChange={setWrongExamIds}
-            years={wrongYears}
-            onYearsChange={setWrongYears}
+            papers={wrongPapers}
+            onPapersChange={setWrongPapers}
           />
 
           {mode === "wrong" ? (
@@ -747,8 +749,8 @@ export default function RevisionPage() {
           <ExamYearFilterRow
             examIds={bookmarkedExamIds}
             onExamIdsChange={setBookmarkedExamIds}
-            years={bookmarkedYears}
-            onYearsChange={setBookmarkedYears}
+            papers={bookmarkedPapers}
+            onPapersChange={setBookmarkedPapers}
           />
 
           {bookmarkedMode === "recent" ? (
@@ -911,8 +913,8 @@ export default function RevisionPage() {
               <ExamYearFilterRow
                 examIds={collectionsExamIds}
                 onExamIdsChange={setCollectionsExamIds}
-                years={collectionsYears}
-                onYearsChange={setCollectionsYears}
+                papers={collectionsPapers}
+                onPapersChange={setCollectionsPapers}
               />
 
               {collectionsMode === "recent" ? (
@@ -1056,8 +1058,8 @@ export default function RevisionPage() {
           <ExamYearFilterRow
             examIds={reinforceExamIds}
             onExamIdsChange={setReinforceExamIds}
-            years={reinforceYears}
-            onYearsChange={setReinforceYears}
+            papers={reinforcePapers}
+            onPapersChange={setReinforcePapers}
           />
 
           {reinforceMode === "recent" ? (

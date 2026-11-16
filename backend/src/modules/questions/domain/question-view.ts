@@ -27,6 +27,8 @@ export interface QuestionView {
   externalKey: string;
   examId: string;
   year: number;
+  /** The exam session's month (1–12), or null: see Question.sessionMonth. */
+  sessionMonth: number | null;
   subjectId: string;
   topicId: string | null;
   stem: string;
@@ -46,6 +48,14 @@ export interface AnsweredQuestionView extends QuestionView {
   explanation: string;
   explanationImageUrl: string | null;
   explanationFigure: Prisma.JsonValue | null;
+  /** High-yield pearls / buzzwords; empty when the question has none. */
+  pearls: string[];
+  quickRevision: string | null;
+  /**
+   * Why an option is right or wrong, by option id — so it stays with its
+   * option whatever order the session shows them in. Only options that have one.
+   */
+  optionExplanations: Record<string, string>;
 }
 
 export function toDifficulty(value: Difficulty): Lowercase<Difficulty> {
@@ -58,6 +68,7 @@ export function toQuestionView(question: QuestionWithRelations): QuestionView {
     externalKey: question.externalKey,
     examId: question.exam.slug,
     year: question.year,
+    sessionMonth: question.sessionMonth,
     subjectId: question.subject.slug,
     topicId: question.topic?.slug ?? null,
     stem: question.stem,
@@ -81,6 +92,11 @@ export function toAnsweredQuestionView(question: QuestionWithRelations): Answere
     explanation: question.explanation,
     explanationImageUrl: question.explanationImageUrl,
     explanationFigure: question.explanationFigure,
+    pearls: question.pearls,
+    quickRevision: question.quickRevision,
+    optionExplanations: Object.fromEntries(
+      question.options.flatMap((option) => (option.explanation?.trim() ? [[option.id, option.explanation]] : [])),
+    ),
   };
 }
 
@@ -109,6 +125,7 @@ export const QUESTION_SUMMARY_SELECT = {
   id: true,
   externalKey: true,
   year: true,
+  sessionMonth: true,
   stem: true,
   stemImageUrl: true,
   difficulty: true,
@@ -124,6 +141,7 @@ export interface QuestionSummary {
   externalKey: string;
   examId: string;
   year: number;
+  sessionMonth: number | null;
   subjectId: string;
   topicId: string | null;
   stem: string;
@@ -137,6 +155,7 @@ export function toQuestionSummary(question: QuestionSummaryRow): QuestionSummary
     externalKey: question.externalKey,
     examId: question.exam.slug,
     year: question.year,
+    sessionMonth: question.sessionMonth,
     subjectId: question.subject.slug,
     topicId: question.topic?.slug ?? null,
     stem: question.stem,

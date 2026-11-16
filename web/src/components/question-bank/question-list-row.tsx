@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronRight, Circle, X } from "lucide-react";
-import type { PublicQuestion, QuestionStatus } from "@jsmf/core/domain";
+import { paperLabel, type PublicQuestion, type QuestionStatus } from "@jsmf/core/domain";
 import { SubjectBadge } from "@/components/common/subject-badge";
 import { ExamBadge } from "@/components/common/exam-badge";
 import { BookmarkButton } from "@/components/practice/bookmark-button";
@@ -69,7 +69,7 @@ export function QuestionListRow({
             )}
             <ExamBadge examId={question.examId} />
             <SubjectBadge subjectId={question.subjectId} />
-            <span className="text-xs text-muted-foreground">{question.year}</span>
+            <span className="text-xs text-muted-foreground">{paperLabel(question.year, question.sessionMonth)}</span>
           </div>
           <p className="line-clamp-2 text-sm text-foreground">{question.stem}</p>
         </div>

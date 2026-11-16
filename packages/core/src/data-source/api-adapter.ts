@@ -12,6 +12,7 @@ import type {
   TestSession,
 } from "../domain/types";
 import type { ExamPattern, ExamSectionWindow, Marks } from "../domain/exam-pattern";
+import { comparePapersNewestFirst, toExamPaper } from "../domain/exam-paper";
 import {
   DailyLimitError,
   NotFoundError,
@@ -70,6 +71,8 @@ interface WireQuestion {
   externalKey: string;
   examId: string;
   year: number;
+  /** Absent from an API older than session months. */
+  sessionMonth?: number | null;
   subjectId: string;
   topicId: string | null;
   stem: string;
@@ -81,6 +84,20 @@ interface WireQuestion {
   correctOptionId?: string | null;
   explanation?: string;
   explanationFigure?: unknown;
+  explanationImageUrl?: string | null;
+  /** With the answer only; absent from an API older than explanation parts. */
+  pearls?: string[];
+  quickRevision?: string | null;
+  optionExplanations?: Record<string, string>;
+}
+
+/** The explanation parts a revealed question or an answer carries, normalised. */
+function revealedParts(wire: Pick<WireQuestion, "pearls" | "quickRevision" | "optionExplanations">) {
+  return {
+    pearls: wire.pearls ?? [],
+    quickRevision: wire.quickRevision ?? undefined,
+    optionExplanations: wire.optionExplanations ?? {},
+  };
 }
 
 interface WireAttempt {
@@ -160,10 +177,12 @@ function toQuestion(wire: WireQuestion): SessionQuestion {
     id: wire.id,
     examId: wire.examId as ExamId,
     year: wire.year,
+    sessionMonth: wire.sessionMonth ?? null,
     subjectId: wire.subjectId,
     topicId: wire.topicId ?? "",
     stem: wire.stem,
     stemFigure: toFigure(wire.stemFigure),
+    stemImageUrl: wire.stemImageUrl ?? undefined,
     options: (wire.options ?? []).map((o) => ({ id: o.id, text: o.text, imageUrl: o.imageUrl ?? undefined })),
     difficulty: wire.difficulty,
   };
@@ -171,15 +190,24 @@ function toQuestion(wire: WireQuestion): SessionQuestion {
     question.correctOptionId = wire.correctOptionId;
     question.explanation = wire.explanation;
     question.explanationFigure = toFigure(wire.explanationFigure);
+    question.explanationImageUrl = wire.explanationImageUrl ?? undefined;
+    Object.assign(question, revealedParts(wire));
   }
   return question;
 }
 
 function toPublicQuestion(wire: WireQuestion): PublicQuestion {
-  const { correctOptionId: _c, explanation: _e, explanationFigure: _f, ...rest } = toQuestion(wire);
-  void _c;
-  void _e;
-  void _f;
+  const {
+    correctOptionId: _c,
+    explanation: _e,
+    explanationFigure: _f,
+    explanationImageUrl: _i,
+    pearls: _p,
+    quickRevision: _q,
+    optionExplanations: _o,
+    ...rest
+  } = toQuestion(wire);
+  void [_c, _e, _f, _i, _p, _q, _o];
   return rest;
 }
 
@@ -276,6 +304,7 @@ function wireFilters(query: QuestionQuery = {}) {
   if (query.subjectIds?.length) filters.subjectIds = query.subjectIds;
   if (query.topicIds?.length) filters.topicIds = query.topicIds;
   if (query.years?.length) filters.years = query.years;
+  if (query.papers?.length) filters.papers = query.papers;
   if (query.status) filters.status = query.status;
   if (query.collectionIds?.length) filters.collectionIds = query.collectionIds;
   if (query.search?.trim()) filters.search = query.search.trim();
@@ -349,7 +378,7 @@ export const apiDataSource: PyqDataSource = {
   getTaxonomy: () =>
     call(async () => {
       const wire = await api.getAnonymous<{
-        exams: { id: string; name: string; shortName: string | null; description: string | null }[];
+        exams: { id: string; name: string; shortName: string | null; description: string | null; questionCount?: number }[];
         subjects: {
           id: string;
           slug: string;
@@ -358,15 +387,19 @@ export const apiDataSource: PyqDataSource = {
           description: string | null;
           questionCount: number;
         }[];
-        topics: { id: string; subjectId: string; name: string }[];
+        topics: { id: string; subjectId: string; name: string; questionCount?: number }[];
         years?: { year: number }[];
+        /** Absent from an API older than session months. */
+        papers?: { year: number; month: number | null }[];
       }>("/pyq/taxonomy");
+      const years = (wire.years ?? []).map((y) => y.year);
       const taxonomy: Taxonomy = {
         exams: wire.exams.map((e) => ({
           id: e.id as ExamId,
           name: e.name,
           shortName: e.shortName ?? e.name,
           description: e.description ?? "",
+          questionCount: e.questionCount,
         })),
         subjects: wire.subjects.map((s) => ({
           id: s.id,
@@ -377,7 +410,10 @@ export const apiDataSource: PyqDataSource = {
           questionCount: s.questionCount,
         })),
         topics: wire.topics,
-        years: (wire.years ?? []).map((y) => y.year),
+        years,
+        papers: (wire.papers ?? years.map((year) => ({ year, month: null })))
+          .map((paper) => toExamPaper(paper.year, paper.month))
+          .sort(comparePapersNewestFirst),
       };
       return taxonomy;
     }),
@@ -444,6 +480,7 @@ export const apiDataSource: PyqDataSource = {
           subjectIds: csv(query.subjectIds),
           topicIds: csv(query.topicIds),
           years: csv(query.years),
+          papers: csv(query.papers),
           status: query.status,
           collectionIds: csv(query.collectionIds),
           search: query.search?.trim() || undefined,
@@ -528,6 +565,10 @@ export const apiDataSource: PyqDataSource = {
         correctOptionId?: string | null;
         explanation?: string;
         explanationFigure?: unknown;
+        explanationImageUrl?: string | null;
+        pearls?: string[];
+        quickRevision?: string | null;
+        optionExplanations?: Record<string, string>;
       }>(`/pyq/sessions/${sessionId}/answers`, {
         questionId,
         selectedOptionId: optionId,
@@ -540,6 +581,8 @@ export const apiDataSource: PyqDataSource = {
         correctOptionId: wire.correctOptionId ?? "",
         explanation: wire.explanation ?? "",
         explanationFigure: toFigure(wire.explanationFigure),
+        explanationImageUrl: wire.explanationImageUrl ?? undefined,
+        ...revealedParts(wire),
       };
       return result;
     }),

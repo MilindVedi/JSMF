@@ -8,3 +8,6 @@ export * from "./history";
 export * from "./practice-rules";
 export * from "./plan-period";
 export * from "./exam-pattern";
+export * from "./exam-paper";
+export * from "./explanation";
+export * from "./filter-options";

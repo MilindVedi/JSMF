@@ -83,7 +83,32 @@ Four buckets: one pair per environment, each pair split by visibility.
 
 All four: `asia-south1`, uniform bucket-level access.
 Both private buckets: **public access prevention enforced**.
-Both public buckets: `allUsers:objectViewer`.
+Both public buckets: `allUsers:legacyObjectReader` — a file opens by its exact
+link, but the bucket cannot be listed (`objectViewer` would also allow listing:
+every avatar, under `users/<user id>/`, downloadable without signing up). Both
+switched 2026-11-16 (02-deployment-guide).
+
+### Which bucket a file goes in
+
+Decided by **who may see it**, never by convenience:
+
+| Who may see it | Examples | Bucket | Served as |
+| :--- | :--- | :--- | :--- |
+| Anyone — it is made to be shown | cover images, testimonials | public | permanent plain link |
+| Anyone the person shows it to | profile pictures | public | permanent link, unguessable name, no listing; deleted when replaced or removed |
+| Only people the server lets in | purchased PDFs, samples, **PYQ question images** | private | short-lived signed link, made after the server checks access |
+
+The database records where a file is (provider, bucket, key), never a link;
+links are made when a file is asked for. A question image follows its
+question's rule: the API signs a link only in responses that already carry the
+question (and the explanation image only with the answer).
+
+Content releases ([../pyq/content-releases.md](../pyq/content-releases.md))
+use the private bucket too: `pyq/release-images/` holds images uploaded for a
+push until it copies them to their question (swept after
+`PYQ_RELEASE_IMAGE_RETENTION_HOURS`), and `pyq/releases/` keeps an archived
+copy of every exported release file — paid content, so never public and never
+in git.
 
 ### Why two buckets instead of one with prefixes
 

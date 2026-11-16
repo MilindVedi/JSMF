@@ -9,6 +9,7 @@ import {
   toAnsweredQuestionView,
   toQuestionSummary,
 } from '../domain/question-view';
+import { comparePapersNewestFirst, paperKey, parsePaperKey } from '../domain/exam-paper';
 
 export type QuestionStatusFilter = 'unattempted' | 'correct' | 'incorrect' | 'bookmarked';
 
@@ -17,6 +18,12 @@ export interface QuestionFilters {
   subjectIds?: string[];
   topicIds?: string[];
   years?: number[];
+  /**
+   * Paper keys (`2026-06`, `2025`; see domain/exam-paper.ts), any of them.
+   * Newer clients send these in place of `years`; `years` stays for older
+   * app versions.
+   */
+  papers?: string[];
   difficulties?: Difficulty[];
   /** Per-user state; needs a userId. */
   status?: QuestionStatusFilter;
@@ -29,12 +36,16 @@ export interface QuestionFilters {
 export const QUESTION_SORTS = ['newest-exam-year', 'oldest-exam-year', 'name-az', 'name-za'] as const;
 export type QuestionSort = (typeof QUESTION_SORTS)[number];
 
+/** Within a year: December's paper before June's, a question with no month last. */
+const SESSION_DESC: Prisma.QuestionOrderByWithRelationInput = { sessionMonth: { sort: 'desc', nulls: 'last' } };
+const SESSION_ASC: Prisma.QuestionOrderByWithRelationInput = { sessionMonth: { sort: 'asc', nulls: 'last' } };
+
 /** `name-*` is the subject's name — the web app's label, not the stem. Ties break stably on externalKey. */
 const ORDER_BY: Record<QuestionSort, Prisma.QuestionOrderByWithRelationInput[]> = {
-  'newest-exam-year': [{ year: 'desc' }, { externalKey: 'asc' }],
-  'oldest-exam-year': [{ year: 'asc' }, { externalKey: 'asc' }],
-  'name-az': [{ subject: { name: 'asc' } }, { year: 'desc' }, { externalKey: 'asc' }],
-  'name-za': [{ subject: { name: 'desc' } }, { year: 'desc' }, { externalKey: 'asc' }],
+  'newest-exam-year': [{ year: 'desc' }, SESSION_DESC, { externalKey: 'asc' }],
+  'oldest-exam-year': [{ year: 'asc' }, SESSION_ASC, { externalKey: 'asc' }],
+  'name-az': [{ subject: { name: 'asc' } }, { year: 'desc' }, SESSION_DESC, { externalKey: 'asc' }],
+  'name-za': [{ subject: { name: 'desc' } }, { year: 'desc' }, SESSION_DESC, { externalKey: 'asc' }],
 };
 
 /** The per-user facts list screens show next to a question. */
@@ -66,7 +77,7 @@ export class QuestionBankService {
     private readonly cache: CacheService,
   ) {}
 
-  /** Exams, subjects, topics and years, each with its count of published questions. */
+  /** Exams, subjects, topics, years and papers, each with its count of published questions. */
   taxonomy() {
     return this.cache.wrap(TAXONOMY_CACHE_KEY, TAXONOMY_TTL_SECONDS, () => this.loadTaxonomy());
   }
@@ -77,7 +88,7 @@ export class QuestionBankService {
   }
 
   private async loadTaxonomy() {
-    const [exams, subjects, topics, byExam, bySubject, byTopic, byYear] = await Promise.all([
+    const [exams, subjects, topics, byExam, bySubject, byTopic, byPaper] = await Promise.all([
       this.prisma.exam.findMany({
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       }),
@@ -104,16 +115,20 @@ export class QuestionBankService {
         _count: true,
       }),
       this.prisma.question.groupBy({
-        by: ['year'],
+        by: ['year', 'sessionMonth'],
         where: VISIBLE_QUESTION,
         _count: true,
-        orderBy: { year: 'desc' },
       }),
     ]);
 
     const examCount = new Map(byExam.map((row) => [row.examId, row._count]));
     const subjectCount = new Map(bySubject.map((row) => [row.subjectId, row._count]));
     const topicCount = new Map(byTopic.map((row) => [row.topicId, row._count]));
+    const papers = byPaper
+      .map((row) => ({ year: row.year, month: row.sessionMonth, questionCount: row._count }))
+      .sort(comparePapersNewestFirst);
+    const yearCount = new Map<number, number>();
+    for (const paper of papers) yearCount.set(paper.year, (yearCount.get(paper.year) ?? 0) + paper.questionCount);
 
     return {
       exams: exams.map((exam) => ({
@@ -137,7 +152,9 @@ export class QuestionBankService {
         name: topic.name,
         questionCount: topicCount.get(topic.id) ?? 0,
       })),
-      years: byYear.map((row) => ({ year: row.year, questionCount: row._count })),
+      // Older app versions filter by year alone.
+      years: [...yearCount].map(([year, questionCount]) => ({ year, questionCount })),
+      papers: papers.map((paper) => ({ key: paperKey(paper.year, paper.month), ...paper })),
     };
   }
 
@@ -217,6 +234,10 @@ export class QuestionBankService {
     if (filters.subjectIds?.length) and.push({ subject: { slug: { in: filters.subjectIds } } });
     if (filters.topicIds?.length) and.push({ topic: { slug: { in: filters.topicIds } } });
     if (filters.years?.length) and.push({ year: { in: filters.years } });
+    if (filters.papers?.length) {
+      const papers = filters.papers.flatMap((key) => parsePaperKey(key) ?? []);
+      and.push({ OR: papers.map((paper) => ({ year: paper.year, sessionMonth: paper.month })) });
+    }
     if (filters.difficulties?.length) and.push({ difficulty: { in: filters.difficulties } });
     const search = filters.search?.trim();
     if (search) and.push({ stem: { contains: search, mode: 'insensitive' } });

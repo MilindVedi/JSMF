@@ -73,7 +73,7 @@ export const QuestionRow = memo(function QuestionRow({
               Q{number}
             </Txt>
           ) : null}
-          <ExamBadge examId={question.examId} year={question.year} />
+          <ExamBadge examId={question.examId} year={question.year} month={question.sessionMonth} />
           {where ? (
             <Txt className={cn("shrink text-muted-foreground", compact ? "text-[10px]" : "text-[11px]")} numberOfLines={1}>
               {where}

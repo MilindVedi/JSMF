@@ -1,10 +1,11 @@
 "use client";
 
-import { DIFFICULTY_LABEL, type SessionQuestion } from "@jsmf/core/domain";
+import { DIFFICULTY_LABEL, paperLabel, type SessionQuestion } from "@jsmf/core/domain";
 import { FigurePlaceholder } from "@/components/common/figure-placeholder";
 import { SubjectBadge } from "@/components/common/subject-badge";
 import { ExamBadge } from "@/components/common/exam-badge";
 import { OptionButton } from "./option-button";
+import { QuestionImage } from "./question-image";
 import { useTaxonomyLookup } from "@/hooks/pyq";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,7 @@ export function QuestionCard({
       {!hideMeta && (
         <div className="flex flex-wrap items-center gap-2">
           <ExamBadge examId={question.examId} />
+          <span className="text-xs text-muted-foreground">{paperLabel(question.year, question.sessionMonth)}</span>
           <SubjectBadge subjectId={question.subjectId} />
           {topic && (
             <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
@@ -51,7 +53,8 @@ export function QuestionCard({
         </div>
       )}
 
-      <p className="prose-reading text-foreground">{question.stem}</p>
+      <p className="prose-reading whitespace-pre-line text-foreground">{question.stem}</p>
+      {question.stemImageUrl && <QuestionImage src={question.stemImageUrl} alt="Question image" />}
       {question.stemFigure && (
         <FigurePlaceholder figure={question.stemFigure} />
       )}

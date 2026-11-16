@@ -37,7 +37,10 @@ const EXPLANATION_NAMES_OPTIONS: RegExp[] = [/\b(?:option|choice)s?\s*\(?[A-F]\)
 export interface LockableQuestion {
   keepOptionOrder: boolean;
   explanation: string;
-  options: { text: string }[];
+  /** Shown with the explanation, so read for letters too. */
+  quickRevision?: string | null;
+  pearls?: string[];
+  options: { text: string; explanation?: string | null }[];
 }
 
 /** Why this question's options are never shuffled, or null when they may be. */
@@ -47,7 +50,14 @@ export function optionOrderLock(question: LockableQuestion): OptionOrderLock | n
     const match = firstMatch(option.text, OPTION_REFERS_TO_OPTIONS);
     if (match) return { reason: 'options-refer-to-options', match };
   }
-  const match = firstMatch(question.explanation, EXPLANATION_NAMES_OPTIONS);
+  // Everything shown with the answer: an "option B" anywhere in it reads wrongly once B moves.
+  const shownWithAnswer = [
+    question.explanation,
+    question.quickRevision ?? '',
+    ...(question.pearls ?? []),
+    ...question.options.map((option) => option.explanation ?? ''),
+  ].join('\n');
+  const match = firstMatch(shownWithAnswer, EXPLANATION_NAMES_OPTIONS);
   return match ? { reason: 'explanation-names-options', match } : null;
 }
 

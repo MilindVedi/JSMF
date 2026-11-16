@@ -118,6 +118,17 @@ const schema = z
     STORAGE_LOCAL_ROOT: z.string().default('.storage'),
     STORAGE_SIGNING_SECRET: z.string().min(16),
     STORAGE_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+    /// How long a question image's signed link lasts. Each link is reused
+    /// until half of this is gone (QuestionImageLinks), so a student always
+    /// gets at least half — it must cover the longest sitting on one session
+    /// without a reload. Short enough that a link shared outside the app
+    /// stops working the same day. GCS signs for at most 7 days.
+    QUESTION_IMAGE_LINK_TTL_SECONDS: z.coerce.number().int().min(600).max(604_800).default(21_600),
+    /// How long an image uploaded for a content-release push is kept in the
+    /// release staging area (pyq/release-images/) before the sweep deletes it.
+    /// A push copies what it uses to the question, so this only has to cover
+    /// re-running an interrupted push without uploading its images again.
+    PYQ_RELEASE_IMAGE_RETENTION_HOURS: z.coerce.number().int().min(1).max(720).default(168),
     /// Folder prefixes, not buckets — Cloudinary organises by folder. The port
     /// calls these "bucket" so the same vocabulary covers GCS/S3 later.
     STORAGE_PRIVATE_BUCKET: z.string().default('jsmf/private'),

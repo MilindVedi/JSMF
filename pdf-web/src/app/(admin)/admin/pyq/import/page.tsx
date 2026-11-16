@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, FileJson, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { PyqReleasePush } from "@/components/admin/pyq-release-push";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { adminPyqApi, type PyqImportResult } from "@/lib/api/admin-pyq";
 import { ApiError } from "@/lib/api/client";
@@ -16,12 +17,15 @@ const EXAMPLE = `{
       "subjectSlug": "anatomy",
       "topicSlug": "anatomy--upper-limb",
       "year": 2023,
+      "sessionMonth": 6,
       "stem": "Which nerve supplies …?",
       "explanation": "The … nerve …",
+      "pearls": ["Radial nerve → wrist drop"],
+      "quickRevision": "…",
       "difficulty": "MEDIUM",
       "options": [
         { "text": "Radial", "isCorrect": true },
-        { "text": "Ulnar", "isCorrect": false }
+        { "text": "Ulnar", "isCorrect": false, "explanation": "Why Ulnar is wrong …" }
       ]
     }
   ]
@@ -74,17 +78,22 @@ export default function PyqImportPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Import questions</h1>
         <p className="text-sm text-muted-foreground">
-          Upload a JSON file from the content pipeline. Questions are matched on{" "}
-          <code>externalKey</code>: new ones are created as drafts, existing ones are updated and
-          keep their status. Re-uploading the same file changes nothing. The whole file is checked
-          first — if any question is invalid, nothing is written.
+          Reviewed questions reach this site as a <strong>release</strong>: exported from the editorial copy, with
+          their images, and pushed here. A plain question file from the content pipeline can still be imported
+          below.
         </p>
       </div>
 
+      <PyqReleasePush />
+
       <Card>
         <CardHeader>
-          <CardTitle>File</CardTitle>
-          <CardDescription>Up to 2,000 questions per file.</CardDescription>
+          <CardTitle>Import a question file</CardTitle>
+          <CardDescription>
+            Questions are matched on <code>externalKey</code>: new ones are created as drafts, existing ones are
+            updated and keep their status. Re-uploading the same file changes nothing. The whole file is checked
+            first — if any question is invalid, nothing is written. Up to about 100 KB per file; no images.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <input
@@ -148,9 +157,14 @@ export default function PyqImportPage() {
         <CardHeader>
           <CardTitle>Format</CardTitle>
           <CardDescription>
-            Exams, subjects and topics are referenced by slug and created if missing; optional{" "}
-            <code>exams</code>, <code>subjects</code> and <code>topics</code> arrays set their names.
-            2–6 options, exactly one correct.
+            Exams, subjects and topics are referenced by slug. An exam or subject must already exist — or be
+            described in the file&apos;s <code>exams</code> / <code>subjects</code> array (slug, name, and for a
+            subject its group) — so a misspelt slug is refused instead of becoming a second subject. Topics are
+            created on first use; an optional <code>topics</code> array sets their names.
+            2–6 options, exactly one correct. <code>sessionMonth</code> (1–12, optional) keeps an exam&apos;s
+            sessions apart: 6 is June, 12 December. Leave it out and a question keeps the month it has; set it
+            to <code>null</code> to clear it. <code>pearls</code>, <code>quickRevision</code> and each option&apos;s{" "}
+            <code>explanation</code> (why it is right or wrong) are optional and follow the same rule.
           </CardDescription>
         </CardHeader>
         <CardContent>

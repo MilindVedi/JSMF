@@ -163,12 +163,32 @@ paid file.
 gcloud storage buckets create gs://jsmf-private-509708 --location=$REGION `
   --uniform-bucket-level-access --public-access-prevention
 
-# Cover images, served straight from storage with no signing.
+# Cover images, avatars, testimonials: served straight from storage with no
+# signing. legacyObjectReader is storage.objects.get only — a file opens by its
+# exact link, but nobody can list the bucket. NOT roles/storage.objectViewer,
+# which also grants storage.objects.list: anyone could list and download every
+# file (every user's avatar, under users/<user id>/) without signing up.
 gcloud storage buckets create gs://jsmf-public-509708 --location=$REGION `
   --uniform-bucket-level-access
 gcloud storage buckets add-iam-policy-binding gs://jsmf-public-509708 `
-  --member=allUsers --role=roles/storage.objectViewer
+  --member=allUsers --role=roles/storage.legacyObjectReader
 ```
+
+**Switching an existing public bucket off listing.** Add the open-only grant
+first, then remove the old one, so files never stop loading in between. Then
+check: listing must be refused and a cover must still open.
+
+```powershell
+gcloud storage buckets add-iam-policy-binding gs://jsmf-public-509708 `
+  --member=allUsers --role=roles/storage.legacyObjectReader
+gcloud storage buckets remove-iam-policy-binding gs://jsmf-public-509708 `
+  --member=allUsers --role=roles/storage.objectViewer
+curl.exe -s -o NUL -w "list: %{http_code}`n" https://storage.googleapis.com/jsmf-public-509708   # 403
+```
+
+Done on both public buckets on 2026-11-16 — `jsmf-dev-public-509708`, then
+`jsmf-public-509708` — with listing refused afterwards (403 / 401 on the JSON
+API) and covers and avatars still opening by their link.
 
 Bucket names are globally unique across all of GCS, so these include the
 project number. Keep them in the same region as Cloud Run — cross-region reads
@@ -544,6 +564,16 @@ npm run db:seed
 4. Once it finishes successfully, immediately revert your `DATABASE_URL` in `.env` back to localhost.
 
 > 🎉 You can now log into your production admin dashboard using `admin@jsmf.local` / `ChangeMe123!`.
+
+### Phase 8.1: The PYQ question bank arrives as content releases
+
+Never run `npm run db:seed:pyq` against production — it loads demo questions,
+published. Real questions are added and reviewed in the local (editorial)
+database, exported as a release file and pushed in production's admin
+(**Question bank → Import → Push a release**); see
+[../pyq/content-releases.md](../pyq/content-releases.md). Deploy the server
+first (its migrations add the release columns), then the admin site; set up
+each exam's mock-test pattern in **Exam setup** before students use mocks.
 
 ---
 

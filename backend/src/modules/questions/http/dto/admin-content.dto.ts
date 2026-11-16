@@ -24,6 +24,7 @@ import {
   ValidateNested,
 } from "class-validator";
 import {
+  MAX_BULK_QUESTIONS,
   MAX_OPTIONS,
   MIN_OPTIONS,
 } from "../../application/question-admin.service";
@@ -75,6 +76,19 @@ export class AdminQuestionListQueryDto extends PageQueryDto {
   reported?: boolean;
 }
 
+export class BulkQuestionStatusDto {
+  @ApiProperty({ type: [String], description: `Question ids, 1–${MAX_BULK_QUESTIONS}` })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_BULK_QUESTIONS)
+  @IsUUID("all", { each: true })
+  ids!: string[];
+
+  @ApiProperty({ enum: QuestionStatus })
+  @IsEnum(QuestionStatus)
+  status!: QuestionStatus;
+}
+
 export class AdminOptionDto {
   @ApiPropertyOptional({
     description: "Existing option id; omit for a new option",
@@ -92,6 +106,13 @@ export class AdminOptionDto {
   imageUrl?: string | null;
 
   @ApiProperty() @IsBoolean() isCorrect!: boolean;
+
+  @ApiPropertyOptional({ nullable: true, description: "Why this option is right or wrong" })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(4000)
+  explanation?: string | null;
 }
 
 export class CreateQuestionDto {
@@ -114,6 +135,13 @@ export class CreateQuestionDto {
   topicId?: string | null;
 
   @ApiProperty() @IsInt() @Min(1950) @Max(2100) year!: number;
+
+  @ApiPropertyOptional({ nullable: true, description: "Month of the exam session, 1–12 (6 = June); null: none" })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  sessionMonth?: number | null;
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(10000) stem!: string;
 
   @ApiPropertyOptional()
@@ -143,6 +171,21 @@ export class CreateQuestionDto {
   @IsOptional()
   @IsEnum(QuestionStatus)
   status?: QuestionStatus;
+
+  @ApiPropertyOptional({ type: [String], description: "High-yield pearls / buzzwords, one per item" })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(1000, { each: true })
+  pearls?: string[];
+
+  @ApiPropertyOptional({ nullable: true, description: "The quick revision recap" })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(10000)
+  quickRevision?: string | null;
 
   @ApiPropertyOptional({ default: false, description: "Never shuffle this question's options" })
   @IsOptional()
@@ -175,6 +218,13 @@ export class UpdateQuestionDto {
   @Max(2100)
   year?: number;
 
+  @ApiPropertyOptional({ nullable: true, description: "Month of the exam session, 1–12; null clears it" })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  sessionMonth?: number | null;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -206,6 +256,21 @@ export class UpdateQuestionDto {
   @Transform(toUpper)
   @IsEnum(Difficulty)
   difficulty?: Difficulty;
+
+  @ApiPropertyOptional({ type: [String], description: "High-yield pearls / buzzwords, one per item" })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(1000, { each: true })
+  pearls?: string[];
+
+  @ApiPropertyOptional({ nullable: true, description: "The quick revision recap" })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(10000)
+  quickRevision?: string | null;
 
   @ApiPropertyOptional({ description: "Never shuffle this question's options" })
   @IsOptional()

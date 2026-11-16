@@ -66,7 +66,7 @@ export default function CustomTestBuilderPage() {
     const pick = <T,>(list: T[]) => (list.length ? list : undefined);
     return {
       examIds: pick(filters.examIds),
-      years: pick(filters.years),
+      papers: pick(filters.papers),
       subjectIds: pick(filters.subjectIds),
       topicIds: pick(filters.topicIds),
       collectionIds: pyqCapabilities.collections ? pick(filters.collectionIds) : undefined,

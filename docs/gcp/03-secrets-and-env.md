@@ -29,7 +29,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `CLOUDINARY_API_KEY` | String | `<your-api-key>` | GCP Secret: `CLOUDINARY_API_KEY` | Cloudinary API Key. |
 | `CLOUDINARY_API_SECRET` | String | `<your-api-secret>` | GCP Secret: `CLOUDINARY_API_SECRET` | Cloudinary API Secret. Keep set after moving to GCS — existing Cloudinary objects are still read through it. |
 | `GCS_PRIVATE_BUCKET` | String | `jsmf-private-509708` | Cloud Run Env Var | Purchased files. Public access prevention **enforced**. Dev uses `jsmf-dev-private-509708`. |
-| `GCS_PUBLIC_BUCKET` | String | `jsmf-public-509708` | Cloud Run Env Var | Cover images. `allUsers:objectViewer`. Must differ from the private bucket — boot fails otherwise. Dev uses `jsmf-dev-public-509708`. |
+| `GCS_PUBLIC_BUCKET` | String | `jsmf-public-509708` | Cloud Run Env Var | Cover images, avatars, testimonials. `allUsers:legacyObjectReader` (open by exact link, no listing — see 02-deployment-guide). Must differ from the private bucket — boot fails otherwise. Dev uses `jsmf-dev-public-509708`. |
 | `GCS_PROJECT_ID` | String | `production-509708` | Cloud Run Env Var | Optional; inferred from ADC when unset. |
 
 > 🔑 **GCS needs no credential in configuration.** The adapter uses Application
@@ -146,7 +146,9 @@ This document provides a reference for all environment variables, flags, and sec
 | `SAMPLE_CUT_MAX_MB` | Integer | `50` | Cloud Run Env Var (optional) | Largest PDF the server cuts a "Read a sample" file from. The cut holds the whole PDF in memory at several times its size, so raise it only with the instance's memory. Bigger PDFs: the admin uploads a sample instead. |
 | `DIRECT_UPLOAD_CHUNK_MB` | Integer | `8` | Cloud Run Env Var (optional) | Size of each piece the browser sends. |
 | `DIRECT_UPLOAD_EXPIRY_HOURS` | Integer | `24` | Cloud Run Env Var (optional) | Time to finish an upload before the sweep removes it. |
-| `MAX_IMAGE_UPLOAD_SIZE_MB` | Integer | `8` | Cloud Run Env Var (optional) | Largest cover or session screenshot uploaded straight to storage. |
+| `MAX_IMAGE_UPLOAD_SIZE_MB` | Integer | `8` | Cloud Run Env Var (optional) | Largest cover, session screenshot or PYQ question image uploaded straight to storage. |
+| `QUESTION_IMAGE_LINK_TTL_SECONDS` | Integer | `21600` | Cloud Run Env Var (optional) | How long a student's signed link to a (private) PYQ question image lasts; reused until half is gone, so every link handed out has at least half left. 600–604800 (GCS's 7-day limit). Longer = fewer signing calls and better caching; shorter = a shared link dies sooner. |
+| `PYQ_RELEASE_IMAGE_RETENTION_HOURS` | Integer | `168` | Cloud Run Env Var (optional) | How long an image uploaded for a content-release push waits in the private bucket's `pyq/release-images/` before the sweep deletes it (1–720). Only needs to cover re-running an interrupted push without sending its images again; the push itself copies what it uses to the question ([../pyq/content-releases.md](../pyq/content-releases.md)). |
 | `MAX_AVATAR_UPLOAD_SIZE_MB` | Integer | `5` | Cloud Run Env Var (optional) | Largest profile picture. Separate from the row above because every signed-in account can upload one. |
 | `STOREFRONT_URL` | URL | `https://resources.jsmf.me` | Cloud Run Env Var | The **buyer-facing site**, where purchase receipts link. Not `APP_PUBLIC_URL`, which is this API's own base URL and ends in `/api` — using it produced receipt links to `…/api/library`, a page that does not exist. |
 | `WHATSAPP_GRAPH_API_VERSION` | String | `v23.0` | Cloud Run Env Var | Meta retires Graph API versions roughly two years after release. |

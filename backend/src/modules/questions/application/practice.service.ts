@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import { randomInt } from 'node:crypto';
 import { activity } from '../../../shared/logging/activity';
+import { QuestionImageLinks } from './question-image-links';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import {
   marksFor,
@@ -174,6 +175,7 @@ export class PracticeService {
     private readonly access: PyqAccessService,
     private readonly states: QuestionStateService,
     private readonly examSetup: ExamSetupService,
+    private readonly images: QuestionImageLinks,
   ) {}
 
   async start(userId: string, input: StartSessionInput) {
@@ -290,14 +292,17 @@ export class PracticeService {
     ]);
     const attemptByQuestion = new Map(attempts.map((attempt) => [attempt.questionId, attempt]));
     let lockedAnswers = 0;
-    const questions = entries.map(({ question }) => {
-      // In practice modes an answer is revealed per question, once answered.
-      const answered = Boolean(attemptByQuestion.get(question.id)?.answeredAt);
-      const show = reveal && (answered || fullReview);
-      if (submitted && !show) lockedAnswers += 1;
-      const view = show ? toAnsweredQuestionView(question) : toQuestionView(question);
-      return this.withOptionOrder(session, question, view);
-    });
+    const questions = await Promise.all(
+      entries.map(async ({ question }) => {
+        // In practice modes an answer is revealed per question, once answered.
+        const answered = Boolean(attemptByQuestion.get(question.id)?.answeredAt);
+        const show = reveal && (answered || fullReview);
+        if (submitted && !show) lockedAnswers += 1;
+        // Image links follow the view: the explanation image only with the answer.
+        const view = await this.images.apply(show ? toAnsweredQuestionView(question) : toQuestionView(question), question);
+        return this.withOptionOrder(session, question, view);
+      }),
+    );
 
     return {
       ...this.summary(session, attempts),
@@ -378,8 +383,11 @@ export class PracticeService {
       isCorrect: attempt.isCorrect,
       correctOptionId: answered.correctOptionId,
       explanation: answered.explanation,
-      explanationImageUrl: answered.explanationImageUrl,
+      explanationImageUrl: await this.images.linkFor(question, 'explanation'),
       explanationFigure: answered.explanationFigure,
+      pearls: answered.pearls,
+      quickRevision: answered.quickRevision,
+      optionExplanations: answered.optionExplanations,
     };
   }
 
