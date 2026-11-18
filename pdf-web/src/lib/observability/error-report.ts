@@ -162,8 +162,10 @@ function describe(error: unknown): Described | null {
 /**
  * Errors that are not JSMF's to fix: browser quirks, extensions injected into
  * the page, scripts an app's in-app browser injects (Instagram and Facebook
- * load theirs from iabjs://), cross-origin scripts that hide their details,
- * and the user's network dropping out.
+ * load theirs from iabjs://), the crypto wallet some browsers inject as
+ * `window.ethereum` (Brave on iPhone sets `window.ethereum.selectedAddress`
+ * on every page; JSMF never uses it), cross-origin scripts that hide their
+ * details, and the user's network dropping out.
  */
 function isNoise({ name, message, stack }: Described): boolean {
   if (name === "AbortError") return true;
@@ -173,6 +175,7 @@ function isNoise({ name, message, stack }: Described): boolean {
     return true;
   if (stack && /(chrome|moz|safari(-web)?|ms-browser)-extension:\/\//i.test(stack)) return true;
   if (stack && /\biabjs:\/\//i.test(stack)) return true;
+  if (/\bethereum\b/i.test(message)) return true;
   return false;
 }
 

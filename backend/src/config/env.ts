@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_DATABASE_CONNECT_TIMEOUT_SECONDS } from '../shared/prisma/database-url';
 
 /**
  * Values that are obviously stand-ins rather than credentials. Matched against
@@ -52,6 +53,18 @@ const schema = z
     APP_PUBLIC_URL: z.string().url().default('http://localhost:4000/api'),
 
     DATABASE_URL: z.string().url(),
+    /// Seconds Prisma waits to open one new database connection before the
+    /// query fails ("Can't reach database server"). Prisma's own default is 5;
+    /// Cloud Run's Cloud SQL connector once took just over that. Read directly
+    /// from process.env by PrismaService (it is built before config exists in
+    /// the specs); added to DATABASE_URL unless the URL sets connect_timeout
+    /// itself. See shared/prisma/database-url.ts before raising it past 10.
+    DATABASE_CONNECT_TIMEOUT_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(60)
+      .default(DEFAULT_DATABASE_CONNECT_TIMEOUT_SECONDS),
 
     // RS256, not HS256: access tokens are signed with a private key held only
     // by this service, and verified by anyone holding the public key. That is

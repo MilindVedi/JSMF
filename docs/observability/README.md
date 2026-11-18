@@ -93,7 +93,9 @@ copy stops matching the server.
 ### Noise the apps drop before sending
 
 Errors from browser extensions, scripts an app's in-app browser injects
-(Instagram/Facebook's `iabjs://`), `ResizeObserver loop`, cross-origin
+(Instagram/Facebook's `iabjs://`), the crypto wallet some browsers inject
+(anything mentioning `ethereum` — Brave on iPhone sets
+`window.ethereum.selectedAddress` on every page), `ResizeObserver loop`, cross-origin
 `Script error.`, `AbortError`, the user's network dropping ("Failed to
 fetch"), and the API answering 4xx (the screens handle those; 5xx are kept).
 Each page load sends at most 20 distinct errors; a repeat is counted, not
@@ -167,6 +169,14 @@ same email channel. That emails you the first time a *new* kind of error
 appears, which is the most useful single alert there is.
 
 Each alert's email carries a short runbook (its `documentation` field).
+
+### Past alerts
+
+| When (UTC) | Alert | What it was | Done |
+| :--- | :--- | :--- | :--- |
+| 2026-11-17 06:15 | server error (4 lines, one minute) | The 5-minute Cloud Scheduler jobs (`session-reminders`, `reconcile-payments`) failed with "Can't reach database server" (P1001). Cloud SQL was healthy and idle; it logged the connection arriving just after Prisma's 5-second connect timeout had given up (`failed to send SSL negotiation response: Broken pipe`). The first such error in 30 days; the 06:20 run was fine and nothing was lost (both jobs catch up on the next run). | Connect timeout raised to 10 s (`DATABASE_CONNECT_TIMEOUT_SECONDS`). If it comes back often, look at the Cloud SQL connector, not the code. |
+| 2026-11-17 08:17 | none (crash reports are excluded); a *new error* in Error Reporting | jsmf.me home page, Brave on iPhone: `window.ethereum.selectedAddress = undefined` — Brave's wallet script, injected into the page (the stack points at the page itself, line 1). Not JSMF code. | Anything mentioning `ethereum` is now dropped as noise by the crash reporter (all three copies). |
+| 2026-11-17 05:01 | none (crash report) | Store reader, Chrome on iPad: `getComputedStyle ... must be an instance of Element` — pdf.js's text-selection listener runs with no text layer registered. Harmless (only selection drawing); still in pdf.js 6.5. | Left reported: the only possible filter would also hide real `getComputedStyle` bugs of our own. |
 
 ### Queries worth saving
 

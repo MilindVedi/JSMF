@@ -16,6 +16,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `CORS_ORIGINS` | CSV String | `https://resources.jsmf.me,https://jsmf.me,https://www.jsmf.me,https://prep.jsmf.me` | Cloud Run Env Var | Allowed origins for browser credentials. **Also decides which origin a direct-to-storage upload session answers**, so a site missing here cannot upload a profile picture — see `docs/pdf-platform/05-storage.md`. |
 | `APP_PUBLIC_URL` | URL | `https://your-backend-app.run.app/api` | Cloud Run Env Var | API base URL for signed callbacks / public asset generation. |
 | `DATABASE_URL` | Connection URL | `postgresql://...` | GCP Secret: `DATABASE_URL` | Cloud SQL socket or external connection string. |
+| `DATABASE_CONNECT_TIMEOUT_SECONDS` | Number | *(leave unset — 10)* | Cloud Run Env Var | Seconds the API waits to open one database connection before the request fails with "Can't reach database server" (Prisma's own default is 5). Added to `DATABASE_URL` unless the URL already sets `connect_timeout`. Above 10 also needs `pool_timeout` raised in the URL — see `backend/src/shared/prisma/database-url.ts`. |
 | `JWT_PRIVATE_KEY_BASE64` | Base64 RSA Private Key | `LS0t...` | GCP Secret: `JWT_PRIVATE_KEY_BASE64` | Base64 string of RSA PEM private key. |
 | `JWT_PUBLIC_KEY_BASE64` | Base64 RSA Public Key | `LS0t...` | GCP Secret: `JWT_PUBLIC_KEY_BASE64` | Base64 string of RSA PEM public key. |
 | `JWT_KEY_ID` | String | `jsmf-identity-1` | Cloud Run Env Var | Key ID for rotation support. |
