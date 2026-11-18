@@ -67,7 +67,7 @@ services:
       # store, the admin panel, the main website and the PYQ app. It also
       # decides which origin a direct-to-storage upload session answers,
       # so an origin missing here cannot upload a profile picture.
-      CORS_ORIGINS: http://localhost:3001,http://localhost:3000,http://localhost:3002
+      CORS_ORIGINS: http://localhost:3001,http://localhost:3000,http://localhost:3002,http://localhost:3003
     volumes:
       # STORAGE_DRIVER=local writes uploaded PDFs and covers under /app/.storage.
       # Without a volume those live only in the container's writable layer, so

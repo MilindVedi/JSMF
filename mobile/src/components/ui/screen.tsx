@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
+import { useAccountProfile } from "@jsmf/core/hooks";
 import { useAuthStore } from "@/lib/auth-store";
 import { useColors, withAlpha } from "@/theme/theme";
 import { AnimatedPressable } from "@/components/motion/animated";
@@ -105,10 +106,11 @@ function BrandLockup() {
   );
 }
 
-/** The student's initial in a violet tile — opens Profile (the design keeps it out of the tab bar). */
+/** The student's picture, or initial in a violet tile — opens Profile (the design keeps it out of the tab bar). */
 function ProfileButton() {
   const router = useRouter();
   const name = useAuthStore((s) => s.user?.name) ?? "";
+  const avatarUrl = useAccountProfile().data?.avatarUrl ?? null;
   const initial = name.trim().charAt(0).toUpperCase() || "?";
   const press = usePressScale(0.92);
   return (
@@ -146,6 +148,15 @@ function ProfileButton() {
       >
         {initial}
       </Txt>
+      {avatarUrl ? (
+        <Image
+          source={{ uri: avatarUrl }}
+          contentFit="cover"
+          transition={150}
+          accessibilityIgnoresInvertColors
+          style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, borderRadius: 14 }}
+        />
+      ) : null}
     </AnimatedPressable>
   );
 }

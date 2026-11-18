@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { usePreferences, useTaxonomyLookup } from "@/hooks/pyq";
 import { useAuthStore } from "@/store/auth-store";
+import { useAvatarUrl } from "@/lib/use-avatar-url";
 import { QuestionCard } from "../question-card";
 import { BookmarkButton } from "../bookmark-button";
 import { ReportQuestionModal } from "../report-question-modal";
@@ -140,6 +141,7 @@ export function ExamQuestionScreen({
 }) {
   const { session } = detail;
   const profile = useAuthStore((s) => s.profile);
+  const avatarUrl = useAvatarUrl();
   const title = useExamTitle(session);
 
   const visited = useVisitedQuestions(session.id, question.id);
@@ -170,7 +172,7 @@ export function ExamQuestionScreen({
         timerKey={timerKey}
         timerLabel={timerLabel}
         studentName={profile.name}
-        avatarUrl={profile.avatarUrl}
+        avatarUrl={avatarUrl}
         exitHref={session.sourceHref ?? "/dashboard"}
         instructionsSlot={<ExamInstructionsDialog session={session} />}
       />

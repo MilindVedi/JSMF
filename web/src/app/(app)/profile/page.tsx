@@ -18,15 +18,21 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
-import { pyqKeys, usePreferences, useTaxonomy, useTaxonomyLookup, useUpdatePreferences } from "@/hooks/pyq";
+import {
+  useAccountProfile,
+  usePreferences,
+  useSetMobile,
+  useTaxonomy,
+  useTaxonomyLookup,
+  useUpdatePreferences,
+} from "@/hooks/pyq";
 import { useStreakState } from "@/lib/use-streak-state";
 import { QueryError } from "@/components/pyq/query-states";
 import { usePlanLabel } from "@/lib/use-plan-label";
 import { DATA_SOURCE_KIND } from "@/lib/data-source";
 import { mainWebsiteUrl, supportEmail } from "@/lib/site-content";
-import { authApi } from "@jsmf/core/api";
-import { useQuery } from "@tanstack/react-query";
-import type { ExamId, UserProfile } from "@jsmf/core/domain";
+import { formatContactNumber, toContactE164, type ExamId, type UserProfile } from "@jsmf/core/domain";
+import { AccountAvatar } from "@/components/profile/account-avatar";
 
 const IS_API = DATA_SOURCE_KIND === "api";
 
@@ -39,6 +45,8 @@ const MAX_GOAL = 500;
 // persisted profile, since there's no real upload endpoint) from bloating
 // localStorage.
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+
+const MOBILE_INVALID = "Enter a valid mobile number: 10 digits, or + and the country code.";
 
 function initials(name: string) {
   return name
@@ -60,14 +68,9 @@ export default function ProfilePage() {
   const { examName } = useTaxonomyLookup();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const planLabel = usePlanLabel();
-  // Fetched only here, and once: the join date never changes.
-  const memberSince = useQuery({
-    queryKey: pyqKeys.memberSince,
-    queryFn: () => authApi.memberSince(),
-    enabled: IS_API,
-    staleTime: Infinity,
-  });
-  const joinedAt = IS_API ? memberSince.data : profile.joinedAt;
+  // The account's own profile: picture, contact number, join date.
+  const account = useAccountProfile({ enabled: IS_API });
+  const joinedAt = IS_API ? account.data?.memberSince : profile.joinedAt;
 
   if (preferences.error) {
     return (
@@ -75,7 +78,9 @@ export default function ProfilePage() {
     );
   }
 
-  if (!hydrated || !preferences.data) {
+  // Waits for the account too, so the mobile number field opens filled in. If
+  // it can't load, the page still works; the field is just left out.
+  if (!hydrated || !preferences.data || (IS_API && account.isPending)) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -117,14 +122,15 @@ export default function ProfilePage() {
 
       <Card>
         <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="group/avatar-upload relative shrink-0">
+          {IS_API ? (
+            <AccountAvatar name={profile.name} />
+          ) : (
+          <div className="group/avatar-upload relative w-fit shrink-0 self-start sm:self-auto">
             <Avatar size="lg">
-              {!IS_API && profile.avatarUrl && <AvatarImage src={profile.avatarUrl} alt={profile.name} />}
+              {profile.avatarUrl && <AvatarImage src={profile.avatarUrl} alt={profile.name} />}
               <AvatarFallback>{initials(profile.name)}</AvatarFallback>
             </Avatar>
-            {/* Photo upload is a mock-only demo: there is no upload endpoint
-                yet, and a data URL in the browser would not follow the account. */}
-            {!IS_API && (
+            {/* The mock demo's picture lives only in this browser, as a data URL. */}
             <>
             <button
               type="button"
@@ -157,8 +163,8 @@ export default function ProfilePage() {
               onChange={handlePhotoChange}
             />
             </>
-            )}
           </div>
+          )}
           <div className="flex-1 space-y-1">
             <p className="font-heading text-lg font-semibold text-foreground">{profile.name}</p>
             <p className="text-sm text-muted-foreground">{profile.email}</p>
@@ -194,7 +200,13 @@ export default function ProfilePage() {
 
       {/* Keyed by profile.id so the form's local state re-initializes if the
           underlying profile identity ever changes. */}
-      <ProfileForm key={`${profile.id}:${targetExamId}:${dailyTarget}`} profile={profile} targetExamId={targetExamId} dailyTarget={dailyTarget} />
+      <ProfileForm
+        key={`${profile.id}:${targetExamId}:${dailyTarget}:${account.data?.mobileE164 ?? ""}`}
+        profile={profile}
+        targetExamId={targetExamId}
+        dailyTarget={dailyTarget}
+        savedMobile={IS_API && account.data ? account.data.mobileE164 : undefined}
+      />
 
       <HelpAndLegal />
 
@@ -289,14 +301,18 @@ function ProfileForm({
   profile,
   targetExamId: savedExamId,
   dailyTarget: savedGoal,
+  savedMobile,
 }: {
   profile: UserProfile;
   targetExamId: ExamId;
   dailyTarget: number;
+  /** The account's contact number (E.164) or null; undefined hides the field (mock mode, or it didn't load). */
+  savedMobile?: string | null;
 }) {
   const updateProfile = useAuthStore((s) => s.updateProfile);
   const rename = useAuthStore((s) => s.rename);
   const updatePreferences = useUpdatePreferences();
+  const setMobileNumber = useSetMobile();
   const [saving, setSaving] = useState(false);
   const { taxonomy } = useTaxonomyLookup();
   const taxonomyLoaded = useTaxonomy().isSuccess;
@@ -306,15 +322,29 @@ function ProfileForm({
   const [targetExamId, setTargetExamId] = useState<ExamId>(savedExamId);
   const [goal, setGoal] = useState(savedGoal);
   const clampGoal = (n: number) => Math.min(Math.max(Math.round(n), MIN_GOAL), MAX_GOAL);
+  const [mobile, setMobile] = useState(savedMobile ? formatContactNumber(savedMobile) : "");
+  const [mobileError, setMobileError] = useState<string | null>(null);
+  // "" means remove; null means it can't be a number.
+  const mobileE164 = toContactE164(mobile);
+  const mobileChanged = savedMobile !== undefined && mobileE164 !== (savedMobile ?? "");
 
   const isDirty =
-    name.trim() !== profile.name || email.trim() !== profile.email || targetExamId !== savedExamId || goal !== savedGoal;
+    name.trim() !== profile.name ||
+    email.trim() !== profile.email ||
+    targetExamId !== savedExamId ||
+    goal !== savedGoal ||
+    mobileChanged;
 
   async function handleSave() {
+    if (mobileChanged && mobileE164 === null) {
+      setMobileError(MOBILE_INVALID);
+      return;
+    }
     setSaving(true);
     try {
       // Only what changed is sent — an unchanged field costs no request.
       if (name.trim() !== profile.name) await rename(name.trim());
+      if (mobileChanged) await setMobileNumber.mutateAsync(mobileE164 || null);
       if (!IS_API && email.trim() !== profile.email) updateProfile({ email: email.trim() });
       // One request for the preferences that changed (exam and/or daily goal).
       const patch: { targetExamId?: ExamId; dailyTarget?: number } = {};
@@ -335,7 +365,7 @@ function ProfileForm({
       <CardHeader>
         <CardTitle>Edit profile</CardTitle>
         <CardDescription>
-          {IS_API ? "Update your name, target exam and daily goal." : "Update your name, email, target exam and daily goal."}
+          {IS_API ? "Update your name, mobile number, target exam and daily goal." : "Update your name, email, target exam and daily goal."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -356,6 +386,29 @@ function ProfileForm({
             disabled={IS_API}
           />
         </div>
+        {savedMobile !== undefined && (
+          <div className="space-y-1.5">
+            <Label htmlFor="profile-mobile">Mobile number</Label>
+            <Input
+              id="profile-mobile"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="10-digit mobile number"
+              value={mobile}
+              onChange={(e) => {
+                setMobile(e.target.value);
+                setMobileError(null);
+              }}
+              onBlur={() => setMobileError(toContactE164(mobile) === null ? MOBILE_INVALID : null)}
+              aria-invalid={mobileError !== null}
+              aria-describedby="profile-mobile-hint"
+            />
+            <p id="profile-mobile-hint" className={cn("text-xs", mobileError ? "text-error" : "text-muted-foreground")}>
+              {mobileError ?? "Optional. A 10-digit Indian number, or + and the country code for another country."}
+            </p>
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label>Target exam</Label>
           {/* The list holds only exams with published questions, so a new bank has none yet. */}

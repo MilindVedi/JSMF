@@ -76,6 +76,20 @@ export class ProfileService {
     return toAuthenticatedUser(user);
   }
 
+  /**
+   * Just the contact number (unverified, never the sign-in `phone`), for apps
+   * that edit it without the signup questions — so it does not mark the
+   * profile completed. `null` removes it. Returns the whole profile, so the
+   * caller shows the number exactly as stored.
+   */
+  async setMobile(userId: string, mobileNumber: string | null): Promise<Profile> {
+    // Already validated by the DTO; normalised here to E.164 digits.
+    const contactPhone = mobileNumber === null ? null : normaliseContactPhone(mobileNumber);
+    await this.prisma.user.update({ where: { id: userId }, data: { contactPhone } });
+    activity(this.logger, contactPhone ? 'auth.mobile_updated' : 'auth.mobile_removed', { userId });
+    return this.get(userId);
+  }
+
   async update(
     userId: string,
     input: { name: string; mobileNumber: string; preparingFor: string; currentStage: string },

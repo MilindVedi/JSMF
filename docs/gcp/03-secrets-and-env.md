@@ -13,7 +13,7 @@ This document provides a reference for all environment variables, flags, and sec
 | `LOG_DEBUG` | Boolean | `false` | Cloud Run Env Var | Include debug/verbose lines. Leave off in production; flip on temporarily when chasing a specific problem. |
 | `GOOGLE_CLOUD_PROJECT` | String | *(leave unset)* | — | Only used to write each log line's Cloud Trace. On Cloud Run it is read from the metadata server at boot; set it only to override. See `docs/observability/README.md`. |
 | `PORT` | Number | `4000` | Cloud Run Env Var | Cloud Run container listening port. |
-| `CORS_ORIGINS` | CSV String | `https://resources.jsmf.me,https://jsmf.me,https://www.jsmf.me` | Cloud Run Env Var | Allowed origins for browser credentials. **Also decides which origin a direct-to-storage upload session answers**, so a site missing here cannot upload a profile picture — see `docs/pdf-platform/05-storage.md`. |
+| `CORS_ORIGINS` | CSV String | `https://resources.jsmf.me,https://jsmf.me,https://www.jsmf.me,https://prep.jsmf.me` | Cloud Run Env Var | Allowed origins for browser credentials. **Also decides which origin a direct-to-storage upload session answers**, so a site missing here cannot upload a profile picture — see `docs/pdf-platform/05-storage.md`. |
 | `APP_PUBLIC_URL` | URL | `https://your-backend-app.run.app/api` | Cloud Run Env Var | API base URL for signed callbacks / public asset generation. |
 | `DATABASE_URL` | Connection URL | `postgresql://...` | GCP Secret: `DATABASE_URL` | Cloud SQL socket or external connection string. |
 | `JWT_PRIVATE_KEY_BASE64` | Base64 RSA Private Key | `LS0t...` | GCP Secret: `JWT_PRIVATE_KEY_BASE64` | Base64 string of RSA PEM private key. |

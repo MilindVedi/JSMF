@@ -1,33 +1,39 @@
 import { useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { Image } from "expo-image";
 import {
+  Camera,
   ChevronRight,
   CreditCard,
   FileText,
   Globe,
+  ImageIcon,
   Laptop,
   LogOut,
   Mail,
   Minus,
   Plus,
+  Trash2,
   Trophy,
   UserX,
 } from "lucide-react-native";
-import { authApi } from "@jsmf/core/api";
 import type { PyqPreferences } from "@jsmf/core/data-source";
-import { initialsOf } from "@jsmf/core/domain";
+import { formatContactNumber, initialsOf, toContactE164 } from "@jsmf/core/domain";
 import {
-  pyqKeys,
   useAccess,
+  useAccountProfile,
   usePreferences,
+  useRemoveAvatar,
+  useSetMobile,
   useTaxonomy,
   useTaxonomyLookup,
   useUpdatePreferences,
+  useUploadAvatar,
 } from "@jsmf/core/hooks";
 import { useAuthStore } from "@/lib/auth-store";
+import { canPickAvatar, pickAvatarJpeg } from "@/lib/avatar-picker";
 import { MAIN_WEBSITE_URL, PYQS_WEBSITE_URL, SUPPORT_EMAIL } from "@/lib/env";
 import { useStreakState } from "@/lib/streak";
 import { toast } from "@/lib/toast";
@@ -47,12 +53,15 @@ import {
   Loading,
   QueryError,
 } from "@/components/ui/primitives";
-import { Dialog } from "@/components/ui/sheet";
+import { BottomSheet, Dialog } from "@/components/ui/sheet";
 import { StackScreen } from "@/components/ui/screen";
 import { cn, Heading, Txt } from "@/components/ui/text";
 import { StreakFlame } from "@/components/streak/flame";
 
 const GOAL_PRESETS = [5, 10, 20, 30, 50];
+const MOBILE_INVALID = "Enter a valid mobile number: 10 digits, or + and the country code.";
+/** Long enough for the sheet to finish closing: iOS can't open the photo picker over a closing sheet. */
+const SHEET_CLOSE_MS = 350;
 
 /**
  * Profile (web's /profile): name (renamed on the shared account), email
@@ -71,11 +80,11 @@ export default function ProfileScreen() {
   const { taxonomy, examName } = useTaxonomyLookup();
   const taxonomyLoaded = useTaxonomy().isSuccess;
   const colors = useColors();
-  const memberSince = useQuery({
-    queryKey: pyqKeys.memberSince,
-    queryFn: () => authApi.memberSince(),
-    staleTime: Infinity,
-  });
+  // The account's own profile: picture, contact number, join date.
+  const account = useAccountProfile();
+  const setMobileNumber = useSetMobile();
+  const uploadAvatar = useUploadAvatar();
+  const removeAvatar = useRemoveAvatar();
 
   const [name, setName] = useState(user?.name ?? "");
   // A rename elsewhere (or the account loading) refills the field — during render, not in an effect.
@@ -86,8 +95,16 @@ export default function ProfileScreen() {
   }
   const [examId, setExamId] = useState<string | null>(null);
   const [goal, setGoal] = useState<number | null>(null);
+  // null = untouched, so the saved number shows once the profile loads.
+  const [mobile, setMobile] = useState<string | null>(null);
+  const [mobileError, setMobileError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [photoSheet, setPhotoSheet] = useState(false);
+  // The prepared photo, shown from the moment it is chosen so it never
+  // flickers back to the initials while its stored copy loads.
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoProgress, setPhotoProgress] = useState<number | null>(null);
 
   if (preferences.error) {
     return (
@@ -112,20 +129,33 @@ export default function ProfileScreen() {
   const savedGoal = preferences.data.dailyTarget;
   const chosenExam = examId ?? savedExam;
   const chosenGoal = goal ?? savedGoal;
+  const savedMobile = account.data?.mobileE164 ?? null;
+  const chosenMobile = mobile ?? (savedMobile ? formatContactNumber(savedMobile) : "");
+  // "" means remove; null means it can't be a number.
+  const mobileE164 = toContactE164(chosenMobile);
+  const mobileChanged = Boolean(account.data) && mobileE164 !== (savedMobile ?? "");
   const dirty =
     name.trim() !== user.name ||
     chosenExam !== savedExam ||
-    chosenGoal !== savedGoal;
+    chosenGoal !== savedGoal ||
+    mobileChanged;
+  const avatarUrl = photoPreview ?? account.data?.avatarUrl ?? null;
+  const photoBusy = uploadAvatar.isPending || removeAvatar.isPending;
   const plan = access.data?.plan ?? null;
   const planLabel = access.data
     ? (plan?.title ?? (access.data.trial ? "Free trial" : "Free"))
     : null;
 
   async function save() {
+    if (mobileChanged && mobileE164 === null) {
+      setMobileError(MOBILE_INVALID);
+      return;
+    }
     setSaving(true);
     try {
       // Only what changed is sent.
       if (name.trim() !== user!.name) await rename(name.trim());
+      if (mobileChanged) await setMobileNumber.mutateAsync(mobileE164 || null);
       const patch: { targetExamId?: string; dailyTarget?: number } = {};
       if (chosenExam !== savedExam) patch.targetExamId = chosenExam;
       if (chosenGoal !== savedGoal) patch.dailyTarget = chosenGoal;
@@ -133,6 +163,7 @@ export default function ProfileScreen() {
         await updatePreferences.mutateAsync(patch as Partial<PyqPreferences>);
       setExamId(null);
       setGoal(null);
+      setMobile(null);
       toast.success("Profile updated");
     } catch (error) {
       toast.error(
@@ -142,6 +173,53 @@ export default function ProfileScreen() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * Picks, prepares (square, small, re-saved without its hidden location
+   * data) and uploads a photo. The bytes go straight to storage, never
+   * through our server, which checks what arrived before using it.
+   */
+  async function changePhoto() {
+    setPhotoSheet(false);
+    await new Promise((resolve) => setTimeout(resolve, SHEET_CLOSE_MS));
+    let picked: Awaited<ReturnType<typeof pickAvatarJpeg>>;
+    try {
+      picked = await pickAvatarJpeg();
+    } catch {
+      toast.error("That photo couldn't be opened.");
+      return;
+    }
+    if (!picked) return;
+    setPhotoPreview(picked.uri);
+    setPhotoProgress(0);
+    try {
+      await uploadAvatar.mutateAsync({
+        jpeg: picked.jpeg,
+        onProgress: (sent, total) => setPhotoProgress(Math.round((sent / total) * 100)),
+      });
+      toast.success("Profile picture updated");
+    } catch (error) {
+      setPhotoPreview(null);
+      toast.error(
+        error instanceof Error && error.message ? error.message : "That picture could not be uploaded.",
+      );
+    } finally {
+      setPhotoProgress(null);
+    }
+  }
+
+  async function removePhoto() {
+    setPhotoSheet(false);
+    try {
+      await removeAvatar.mutateAsync();
+      setPhotoPreview(null);
+      toast.success("Profile picture removed");
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message ? error.message : "That picture could not be removed.",
+      );
     }
   }
 
@@ -165,7 +243,11 @@ export default function ProfileScreen() {
     <StackScreen title="Profile" subtitle="Your account and exam preference.">
       <Card className="gap-4">
         <View className="flex-row items-center gap-3.5">
-          <View
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={avatarUrl ? "Change or remove profile picture" : "Add a profile picture"}
+            disabled={photoBusy}
+            onPress={() => setPhotoSheet(true)}
             className="size-14 items-center justify-center"
             style={{
               borderRadius: 18,
@@ -192,7 +274,30 @@ export default function ProfileScreen() {
             >
               {initialsOf(user.name)}
             </Txt>
-          </View>
+            {avatarUrl ? (
+              <Image
+                source={{ uri: avatarUrl }}
+                contentFit="cover"
+                transition={150}
+                accessibilityIgnoresInvertColors
+                style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, borderRadius: 18 }}
+              />
+            ) : null}
+            {photoBusy ? (
+              <View
+                className="absolute inset-0 items-center justify-center bg-background/70"
+                style={{ borderRadius: 18 }}
+              >
+                <Txt weight={700} className="text-[11px]">
+                  {photoProgress ? `${photoProgress}%` : "…"}
+                </Txt>
+              </View>
+            ) : null}
+            {/* Says the picture can be changed, as web's camera badge does. */}
+            <View className="absolute -bottom-1 -right-1 size-[22px] items-center justify-center rounded-full border-2 border-card bg-primary">
+              <Camera size={11} color={colors["primary-foreground"]} strokeWidth={2.5} />
+            </View>
+          </Pressable>
           <View className="flex-1">
             <Heading className="text-lg" numberOfLines={1}>
               {user.name}
@@ -207,9 +312,9 @@ export default function ProfileScreen() {
         </View>
         <View className="flex-row flex-wrap items-center gap-2">
           {planLabel ? <Badge label={planLabel} /> : null}
-          {memberSince.data ? (
+          {account.data ? (
             <Txt className="text-xs text-muted-foreground">
-              Member since {format(new Date(memberSince.data), "MMMM yyyy")}
+              Member since {format(new Date(account.data.memberSince), "MMMM yyyy")}
             </Txt>
           ) : null}
         </View>
@@ -244,7 +349,7 @@ export default function ProfileScreen() {
         <View>
           <Heading className="text-base">Edit profile</Heading>
           <Txt className="text-sm text-muted-foreground">
-            Update your name, target exam and daily goal.
+            Update your name, mobile number, target exam and daily goal.
           </Txt>
         </View>
         <Field
@@ -260,6 +365,23 @@ export default function ProfileScreen() {
           editable={false}
           hint="Your sign-in email can't be changed here."
         />
+        {account.data ? (
+          <Field
+            label="Mobile number"
+            value={chosenMobile}
+            onChangeText={(text) => {
+              setMobile(text);
+              setMobileError(null);
+            }}
+            onBlur={() => setMobileError(toContactE164(chosenMobile) === null ? MOBILE_INVALID : null)}
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            textContentType="telephoneNumber"
+            placeholder="10-digit mobile number"
+            error={mobileError ?? undefined}
+            hint="Optional. A 10-digit Indian number, or + and the country code for another country."
+          />
+        ) : null}
         <View className="gap-2">
           <Txt weight={700} className="text-[13px]">
             Target exam
@@ -389,6 +511,21 @@ export default function ProfileScreen() {
         onPress={() => setDeleteOpen(true)}
       />
 
+      <BottomSheet open={photoSheet} onClose={() => setPhotoSheet(false)} title="Profile picture">
+        <View className="gap-1 pb-2">
+          {canPickAvatar ? (
+            <SheetAction icon={ImageIcon} label="Choose from gallery" onPress={() => void changePhoto()} />
+          ) : (
+            <Txt className="py-2 text-sm text-muted-foreground">
+              Adding a picture needs the latest version of the app.
+            </Txt>
+          )}
+          {avatarUrl ? (
+            <SheetAction icon={Trash2} label="Remove picture" destructive onPress={() => void removePhoto()} />
+          ) : null}
+        </View>
+      </BottomSheet>
+
       <Dialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
@@ -467,6 +604,34 @@ function StepIcon({
       className="size-11 items-center justify-center rounded-xl bg-muted active:opacity-70"
     >
       <Icon size={18} color={colors.foreground} />
+    </Pressable>
+  );
+}
+
+/** One action in a bottom sheet: its icon and label, red when it removes something. */
+function SheetAction({
+  icon: Icon,
+  label,
+  destructive = false,
+  onPress,
+}: {
+  icon: IconComponent;
+  label: string;
+  destructive?: boolean;
+  onPress: () => void;
+}) {
+  const colors = useColors();
+  const tint = destructive ? colors.destructive : colors.foreground;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      className="min-h-12 flex-row items-center gap-3 rounded-xl px-2 active:bg-muted"
+    >
+      <Icon size={18} color={tint} />
+      <Txt weight={600} className={destructive ? "text-[15px] text-destructive" : "text-[15px]"}>
+        {label}
+      </Txt>
     </Pressable>
   );
 }

@@ -3,6 +3,7 @@
 import type { SessionDetail } from "@jsmf/core/data-source";
 import { useBeginSession } from "@/hooks/pyq";
 import { useAuthStore } from "@/store/auth-store";
+import { useAvatarUrl } from "@/lib/use-avatar-url";
 import { ExamHeader } from "./exam-header";
 import { ExamInstructionsScreen } from "./exam-instructions";
 import { useExamTitle } from "./exam-question-screen";
@@ -16,6 +17,7 @@ import { useExamTitle } from "./exam-question-screen";
 export function ExamBeginGate({ detail }: { detail: SessionDetail }) {
   const { session } = detail;
   const profile = useAuthStore((s) => s.profile);
+  const avatarUrl = useAvatarUrl();
   const title = useExamTitle(session);
   const begin = useBeginSession(session.id);
 
@@ -29,7 +31,7 @@ export function ExamBeginGate({ detail }: { detail: SessionDetail }) {
           title={title}
           timed={false}
           studentName={profile.name}
-          avatarUrl={profile.avatarUrl}
+          avatarUrl={avatarUrl}
           exitHref={session.sourceHref ?? "/dashboard"}
         />
       }

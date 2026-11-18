@@ -21,7 +21,7 @@ Every `(app)` route is behind the app shell; `practice/*` has its own full-scree
 | `/history` | Finished sessions with score, 50 at a time ("Load older sessions"); filters by type, period, collection; sorts by exam year or last wrong answer | `useInfiniteSessionHistory`, `useStats`, `useCollections` | `GET pyq/sessions?status=SUBMITTED`, `pyq/stats` | Yes |
 | `/statistics` | Overall accuracy and coverage, per-subject table, accuracy over time | `useStats`, `useTaxonomyLookup`, `useCollections` | `GET pyq/stats` | Yes |
 | `/subscription` | Plans and checkout. In api mode renders `ApiSubscription`; in mock mode a non-functional plan switcher | `usePlans` (core), `usePlanCheckout` ([`plans.ts`](../../web/src/hooks/pyq/plans.ts)) | `GET pyq/plans`, `POST orders`, `POST payments/verify` | Yes |
-| `/profile` | Name (saved to the account), email (read-only), real plan and member-since; target exam (exams with published questions; an empty bank says so) and daily goal (presets 5–50, or 1–500 typed / stepped — the app's rules); Terms, Privacy, Refund, Contact support and Visit JSMF website; Request account deletion (confirm, then an email to support with the account email and id, as the app) | `usePreferences`, `useUpdatePreferences`, `usePlanLabel`, `useAuthStore.rename` | `GET/PUT pyq/preferences`, `PATCH auth/me/name`, `GET auth/me/profile` | Yes (photo upload hidden: no endpoint) |
+| `/profile` | Profile picture (change / remove; see "Profile picture" below), name (saved to the account), email (read-only), mobile number (optional contact number), real plan and member-since; target exam (exams with published questions; an empty bank says so) and daily goal (presets 5–50, or 1–500 typed / stepped — the app's rules); Terms, Privacy, Refund, Contact support and Visit JSMF website; Request account deletion (confirm, then an email to support with the account email and id, as the app) | `usePreferences`, `useUpdatePreferences`, `usePlanLabel`, `useAuthStore.rename`, `useAccountProfile`, `useSetMobile`, `useUploadAvatar`, `useRemoveAvatar` | `GET/PUT pyq/preferences`, `PATCH auth/me/name`, `GET auth/me/profile`, `PATCH auth/me/mobile`, `POST uploads` + `POST uploads/:id/complete` (`user.avatar`), `DELETE auth/me/avatar` | Yes |
 | `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/auth/callback` | The shared JSMF account, including Google sign-in | `useAuthStore` | identity module | Yes |
 | `/`, `/about`, `/contact`, `/pricing`, `/privacy`, `/terms`, `/roadmap` | Marketing and static pages | — | `GET pyq/plans`, fetched on the server ([`marketing-plans.ts`](../../web/src/lib/server/marketing-plans.ts)) | Yes — `/pricing` and the home page's plan cards show real plans, cached 5 min, with no request from the browser |
 
@@ -240,3 +240,46 @@ The PYQs website and the mobile app offer the same student features; only the lo
 - **Score colours, both apps:** every score — subject bars, focus areas, results' subject bars, the history / recent-activity pills, the statistics chart — is coloured by core's `scoreBand`: red under 40% (Needs improvement), amber 40–69% (Developing), green 70–84% (Good), deep teal 85–100% (Excellent), with a legend under the subject bars. The same hex values live in web's `globals.css` (`--band-*`) and the app's `palette.json`; web's shared pieces are `components/common/score.tsx`. Plain progress (coverage, today's goal) stays violet.
 - **Deliberately different:** buying a plan is web-only (Play / App Store rules on digital goods); keyboard shortcuts are web-only (no keyboard on a phone).
 
+## Profile picture and mobile number
+
+Both are the **account's** (identity is platform-wide): the same picture and
+number show on jsmf.me and the store.
+
+**Profile picture — how it is kept safe.**
+
+1. **Prepared on the device first.** The website draws the chosen picture on a
+   canvas (`web/src/lib/avatar-image.ts`); the app crops it in the system
+   picker and re-saves it with `expo-image-manipulator`
+   (`mobile/src/lib/avatar-picker.ts`). Either way the result is the centre
+   square, at most 512 px (`AVATAR_SIZE_PX`), JPEG — so the hidden metadata a
+   phone photo carries (EXIF: GPS location, device, time taken) never leaves
+   the device, and a several-MB photo becomes ~50–100 KB. HEIC and other
+   formats the device can open are fine: only JPEG is sent.
+2. **Straight to storage, never through the API** (`uploadWhole` in
+   `packages/core/src/api/uploads.ts`). `POST uploads` with purpose
+   `user.avatar` opens a storage session locked to that exact size and type,
+   under a fresh random object name, for the signed-in account only (the user
+   id comes from the token, never the request). The bytes go there in one
+   request; the session answers CORS only for a site in `CORS_ORIGINS`.
+3. **Checked before it is used.** It lands in the private bucket's staging
+   area. `complete` reads its first bytes (a text file renamed `.jpg` is
+   refused), checks the size (`MAX_AVATAR_UPLOAD_SIZE_MB`, 5) and only then
+   copies it to the public bucket and records it. PNG, JPEG and WebP only —
+   never SVG, which can carry script.
+4. **Served by exact link only.** The public bucket cannot be listed; a
+   picture opens only by its unguessable link. Replacing or removing a picture
+   deletes the old file. Google caches public files for up to an hour
+   (`public, max-age=3600`), so a removed picture's old link can keep
+   answering for that hour — see the scaling TODOs.
+
+**Mobile number** is the account's *contact* number (`PATCH auth/me/mobile`),
+unverified: how JSMF may reach the student, never a way to sign in (that is
+the verified `phone`, proven by an SMS code, off while SMS is off). Typed as
+10 Indian digits (spaces, a leading 0 or +91 are fine) or `+` and a country
+code; the API checks it is a real number for that country. Clearing the field
+and saving removes it.
+
+**The app needs a new build for the picture.** The photo picker and resizer
+are native modules (`expo-image-picker`, `expo-image-manipulator`). On a build
+made before them, Profile still works and offers "Remove picture", but says
+adding one needs the latest version instead of crashing (`canPickAvatar`).

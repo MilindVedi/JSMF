@@ -3,7 +3,8 @@
     "origin": [
       "https://resources.jsmf.me",
       "https://jsmf.me",
-      "https://www.jsmf.me"
+      "https://www.jsmf.me",
+      "https://prep.jsmf.me"
     ],
     "method": [
       "PUT",

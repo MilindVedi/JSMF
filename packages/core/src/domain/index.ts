@@ -11,3 +11,4 @@ export * from "./exam-pattern";
 export * from "./exam-paper";
 export * from "./explanation";
 export * from "./filter-options";
+export * from "./contact-number";

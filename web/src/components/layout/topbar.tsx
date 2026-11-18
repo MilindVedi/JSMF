@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAvatarUrl } from "@/lib/use-avatar-url";
 import { Logo } from "@/components/common/logo";
 import { SidebarNav } from "./sidebar-nav";
 import { TopbarStreakChip } from "./topbar-streak-chip";
@@ -34,6 +35,7 @@ function initials(name: string) {
 export function Topbar() {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
+  const avatarUrl = useAvatarUrl();
   const { currentStreak } = useStreakState();
   const logout = useAuthStore((s) => s.logout);
   const planLabel = usePlanLabel();
@@ -93,7 +95,7 @@ export function Topbar() {
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             <Avatar className="size-8">
-              {profile.avatarUrl && <AvatarImage src={profile.avatarUrl} alt={profile.name} />}
+              {avatarUrl && <AvatarImage src={avatarUrl} alt={profile.name} />}
               <AvatarFallback className="text-xs font-semibold">
                 {initials(profile.name)}
               </AvatarFallback>

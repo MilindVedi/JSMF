@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { ProfileService, type Profile } from '../application/profile.service';
 import { UserAvatarUploads } from '../application/user-avatar-uploads';
-import { UpdateNameDto, UpdateProfileDto } from './dto/profile.dto';
+import { UpdateMobileDto, UpdateNameDto, UpdateProfileDto } from './dto/profile.dto';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
@@ -299,6 +299,22 @@ export class AuthController {
   @ApiOperation({ summary: 'Remove your profile picture' })
   async removeAvatar(@CurrentUser() user: AuthenticatedUser): Promise<void> {
     await this.avatars.remove(user.id);
+  }
+
+  /**
+   * The contact number on its own, without the signup questions `me/profile`
+   * requires. Unverified by design: it is how we may reach you, never a way
+   * to sign in (that is `me/phone/*`, which proves the number with a code).
+   */
+  @Patch('me/mobile')
+  @ApiBearerAuth()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Set or remove your contact mobile number' })
+  updateMobile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateMobileDto,
+  ): Promise<Profile> {
+    return this.profiles.setMobile(user.id, dto.mobileNumber);
   }
 
   @Patch('me/name')

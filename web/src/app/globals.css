@@ -289,7 +289,9 @@
   }
   /* Tailwind v4's preflight no longer gives buttons a pointer cursor, so
      without this every <button> in the app — question rows, options, tabs —
-     shows a default arrow and reads as unclickable. */
+     shows a default arrow and reads as unclickable. Menu and select items
+     aren't buttons and their own utility classes would win over this base
+     rule, so they carry `cursor-pointer` in components/ui themselves. */
   button:not(:disabled),
   [role="button"]:not(:disabled),
   label:has([role="checkbox"], input[type="checkbox"], input[type="radio"]),

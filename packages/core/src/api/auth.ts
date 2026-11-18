@@ -27,6 +27,17 @@ export interface CodeIssued {
   expiresInMinutes: number;
 }
 
+/** The account's profile (GET auth/me/profile) — what this app reads of it. */
+export interface AccountProfile {
+  name: string;
+  /** The contact number with its country code, `+919876543210`, or null. Unverified. */
+  mobileE164: string | null;
+  /** When the account was created, ISO. */
+  memberSince: string;
+  /** A link to the profile picture, or null when none is set. */
+  avatarUrl: string | null;
+}
+
 export interface AuthMethods {
   passwordSignup: boolean;
   google: boolean;
@@ -45,8 +56,17 @@ export const authApi = {
   /** The account's display name; the same field jsmf.me and the store show. */
   rename: (name: string) => api.patch<AuthUser>("/auth/me/name", { name }),
 
-  /** Only what this app reads from the profile; the endpoint returns more. */
-  memberSince: async () => (await api.get<{ memberSince: string }>("/auth/me/profile")).memberSince,
+  /** The account's profile; the same one jsmf.me and the store show. */
+  profile: () => api.get<AccountProfile>("/auth/me/profile"),
+
+  /**
+   * The contact number (E.164, or a bare 10-digit Indian mobile); null removes
+   * it. Unverified — how we may reach you, never a way to sign in.
+   */
+  setMobile: (mobileNumber: string | null) => api.patch<AccountProfile>("/auth/me/mobile", { mobileNumber }),
+
+  /** Removes the profile picture. Setting one is `uploadAvatar` (api/uploads). */
+  removeAvatar: () => api.delete<void>("/auth/me/avatar"),
 
   logout: (refreshToken: string) => api.post<void>("/auth/logout", { refreshToken }),
 

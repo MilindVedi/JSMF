@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
 import { IsContactPhone } from '../../../../shared/sms/domain/contact-phone';
 import { EXAM_OPTIONS, STAGE_OPTIONS } from '../../../events/domain/session-display';
 
@@ -9,6 +9,23 @@ export class UpdateNameDto {
   @MinLength(2, { message: 'Enter your full name' })
   @MaxLength(120)
   name!: string;
+}
+
+/**
+ * Just the contact number, for apps that edit it without the signup
+ * questions. `null` removes it; leaving the field out is refused, so a client
+ * bug can never clear a number by omission.
+ */
+export class UpdateMobileDto {
+  @ApiProperty({
+    example: '+919876543210',
+    nullable: true,
+    description: 'E.164 with country code, or a 10-digit Indian mobile number; null removes it.',
+  })
+  @ValidateIf((dto: UpdateMobileDto) => dto.mobileNumber !== null)
+  @IsString()
+  @IsContactPhone()
+  mobileNumber!: string | null;
 }
 
 /** The questions asked once, right after email signup. */

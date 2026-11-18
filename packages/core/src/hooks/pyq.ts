@@ -8,6 +8,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { authApi, type AccountProfile } from "../api/auth";
+import { uploadAvatar } from "../api/uploads";
 import { getCoreConfig } from "../config";
 import { shouldRetryQuery } from "../query";
 import { apiDataSource } from "../data-source/api-adapter";
@@ -50,7 +52,8 @@ export const pyqKeys = {
   user: ["pyq", "user"] as const,
   access: ["pyq", "user", "access"] as const,
   /** The account's join date. Per user, so signing in as someone else never shows the last account's. */
-  memberSince: ["pyq", "user", "member-since"] as const,
+  /** The account's profile (picture, contact number, member since). Under "user", so sign-out clears it. */
+  accountProfile: ["pyq", "user", "account-profile"] as const,
   questions: (query: QuestionQuery, page: number, pageSize: number) =>
     ["pyq", "user", "questions", query, page, pageSize] as const,
   sessionsAll: ["pyq", "user", "sessions"] as const,
@@ -78,6 +81,51 @@ export function getDataSource(): PyqDataSource {
 
 function notifyError(message: string): void {
   getCoreConfig().notify?.error(message);
+}
+
+// --- Account -------------------------------------------------------------------
+// Identity is platform-wide: these read and write the same account jsmf.me
+// and the store show. The API takes the user from the token, never the body.
+
+/** `enabled: false` for a build with no account behind it (web's mock data source). */
+export function useAccountProfile({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: pyqKeys.accountProfile,
+    queryFn: () => authApi.profile(),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
+/** Sets the contact number (E.164 or a bare Indian 10-digit), or removes it with null. */
+export function useSetMobile() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (mobileNumber: string | null) => authApi.setMobile(mobileNumber),
+    onSuccess: (profile) => client.setQueryData(pyqKeys.accountProfile, profile),
+  });
+}
+
+/** Uploads an already-prepared JPEG (see `uploadAvatar`) as the profile picture. */
+export function useUploadAvatar() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ jpeg, onProgress }: { jpeg: Blob; onProgress?: (sent: number, total: number) => void }) =>
+      uploadAvatar(jpeg, onProgress),
+    onSuccess: (avatarUrl) =>
+      client.setQueryData<AccountProfile>(pyqKeys.accountProfile, (profile) => (profile ? { ...profile, avatarUrl } : profile)),
+  });
+}
+
+export function useRemoveAvatar() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => authApi.removeAvatar(),
+    onSuccess: () =>
+      client.setQueryData<AccountProfile>(pyqKeys.accountProfile, (profile) =>
+        profile ? { ...profile, avatarUrl: null } : profile,
+      ),
+  });
 }
 
 // --- Taxonomy ------------------------------------------------------------------
