@@ -185,6 +185,19 @@ export function OfferingForm({ offering, onSaved }: { offering: AdminOffering | 
               </Button>
             )}
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="description">More about the session (optional)</Label>
+            <Textarea
+              id="description"
+              value={values.description}
+              onChange={set("description")}
+              maxLength={5000}
+              rows={6}
+            />
+            <p className="text-xs text-muted-foreground">
+              Shown under the points. Leave an empty line between paragraphs.
+            </p>
+          </div>
         </CardContent>
       </Card>
 

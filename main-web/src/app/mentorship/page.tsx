@@ -4,7 +4,8 @@ import { MentorshipPage } from "@/components/mentorship/mentorship-page";
 
 export const metadata: Metadata = {
   title: "Book a 1:1 session with Dr. Angad | JSMF",
-  description: "A private 45-minute call with Dr. Angad Rai to review your preparation and leave with a plan made for you.",
+  description:
+    "A private one-to-one Personal Development Session with Dr. Angad Rai — for exam pressure, focus, motivation, or anything you need to talk through.",
   alternates: { canonical: "/mentorship" },
 };
 

@@ -213,7 +213,12 @@ export function MentorshipPage() {
               ))}
             </div>
             {offering.highlights.length > 0 && (
-              <ul className="mt-6 grid gap-x-8 gap-y-3 sm:mt-8 sm:grid-cols-2 sm:gap-y-4">
+              // Two columns only while every point is short; full sentences read better in one.
+              <ul
+                className={`mt-6 grid gap-x-8 gap-y-3 sm:mt-8 sm:gap-y-4 ${
+                  offering.highlights.every((item) => item.length <= 60) ? "sm:grid-cols-2" : ""
+                }`}
+              >
                 {offering.highlights.map((item) => (
                   <li key={item} className="flex gap-3 text-[15px] leading-snug text-foreground">
                     <CheckCircle2 size={19} className="mt-0.5 shrink-0 text-primary" />
@@ -221,6 +226,13 @@ export function MentorshipPage() {
                   </li>
                 ))}
               </ul>
+            )}
+            {paragraphs(offering.description).length > 0 && (
+              <div className="mt-6 max-w-xl space-y-3 text-[15px] leading-relaxed text-muted-foreground sm:mt-8">
+                {paragraphs(offering.description).map((text, index) => (
+                  <p key={index}>{text}</p>
+                ))}
+              </div>
             )}
           </div>
 
@@ -477,6 +489,14 @@ export function MentorshipPage() {
       <TelegramFloat />
     </SiteLayout>
   );
+}
+
+/** The admin's "More about the session" text, split into paragraphs at empty lines. */
+function paragraphs(text: string | null): string[] {
+  return (text ?? "")
+    .split(/\n\s*\n/)
+    .map((part) => part.replace(/\s*\n\s*/g, " ").trim())
+    .filter(Boolean);
 }
 
 function StepNumber({ n }: { n: number }) {
